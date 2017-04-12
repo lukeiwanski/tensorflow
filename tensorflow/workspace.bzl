@@ -133,11 +133,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.new_http_archive(
       name="eigen_archive",
       urls=[
-          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/eigen/eigen/get/a038e46f2d3e.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/a038e46f2d3e.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/mehdi_goli/opencl/get/cd057000850f.tar.gz",
+          "https://bitbucket.org/mehdi_goli/opencl/get/cd057000850f.tar.gz",
       ],
-      sha256="5628ac47fc3ab7ac8d66cfb2d3c2ecb2f1077447a841f33af64d0e181bfcedf1",
-      strip_prefix="eigen-eigen-a038e46f2d3e",
+      #sha256="5628ac47fc3ab7ac8d66cfb2d3c2ecb2f1077447a841f33af64d0e181bfcedf1",
+      strip_prefix="mehdi_goli-opencl-cd057000850f",
       build_file=str(Label("//third_party:eigen.BUILD")),)
 
   native.new_http_archive(
