@@ -27,12 +27,36 @@ limitations under the License.
 
 namespace tensorflow {
 
+
+class GQueueInterface
+{
+    Eigen::QueueInterface * m_value;
+    static GQueueInterface* s_instance;
+    GQueueInterface(cl::sycl::device d) : m_value(new Eigen::QueueInterface(d)){}
+  public:
+    static Eigen::QueueInterface *instance(cl::sycl::device d)
+    {
+        if (!s_instance) {
+          s_instance = new GQueueInterface(d);
+        }
+        return s_instance->m_value;
+    }
+    static Eigen::QueueInterface * get() { return s_instance->m_value; }
+    static void set(Eigen::QueueInterface * s) { s_instance->m_value = s; }
+
+    static void destroy()
+    {
+      delete s_instance->m_value;
+    }
+};
+
+
 class SYCLDevice : public LocalDevice {
  public:
-  template <typename SYCLSelector>
+  template <typename SYCLDEVICE>
   SYCLDevice(const SessionOptions &options, const string &name,
              Bytes memory_limit, const DeviceLocality &locality,
-             const string &physical_device_desc, SYCLSelector sycl_selector,
+             const string &physical_device_desc, SYCLDEVICE sycl_device,
              Allocator *cpu_allocator)
       : LocalDevice(
             options,
@@ -40,9 +64,8 @@ class SYCLDevice : public LocalDevice {
                                           locality, physical_device_desc),
             nullptr),
         cpu_allocator_(cpu_allocator),
-        sycl_queue_(new Eigen::QueueInterface(sycl_selector)),
-        sycl_device_(new Eigen::SyclDevice(sycl_queue_)),
-        sycl_allocator_(new SYCLAllocator(sycl_queue_)),
+        sycl_device_(new Eigen::SyclDevice(GQueueInterface::instance(sycl_device))),
+        sycl_allocator_(new SYCLAllocator(GQueueInterface::instance(sycl_device))),
         device_context_(new SYCLDeviceContext()) {
     set_eigen_sycl_device(sycl_device_);
     RegisterDevice();
@@ -71,7 +94,6 @@ class SYCLDevice : public LocalDevice {
   void RegisterDevice();
 
   Allocator *cpu_allocator_;           // owned
-  Eigen::QueueInterface *sycl_queue_;  // owned
   Eigen::SyclDevice *sycl_device_;     // owned
   SYCLAllocator *sycl_allocator_;      // owned
   SYCLDeviceContext *device_context_;

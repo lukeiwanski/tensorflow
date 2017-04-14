@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 
 namespace tensorflow {
-
+GQueueInterface *GQueueInterface::s_instance = 0;
 static std::unordered_set<SYCLDevice *> live_devices;
 static bool first_time = true;
 
@@ -31,6 +31,11 @@ void ShutdownSycl() {
     device->EnterLameDuckMode();
   }
   live_devices.clear();
+  if(GQueueInterface::get())
+  {
+    GQueueInterface::destroy();
+    GQueueInterface::set(nullptr);
+  }
 }
 
 void SYCLDevice::RegisterDevice() {
@@ -48,9 +53,6 @@ SYCLDevice::~SYCLDevice() {
     sycl_device_->synchronize();
     delete sycl_device_;
   }
-  if (sycl_queue_) {
-    delete sycl_queue_;
-  }
   live_devices.erase(this);
 }
 
@@ -60,10 +62,6 @@ void SYCLDevice::EnterLameDuckMode() {
     sycl_device_->synchronize();
     delete sycl_device_;
     sycl_device_ = nullptr;
-  }
-  if (sycl_queue_) {
-    delete sycl_queue_;
-    sycl_queue_ = nullptr;
   }
 }
 
