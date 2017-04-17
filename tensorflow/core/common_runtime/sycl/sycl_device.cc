@@ -22,7 +22,9 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 
 namespace tensorflow {
-GQueueInterface *GQueueInterface::s_instance = 0;
+std::mutex GSYCLInterface::mutex_;
+GSYCLInterface *GSYCLInterface::s_instance = 0;
+
 static std::unordered_set<SYCLDevice *> live_devices;
 static bool first_time = true;
 
@@ -31,10 +33,9 @@ void ShutdownSycl() {
     device->EnterLameDuckMode();
   }
   live_devices.clear();
-  if(GQueueInterface::get())
+  if(GSYCLInterface::instance())
   {
-    GQueueInterface::destroy();
-    GQueueInterface::set(nullptr);
+    GSYCLInterface::instance()->destroy();
   }
 }
 
@@ -49,20 +50,11 @@ void SYCLDevice::RegisterDevice() {
 SYCLDevice::~SYCLDevice() {
   device_context_->Unref();
   sycl_allocator_->EnterLameDuckMode();
-  if (sycl_device_) {
-    sycl_device_->synchronize();
-    delete sycl_device_;
-  }
   live_devices.erase(this);
 }
 
 void SYCLDevice::EnterLameDuckMode() {
   sycl_allocator_->EnterLameDuckMode();
-  if (sycl_device_) {
-    sycl_device_->synchronize();
-    delete sycl_device_;
-    sycl_device_ = nullptr;
-  }
 }
 
 void SYCLDevice::Compute(OpKernel *op_kernel, OpKernelContext *context) {
@@ -86,8 +78,12 @@ Allocator *SYCLDevice::GetAllocator(AllocatorAttributes attr) {
 Status SYCLDevice::MakeTensorFromProto(const TensorProto &tensor_proto,
                                        const AllocatorAttributes alloc_attrs,
                                        Tensor *tensor) {
+  AllocatorAttributes attr;
+  attr.set_on_host(true);
+  Allocator* host_alloc = GetAllocator(attr);
+
   Tensor parsed(tensor_proto.dtype());
-  if (!parsed.FromProto(cpu_allocator_, tensor_proto)) {
+  if (!parsed.FromProto(host_alloc, tensor_proto)) {
     return errors::InvalidArgument("Cannot parse tensor from proto: ",
                                    tensor_proto.DebugString());
   }
@@ -117,8 +113,8 @@ Status SYCLDevice::FillContextMap(const Graph *graph,
 }
 
 Status SYCLDevice::Sync() {
-  sycl_device_->synchronize();
-  if (sycl_device_->ok()) {
+  sycl_allocator_->Synchronize();
+  if (sycl_allocator_->Ok()) {
     return Status::OK();
   } else {
     return errors::Internal("Unknown error detected on device ", name());

@@ -27,10 +27,14 @@ class SYCLDeviceFactory : public DeviceFactory {
   Status CreateDevices(const SessionOptions &options, const string &name_prefix,
                        std::vector<Device *> *devices) override {
     string name = strings::StrCat(name_prefix, "/sycl:", 0);
+
+    auto syclInterface = GSYCLInterface::instance();
+
     devices->push_back(
-        new SYCLDevice(options, name, Bytes(256 << 20), DeviceLocality(),
-                       SYCLDevice::GetShortDeviceDescription(),
-                       GetSYCLDevice(), cpu_allocator()));
+        new SYCLDevice(options, name, Bytes(256 << 20), DeviceLocality()
+                       , syclInterface->GetShortDeviceDescription(0)
+                       , syclInterface->GetSYCLAllocator(0)
+                       , syclInterface->GetCPUAllocator(0)));
     return Status::OK();
   }
 };
