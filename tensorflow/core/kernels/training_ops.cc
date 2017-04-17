@@ -2481,7 +2481,7 @@ class ApplyAdamOp < SYCLDevice, T> : public OpKernel {
     device.memcpyDeviceToHost(&beta1, static_cast<const T *>(src_ptr), size);
 
     src_ptr = GetBase(&beta2_dev);
-    device.memcpyDeviceToHost(&beta1, static_cast<const T *>(src_ptr), size);
+    device.memcpyDeviceToHost(&beta2, static_cast<const T *>(src_ptr), size);
 
     src_ptr = GetBase(&epsilon_dev);
     device.memcpyDeviceToHost(&epsilon, static_cast<const T *>(src_ptr), size);
