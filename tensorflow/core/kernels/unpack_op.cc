@@ -76,6 +76,8 @@ class UnpackOp : public OpKernel {
     // because if the immediate consumer of the resulting tensors are
     // not using eigen for computation, its perfectly fine to avoid
     // the copying.
+    // TODO(Luke): Enable for SYCL
+    #ifndef TENSORFLOW_USE_SYCL
     if (axis == 0 &&
         (output_size == 0 || IsInnerDimsSizeAligned<T>(input_shape))) {
       for (int i = 0; i < num; ++i) {
@@ -85,6 +87,7 @@ class UnpackOp : public OpKernel {
       }
       return;
     }
+    #endif
 
     int64 before_dim = 1;
     for (int i = 0; i < axis; ++i) {
