@@ -53,10 +53,6 @@ class UnstackOpTest(test.TestCase):
         self.assertAllEqual(cs, data)
 
   def testGradientsAxis0(self):
-    # Currently fails for OpenCL
-    if test_util.is_sycl_enabled():
-      return
-
     for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
       data = np.random.randn(*shape)
       shapes = [shape[1:]] * shape[0]
