@@ -1013,10 +1013,6 @@ class LSTMTest(test.TestCase):
       self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_dynamic_v))
 
   def _testDynamicEquivalentToStaticRNN(self, use_gpu, use_sequence_length):
-    # Currently not implemented for OpenCL
-    if test_util.is_sycl_enabled():
-      return
-
     time_steps = 8
     num_units = 3
     num_proj = 4
