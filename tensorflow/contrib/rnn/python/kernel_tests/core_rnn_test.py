@@ -2231,8 +2231,7 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
     _assert_in("TensorArrayScatter", cpu_stats, gpu_stats)
 
   def testRNNOnCPUCellOnCPU(self):
-    # Currently not implemented for OpenCL
-    if not test.is_gpu_available() or test_util.is_sycl_enabled():
+    if not test.is_gpu_available():
       return  # Test requires access to a GPU
 
     run_metadata = self._execute_rnn_on(
