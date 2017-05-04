@@ -24,6 +24,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace tensor_array {
 
@@ -51,6 +54,13 @@ TF_CALL_complex128(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
 
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#define TENSOR_ARRAY_WRITE_OR_ADD_SYCL(T) \
+  TENSOR_ARRAY_WRITE_OR_ADD(SYCLDevice, T)
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(TENSOR_ARRAY_WRITE_OR_ADD_SYCL);
+#undef TENSOR_ARRAY_WRITE_OR_ADD_SYCL
+#endif  // TENSORFLOW_USE_SYCL
+
 #undef TENSOR_ARRAY_WRITE_OR_ADD
 
 #define TENSOR_ARRAY_SET_ZERO(Device, T)                                      \
@@ -74,6 +84,12 @@ TF_CALL_complex128(TENSOR_ARRAY_SET_ZERO_GPU);
 #undef TENSOR_ARRAY_SET_ZERO_GPU
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define TENSOR_ARRAY_SET_ZERO_SYCL(T) TENSOR_ARRAY_SET_ZERO(SYCLDevice, T)
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(TENSOR_ARRAY_SET_ZERO_SYCL);
+#undef TENSOR_ARRAY_SET_ZERO_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #undef TENSOR_ARRAY_SET_ZERO
 
