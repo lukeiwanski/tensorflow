@@ -44,6 +44,13 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 #if GOOGLE_CUDA
 typedef Eigen::GpuDevice GPUDevice;
 #endif  // GOOGLE_CUDA
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#define CALL_REGISTER_V123(call, name, ...) \
+  call(name, ##__VA_ARGS__);                \
+  call(name "V2", ##__VA_ARGS__);           \
+  call(name "V3", ##__VA_ARGS__);
+#endif  // TENSORFLOW_USE_SYCL
 
 // clang-format on
 
@@ -243,6 +250,23 @@ REGISTER_GPU(bfloat16);
 
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_TENSOR_ARRAY(name, type)                     \
+  REGISTER_KERNEL_BUILDER(Name(name)                          \
+                              .Device(DEVICE_SYCL)            \
+                              .TypeConstraint<type>("dtype")  \
+                              .HostMemory("size")             \
+                              .HostMemory("handle"),          \
+                          TensorArrayOp)
+
+#define REGISTER_SYCL(type) \
+  CALL_REGISTER_V123(REGISTER_TENSOR_ARRAY, "TensorArray", type)
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
+#undef REGISTER_SYCL
+#undef REGISTER_TENSOR_ARRAY
+#endif  // TENSORFLOW_USE_SYCL
+
 // GRADIENT *******************************************************************
 
 class TensorArrayGradOp : public TensorArrayCreationOp {
@@ -358,6 +382,18 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayGradV3")
                             .HostMemory("grad_handle"),
                         TensorArrayGradOp);
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_TENSOR_ARRAY_GRAD(name)                  \
+  REGISTER_KERNEL_BUILDER(Name(name)                      \
+                              .Device(DEVICE_SYCL)        \
+                              .HostMemory("handle")       \
+                              .HostMemory("grad_handle"), \
+                          TensorArrayGradOp)
+
+CALL_REGISTER_V123(REGISTER_TENSOR_ARRAY_GRAD, "TensorArrayGrad")
+#undef REGISTER_TENSOR_ARRAY_GRAD
+#endif  // TENSORFLOW_USE_SYCL
+
 // WRITE **********************************************************************
 
 template <typename Device, typename T>
@@ -440,6 +476,23 @@ REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_TENSOR_ARRAY_WRITE(name, type)                   \
+  REGISTER_KERNEL_BUILDER(Name(name)                              \
+                              .Device(DEVICE_SYCL)                \
+                              .TypeConstraint<type>("T")          \
+                              .HostMemory("handle")               \
+                              .HostMemory("index"),               \
+                          TensorArrayWriteOp<SYCLDevice, type>)
+
+#define REGISTER_SYCL(type) \
+  CALL_REGISTER_V123(REGISTER_TENSOR_ARRAY_WRITE, "TensorArrayWrite", type)
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
+#undef REGISTER_SYCL
+#undef REGISTER_TENSOR_ARRAY_WRITE
+#endif  // TENSORFLOW_USE_SYCL
 
 // READ ***********************************************************************
 
@@ -529,6 +582,23 @@ REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_TENSOR_ARRAY_READ(name, type)                    \
+  REGISTER_KERNEL_BUILDER(Name(name)                              \
+                              .Device(DEVICE_SYCL)                \
+                              .TypeConstraint<type>("dtype")      \
+                              .HostMemory("handle")               \
+                              .HostMemory("index"),               \
+                          TensorArrayReadOp<SYCLDevice, type>)
+
+#define REGISTER_SYCL(type) \
+  CALL_REGISTER_V123(REGISTER_TENSOR_ARRAY_READ, "TensorArrayRead", type)
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
+#undef REGISTER_SYCL
+#undef REGISTER_TENSOR_ARRAY_READ
+#endif  // TENSORFLOW_USE_SYCL
 
 // PACK and GATHER ************************************************************
 
@@ -654,6 +724,12 @@ class TensorArrayPackOrGatherOp : public OpKernel {
       return;
     }
 #endif  // GOOGLE_CUDA
+#ifdef TENSORFLOW_USE_SYCL
+    if (std::is_same<Device, SYCLDevice>::value) {
+      ConcatSYCL<T>(ctx->eigen_sycl_device(), input_tensors_flat, &output_flat);
+      return;
+    }
+#endif  // TENSORFLOW_USE_SYCL
     ConcatCPU<T>(ctx->device(), input_tensors_flat, &output_flat);
   }
 
@@ -755,6 +831,39 @@ REGISTER_KERNEL_BUILDER(
     TensorArrayPackOrGatherOp<CPUDevice, int32, false /* LEGACY_PACK */>);
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_TENSOR_ARRAY_PACK(name, type, template_device)             \
+  REGISTER_KERNEL_BUILDER(Name(name)                                        \
+                              .Device(DEVICE_SYCL)                          \
+                              .TypeConstraint<type>("dtype")                \
+                              .HostMemory("handle"),                        \
+                          TensorArrayPackOrGatherOp<template_device, type,  \
+                                                    true>)
+
+#define REGISTER_TENSOR_ARRAY_GATHER(name, type, template_device)           \
+  REGISTER_KERNEL_BUILDER(Name(name)                                        \
+                              .Device(DEVICE_SYCL)                          \
+                              .TypeConstraint<type>("dtype")                \
+                              .HostMemory("indices")                        \
+                              .HostMemory("handle"),                        \
+                          TensorArrayPackOrGatherOp<template_device, type,  \
+                                                    false>)
+
+#define REGISTER_SYCL(type)                                             \
+  REGISTER_TENSOR_ARRAY_PACK("TensorArrayPack", type, SYCLDevice);      \
+  CALL_REGISTER_V123(REGISTER_TENSOR_ARRAY_GATHER, "TensorArrayGather", \
+                     type, SYCLDevice)
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
+#undef REGISTER_SYCL
+
+// Special case: use CPUDevice for int32 even if the user registered it on SYCL
+CALL_REGISTER_V123(REGISTER_TENSOR_ARRAY_GATHER, "TensorArrayGather", int32,
+                   CPUDevice)
+#undef REGISTER_TENSOR_ARRAY_PACK
+#undef REGISTER_TENSOR_ARRAY_GATHER
+#endif  // TENSORFLOW_USE_SYCL
 
 // CONCAT *********************************************************************
 
@@ -886,6 +995,13 @@ class TensorArrayConcatOp : public OpKernel {
         return;
       }
 #endif  // GOOGLE_CUDA
+#ifdef TENSORFLOW_USE_SYCL
+      if (std::is_same<Device, SYCLDevice>::value) {
+        ConcatSYCL<T>(ctx->eigen_sycl_device(), input_tensors_flat,
+                      &output_flat);
+        return;
+      }
+#endif  // TENSORFLOW_USE_SYCL
       ConcatCPU<T>(ctx->device(), input_tensors_flat, &output_flat);
     }
   }
@@ -974,6 +1090,28 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV3")
                         TensorArrayConcatOp<CPUDevice, int32>);
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_TENSOR_ARRAY_CONCAT(name, type, template_device) \
+  REGISTER_KERNEL_BUILDER(Name(name)                              \
+                              .Device(DEVICE_SYCL)                \
+                              .TypeConstraint<type>("dtype")      \
+                              .HostMemory("lengths")              \
+                              .HostMemory("handle"),              \
+                          TensorArrayConcatOp<template_device, type>)
+
+#define REGISTER_SYCL(type)                                             \
+  CALL_REGISTER_V123(REGISTER_TENSOR_ARRAY_CONCAT, "TensorArrayConcat", \
+                     type, SYCLDevice)
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
+#undef REGISTER_SYCL
+
+// Special case: use CPUDevice for int32 even if the user registered it on SYCL
+CALL_REGISTER_V123(REGISTER_TENSOR_ARRAY_CONCAT, "TensorArrayConcat", \
+                   int32, CPUDevice)
+#undef REGISTER_TENSOR_ARRAY_CONCAT
+#endif  // TENSORFLOW_USE_SYCL
 
 // UNPACK and SCATTER *********************************************************
 
@@ -1171,6 +1309,35 @@ TF_CALL_complex128(REGISTER_GPU);
 
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_TENSOR_ARRAY_UNPACK(name, type, template_device)             \
+  REGISTER_KERNEL_BUILDER(Name(name)                                          \
+                              .Device(DEVICE_SYCL)                            \
+                              .TypeConstraint<type>("T")                      \
+                              .HostMemory("handle"),                          \
+                          TensorArrayUnpackOrScatterOp<template_device, type, \
+                                                       true>)
+
+#define REGISTER_TENSOR_ARRAY_SCATTER(name, type, template_device)            \
+  REGISTER_KERNEL_BUILDER(Name(name)                                          \
+                              .Device(DEVICE_SYCL)                            \
+                              .TypeConstraint<type>("T")                      \
+                              .HostMemory("indices")                          \
+                              .HostMemory("handle"),                          \
+                          TensorArrayUnpackOrScatterOp<template_device, type, \
+                                                       false>)
+
+#define REGISTER_SYCL(type)                                               \
+  REGISTER_TENSOR_ARRAY_UNPACK("TensorArrayUnpack", type, SYCLDevice);    \
+  CALL_REGISTER_V123(REGISTER_TENSOR_ARRAY_SCATTER, "TensorArrayScatter", \
+                     type, SYCLDevice)
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
+#undef REGISTER_SYCL
+#undef REGISTER_TENSOR_ARRAY_SCATTER
+#undef REGISTER_TENSOR_ARRAY_UNPACK
+#endif  // TENSORFLOW_USE_SYCL
+
 // SPLIT *********************************************************************
 
 template <typename Device, typename T>
@@ -1338,6 +1505,23 @@ TF_CALL_complex128(REGISTER_GPU);
 
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_TENSOR_ARRAY_SPLIT(name, type)                 \
+  REGISTER_KERNEL_BUILDER(Name(name)                            \
+                              .Device(DEVICE_SYCL)              \
+                              .TypeConstraint<type>("T")        \
+                              .HostMemory("lengths")            \
+                              .HostMemory("handle"),            \
+                          TensorArraySplitOp<SYCLDevice, type>)
+
+#define REGISTER_SYCL(type) \
+  CALL_REGISTER_V123(REGISTER_TENSOR_ARRAY_SPLIT, "TensorArraySplit", type)
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
+#undef REGISTER_SYCL
+#undef REGISTER_TENSOR_ARRAY_SPLIT
+#endif  // TENSORFLOW_USE_SYCL
+
 // SIZE ***********************************************************************
 
 // Get the size of the TensorArray
@@ -1378,6 +1562,18 @@ REGISTER_KERNEL_BUILDER(Name("TensorArraySizeV3")
                             .HostMemory("handle")
                             .HostMemory("size"),
                         TensorArraySizeOp);
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_TENSOR_ARRAY_SIZE(name)            \
+  REGISTER_KERNEL_BUILDER(Name(name)                \
+                              .Device(DEVICE_SYCL)  \
+                              .HostMemory("handle") \
+                              .HostMemory("size"),  \
+                          TensorArraySizeOp)
+
+CALL_REGISTER_V123(REGISTER_TENSOR_ARRAY_SIZE, "TensorArraySize")
+#undef REGISTER_TENSOR_ARRAY_SIZE
+#endif  // TENSORFLOW_USE_SYCL
 
 // CLOSE
 // **********************************************************************
@@ -1422,5 +1618,16 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("TensorArrayCloseV3").Device(DEVICE_GPU).HostMemory("handle"),
     TensorArrayCloseOp);
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_TENSOR_ARRAY_CLOSE(name)             \
+  REGISTER_KERNEL_BUILDER(Name(name)                  \
+                              .Device(DEVICE_SYCL)    \
+                              .HostMemory("handle"),  \
+                          TensorArrayCloseOp)
+
+CALL_REGISTER_V123(REGISTER_TENSOR_ARRAY_CLOSE, "TensorArrayClose")
+#undef REGISTER_TENSOR_ARRAY_CLOSE
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
