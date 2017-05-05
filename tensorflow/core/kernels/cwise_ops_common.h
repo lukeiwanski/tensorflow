@@ -22,6 +22,7 @@ limitations under the License.
 
 #ifdef TENSORFLOW_USE_SYCL
 #include "tensorflow/core/kernels/cwise_ops_sycl_common.h"
+#include "tensorflow/core/common_runtime/sycl/sycl_util.h"
 #endif
 
 #include "tensorflow/core/kernels/cwise_ops.h"
@@ -72,6 +73,46 @@ class BinaryOpShared : public OpKernel {
   void SetComputeError(OpKernelContext* ctx);
 };
 
+template <typename, typename Ttin, typename Tin>
+class Flattener {
+public:
+  Flattener(OpKernelContext*) {}
+
+  template <typename Input>
+  inline Ttin operator()(const Input& in) { return in.template flat<Tin>(); }
+};
+
+#ifdef TENSORFLOW_USE_SYCL
+//TODO(SYCL): Temporary workaround
+template <typename Ttin>
+class Flattener<SYCLDevice, Ttin, double> { // Only needed for Tin=double
+private:
+  typedef typename Ttin::Index IndexType;
+  typedef typename Ttin::Base::DerivedTraits TensorType;
+
+public:
+  Flattener(OpKernelContext* ctx) : device_(ctx->eigen_sycl_device()),
+                                    in_device_data_(nullptr) {}
+
+  ~Flattener() { device_.deallocate(in_device_data_); }
+
+  // Move 'flat_in' data pointer (only needed if the pointer has a low address)
+  template <typename Input>
+  Ttin operator()(const Input& in) {
+    auto flat_in = in.template flat<double>();
+    auto num_elements = flat_in.size();
+    auto size = sizeof(double) * num_elements;
+    in_device_data_ = static_cast<double*>(device_.allocate(size));
+    device_.memcpy(in_device_data_, flat_in.data(), size);
+    return Ttin(in_device_data_, flat_in.dimensions());
+  }
+
+private:
+  const SYCLDevice& device_;
+  double* in_device_data_;
+};
+#endif // TENSORFLOW_USE_SYCL
+
 // Coefficient-wise binary operations:
 //   Device: E.g., CPUDevice, GPUDevice.
 //   Functor: defined in cwise_ops.h. E.g., functor::add.
@@ -104,18 +145,22 @@ class BinaryOp : public BinaryOpShared {
       auto out_flat = out->flat<Tout>();
       if (state.in1_num_elements == 1) {
         // tensor op scalar
+        Flattener<Device, typename Functor::tin_type, Tin> flattener0(ctx);
         functor::BinaryFunctor<Device, Functor, 1>().Right(
-            eigen_device, out_flat, in0.template flat<Tin>(),
+            eigen_device, out_flat, flattener0(in0),
             in1.template scalar<Tin>(), error_ptr);
       } else if (state.in0_num_elements == 1) {
         // scalar op tensor
+        Flattener<Device, typename Functor::tin_type, Tin> flattener1(ctx);
         functor::BinaryFunctor<Device, Functor, 1>().Left(
             eigen_device, out_flat, in0.template scalar<Tin>(),
-            in1.template flat<Tin>(), error_ptr);
+            flattener1(in1), error_ptr);
       } else {
+        Flattener<Device, typename Functor::tin_type, Tin> flattener0(ctx);
+        Flattener<Device, typename Functor::tin_type, Tin> flattener1(ctx);
         functor::BinaryFunctor<Device, Functor, 1>()(
-            eigen_device, out_flat, in0.template flat<Tin>(),
-            in1.template flat<Tin>(), error_ptr);
+            eigen_device, out_flat, flattener0(in0),
+            flattener1(in1), error_ptr);
       }
     } else if (ndims == 2) {
       functor::BinaryFunctor<Device, Functor, 2>().BCast(
