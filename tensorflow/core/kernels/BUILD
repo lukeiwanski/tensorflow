@@ -2330,7 +2330,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cwise_op",
     prefix = "cwise_op",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + if_sycl(["//tensorflow/core:sycl_runtime"]),
 )
 
 tf_kernel_library(
