@@ -98,7 +98,7 @@ class CopyOp : public OpKernel {
         auto dst_ptr = GetBase(copied_tensor);
         auto src_ptr = GetBase(&src_tensor);
         typedef decltype(src_tensor.dtype()) ttype;
-        context->eigen_sycl_device().memcpy(
+        context->eigen_sycl_device().memcpyDeviceToHost(
             dst_ptr, static_cast<const ttype*>(src_ptr), size);
       } else {
         *copied_tensor = tensor::DeepCopy(src_tensor);
