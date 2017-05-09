@@ -30,7 +30,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.framework import test_util
+
 
 def _AsType(v, vtype):
   return v.astype(vtype) if isinstance(v, np.ndarray) else vtype(v)

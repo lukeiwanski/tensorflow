@@ -40,7 +40,6 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
-from tensorflow.python.framework import test_util
 
 
 # pylint: enable=protected-access
@@ -343,7 +342,7 @@ class RNNCellTest(test.TestCase):
       self.assertTrue("cpu:14159" in outputs.device.lower())
 
   def testDeviceWrapperDynamicExecutionNodesAreAllProperlyLocated(self):
-    if not test.is_gpu_available() or test_util.is_sycl_enabled():
+    if not test.is_gpu_available():
       # Can't perform this test w/o a GPU
       return
 

@@ -25,7 +25,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.platform import test
-from tensorflow.python.framework import test_util
+
 
 def np_split_squeeze(array, axis):
   axis_len = array.shape[axis]
