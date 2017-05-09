@@ -221,11 +221,11 @@ struct ScatterFunctor<CPUDevice, T, Index, op>
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T, typename Index, scatter_op::UpdateOp op>
-struct ScatterFunctorSYCL {
+struct ScatterFunctor<SYCLDevice, T, Index, op> {
   Index operator()(OpKernelContext* c, const SYCLDevice& d,
                    typename TTypes<T>::Matrix params,
                    typename TTypes<T>::ConstMatrix updates,
-                   typename TTypes<Index>::Flat indices) {
+                   typename TTypes<Index>::ConstFlat indices) {
     // indices and params sizes were validated in DoCompute().
     const Index N = static_cast<Index>(indices.size());
     const Index limit = static_cast<Index>(params.dimension(0));
