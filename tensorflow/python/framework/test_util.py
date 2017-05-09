@@ -58,7 +58,7 @@ def gpu_device_name():
 
 def is_sycl_enabled():
   """Checks if current device is SYCL"""
-  if "sycl" in gpu_device_name():
+  if "sycl" in gpu_device_name().lower():
     return True
   return False
 
