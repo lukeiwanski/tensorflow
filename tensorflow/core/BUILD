@@ -1684,6 +1684,7 @@ cc_library(
         "common_runtime/sycl/sycl_device.h",
         "common_runtime/sycl/sycl_util.h",
         "common_runtime/sycl/sycl_device_context.h",
+        "common_runtime/sycl/sycl_macro_helper.h",
     ]),
     copts = tf_copts(),
     linkstatic = 1,
