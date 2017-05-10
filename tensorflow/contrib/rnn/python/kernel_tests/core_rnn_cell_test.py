@@ -441,8 +441,8 @@ class RNNCellTest(test.TestCase):
         _ = sess.run(outputs, options=opts, run_metadata=run_metadata)
 
       step_stats = run_metadata.step_stats
-      ix = 0 if (("gpu"  in step_stats.dev_stats[0].device) or
-                 ("sycl" in step_stats.dev_stats[0].device)) else 1
+      used_device = step_stats.dev_stats[0].device.lower()
+      ix = 0 if (("gpu" in used_device) or ("sycl" in used_device)) else 1
       gpu_stats = step_stats.dev_stats[ix].node_stats
       cpu_stats = step_stats.dev_stats[1 - ix].node_stats
       self.assertFalse([s for s in cpu_stats if "gru_cell" in s.node_name])
