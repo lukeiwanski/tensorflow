@@ -62,9 +62,9 @@ struct ApplyGradientDescentSYCL {
 };
 #endif
 
-template <typename T>
-struct ApplyAdadelta<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
+template <typename Device, typename T>
+struct ApplyAdadeltaNonCuda {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,
                   typename TTypes<T>::Flat accum_update,
                   typename TTypes<T>::ConstScalar lr,
@@ -80,6 +80,13 @@ struct ApplyAdadelta<CPUDevice, T> {
     var.device(d) -= update * lr();
   }
 };
+
+template <typename T>
+struct ApplyAdadelta<CPUDevice, T> : ApplyAdadeltaNonCuda<CPUDevice, T> {};
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ApplyAdadelta<SYCLDevice, T> : ApplyAdadeltaNonCuda<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename T>
 struct ApplyProximalGradientDescent<CPUDevice, T> {
@@ -145,9 +152,9 @@ struct ApplyAdagradDA<CPUDevice, T> {
   }
 };
 
-template <typename T>
-struct ApplyAdagrad<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
+template <typename Device, typename T>
+struct ApplyAdagradNonCuda {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,
                   typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstFlat grad) {
@@ -155,6 +162,13 @@ struct ApplyAdagrad<CPUDevice, T> {
     var.device(d) -= grad * lr() * accum.rsqrt();
   }
 };
+
+template <typename T>
+struct ApplyAdagrad<CPUDevice, T> : ApplyAdagradNonCuda<CPUDevice, T> {};
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ApplyAdagrad<SYCLDevice, T> : ApplyAdagradNonCuda<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename T>
 struct ApplyProximalAdagrad<CPUDevice, T> {
@@ -184,9 +198,9 @@ struct ApplyProximalAdagrad<CPUDevice, T> {
   }
 };
 
-template <typename T>
-struct ApplyFtrl<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
+template <typename Device, typename T>
+struct ApplyFtrlNonCuda {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,
                   typename TTypes<T>::Flat linear,
                   typename TTypes<T>::ConstFlat grad,
@@ -223,8 +237,15 @@ struct ApplyFtrl<CPUDevice, T> {
 };
 
 template <typename T>
-struct ApplyMomentum<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
+struct ApplyFtrl<CPUDevice, T> : ApplyFtrlNonCuda<CPUDevice, T> {};
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ApplyFtrl<SYCLDevice, T> : ApplyFtrlNonCuda<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
+
+template <typename Device, typename T>
+struct ApplyMomentumNonCuda {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,
                   typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstFlat grad,
@@ -237,6 +258,13 @@ struct ApplyMomentum<CPUDevice, T> {
     }
   }
 };
+
+template <typename T>
+struct ApplyMomentum<CPUDevice, T> : ApplyMomentumNonCuda<CPUDevice, T> {};
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ApplyMomentum<SYCLDevice, T> : ApplyMomentumNonCuda<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 struct ApplyAdamNonCuda {
@@ -286,9 +314,9 @@ struct ApplyAdamSYCL {
 template <typename T>
 struct ApplyAdam<CPUDevice, T> : ApplyAdamNonCuda<CPUDevice, T> {};
 
-template <typename T>
-struct ApplyRMSProp<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
+template <typename Device, typename T>
+struct ApplyRMSPropNonCuda {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat ms, typename TTypes<T>::Flat mom,
                   typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstScalar rho,
@@ -303,8 +331,15 @@ struct ApplyRMSProp<CPUDevice, T> {
 };
 
 template <typename T>
-struct ApplyCenteredRMSProp<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
+struct ApplyRMSProp<CPUDevice, T> : ApplyRMSPropNonCuda<CPUDevice, T> {};
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ApplyRMSProp<SYCLDevice, T> : ApplyRMSPropNonCuda<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
+
+template <typename Device, typename T>
+struct ApplyCenteredRMSPropNonCuda {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat mg, typename TTypes<T>::Flat ms,
                   typename TTypes<T>::Flat mom,
                   typename TTypes<T>::ConstScalar lr,
@@ -319,6 +354,15 @@ struct ApplyCenteredRMSProp<CPUDevice, T> {
     var.device(d) -= mom;
   }
 };
+
+template <typename T>
+struct ApplyCenteredRMSProp<CPUDevice, T> :
+  ApplyCenteredRMSPropNonCuda<CPUDevice, T> {};
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ApplyCenteredRMSProp<SYCLDevice, T> :
+  ApplyCenteredRMSPropNonCuda<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 
@@ -600,6 +644,12 @@ REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
@@ -1058,6 +1108,12 @@ REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
@@ -2195,6 +2251,12 @@ REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
@@ -2817,6 +2879,12 @@ REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
