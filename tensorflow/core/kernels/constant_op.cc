@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/common_runtime/sycl/sycl_macro_helper.h"
 
 #ifdef TENSORFLOW_USE_SYCL
 #include "tensorflow/core/common_runtime/sycl/sycl_util.h"
@@ -221,11 +222,12 @@ class FillOp<SYCLDevice, T> : public OpKernel {
 };
 #endif // TENSORFLOW_USE_SYCL
 
-#define REGISTER_KERNEL(D, TYPE)                         \
-  REGISTER_KERNEL_BUILDER(Name("Fill")                   \
-                              .Device(DEVICE_##D)        \
-                              .TypeConstraint<TYPE>("T") \
-                              .HostMemory("dims"),       \
+#define REGISTER_KERNEL(D, TYPE)                                \
+  REGISTER_KERNEL_BUILDER(Name("Fill")                          \
+                              .Device(DEVICE_##D)               \
+                              .TypeConstraint<TYPE>("T")        \
+                              .HostMemory("dims")               \
+                              USE_HOST_MEMORY_IF_SYCL("value"), \
                           FillOp<D##Device, TYPE>);
 
 #define REGISTER_CPU_KERNEL(TYPE) REGISTER_KERNEL(CPU, TYPE)
@@ -236,21 +238,13 @@ REGISTER_KERNEL(CPU, quint8);
 #undef REGISTER_CPU_KERNEL
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_KERNEL_SYCL(D, TYPE)                    \
-  REGISTER_KERNEL_BUILDER(Name("Fill")                   \
-                              .Device(DEVICE_##D)        \
-                              .TypeConstraint<TYPE>("T") \
-                              .HostMemory("value")       \
-                              .HostMemory("dims"),       \
-                          FillOp<D##Device, TYPE>);
-
-REGISTER_KERNEL_SYCL(SYCL, float);
-REGISTER_KERNEL_SYCL(SYCL, double);
-REGISTER_KERNEL_SYCL(SYCL, uint8);
-REGISTER_KERNEL_SYCL(SYCL, int8);
-REGISTER_KERNEL_SYCL(SYCL, uint16);
-REGISTER_KERNEL_SYCL(SYCL, int16);
-REGISTER_KERNEL_SYCL(SYCL, int64);
+REGISTER_KERNEL(SYCL, float);
+REGISTER_KERNEL(SYCL, double);
+REGISTER_KERNEL(SYCL, uint8);
+REGISTER_KERNEL(SYCL, int8);
+REGISTER_KERNEL(SYCL, uint16);
+REGISTER_KERNEL(SYCL, int16);
+REGISTER_KERNEL(SYCL, int64);
 
 REGISTER_KERNEL_BUILDER(Name("Fill")
                             .Device(DEVICE_SYCL)
@@ -259,7 +253,6 @@ REGISTER_KERNEL_BUILDER(Name("Fill")
                             .HostMemory("value")
                             .HostMemory("output"),
                         FillOp<CPUDevice, int32>);
-#undef REGISTER_KERNEL_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
