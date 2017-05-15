@@ -28,6 +28,9 @@ namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
+#ifdef TENSORFLOW_USE_SYCL
+using SYCLDevice = Eigen::SyclDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class ZeroInitializerOp : public OpKernel {
@@ -82,6 +85,12 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_KERNELS
 
