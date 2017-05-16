@@ -39,6 +39,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class GatherTreeOp : public OpKernel {
@@ -170,5 +173,16 @@ DECLARE_GPU_SPEC(int32);
 REGISTER_GPU_KERNEL(int32);
 #undef REGISTER_GPU_KERNEL
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+// Use the CPU even though the user registered it on SYCL
+#define REGISTER_SYCL_KERNEL(T)                                      \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("GatherTree").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+      GatherTreeOp<CPUDevice, T>);
+
+REGISTER_SYCL_KERNEL(int32);
+#undef REGISTER_SYCL_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow
