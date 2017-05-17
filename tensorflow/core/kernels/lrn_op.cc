@@ -64,12 +64,12 @@ void GetBandMatrix(int depth, int depth_radius,
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
-struct LaunchLRN;
-
-template <typename T>
-struct LaunchLRN<CPUDevice, T> {
+struct LaunchLRN {
   LaunchLRN(int depth_radius, T bias, T alpha, T beta)
       : depth_radius_(depth_radius), bias_(bias), alpha_(alpha), beta_(beta) {}
 
@@ -298,13 +298,20 @@ TF_CALL_float(REGISTER_GPU);
 
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL(T)                                      \
+  REGISTER_KERNEL_BUILDER(                                    \
+      Name("LRN").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+      LRNOp<SYCLDevice, T>);
+TF_CALL_float(REGISTER_SYCL);
+
+#undef REGISTER_SYCL
+#endif  // TENSORFLOW_USE_SYCL
+
 #if !defined(IS_MOBILE_PLATFORM)
 
 template <typename Device, typename T>
-struct LaunchLRNGrad;
-
-template <typename T>
-struct LaunchLRNGrad<CPUDevice, T> {
+struct LaunchLRNGrad {
   LaunchLRNGrad(int depth_radius, T bias, T alpha, T beta)
       : depth_radius_(depth_radius), bias_(bias), alpha_(alpha), beta_(beta) {}
 
@@ -519,6 +526,16 @@ TF_CALL_float(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL(T)                                          \
+  REGISTER_KERNEL_BUILDER(                                        \
+      Name("LRNGrad").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+      LRNGradOp<SYCLDevice, T>);
+TF_CALL_float(REGISTER_SYCL);
+
+#undef REGISTER_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #endif  // !defined(IS_MOBILE_PLATFORM)
 
