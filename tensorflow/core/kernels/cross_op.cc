@@ -35,6 +35,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename Type>
 class CrossOp : public OpKernel {
@@ -108,5 +111,14 @@ TF_CALL_REAL_NUMBER_TYPES(DECLARE_GPU_KERNEL);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(type)                                 \
+  REGISTER_KERNEL_BUILDER(                                         \
+      Name("Cross").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      CrossOp<SYCLDevice, type>);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
