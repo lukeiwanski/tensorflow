@@ -41,16 +41,19 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace functor {
 using random::PhiloxRandom;
 using random::SingleSampleAdapter;
 
-template <typename T>
-struct TruncatedNormalFunctor<CPUDevice, T> {
+template <typename Device, typename T>
+struct TruncatedNormalFunctorNonCuda {
   static const int kMaxIterations = 100;
 
-  void operator()(OpKernelContext* ctx, const CPUDevice& d, int64 num_batches,
+  void operator()(OpKernelContext* ctx, const Device& d, int64 num_batches,
                   int64 samples_per_batch, int64 num_elements,
                   typename TTypes<T>::ConstFlat means,
                   typename TTypes<T>::ConstFlat stddevs,
@@ -233,6 +236,16 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
   }
 };
 
+template <typename T>
+struct TruncatedNormalFunctor<CPUDevice, T> :
+    TruncatedNormalFunctorNonCuda<CPUDevice, T> {};
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct TruncatedNormalFunctor<SYCLDevice, T> :
+    TruncatedNormalFunctorNonCuda<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
+
 }  // namespace functor
 
 namespace {
@@ -386,5 +399,18 @@ TF_CALL_double(REGISTER);
 #undef REGISTER
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER(TYPE)                                         \
+  REGISTER_KERNEL_BUILDER(Name("ParameterizedTruncatedNormal") \
+                              .Device(DEVICE_SYCL)             \
+                              .HostMemory("shape")             \
+                              .TypeConstraint<TYPE>("dtype"),  \
+                          ParameterizedTruncatedNormalOp<SYCLDevice, TYPE>)
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER);
+
+#undef REGISTER
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow
