@@ -33,6 +33,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class ResizeBilinearOp : public OpKernel {
@@ -198,11 +201,12 @@ void resize_image(typename TTypes<T, 4>::ConstTensor images,
 
 }  // namespace
 
-// Partial specialization of ResizeBilinear functor for a CPUDevice.
+// Partial specialization of ResizeBilinear functor for a CPUDevice
+// and SYCLDevice.
 namespace functor {
-template <typename T>
-struct ResizeBilinear<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor images,
+template <typename Device, typename T>
+struct ResizeBilinearNonCuda {
+  void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor images,
                   const float height_scale, const float width_scale,
                   typename TTypes<float, 4>::Tensor output) {
     const int batch_size = images.dimension(0);
@@ -237,6 +241,14 @@ struct ResizeBilinear<CPUDevice, T> {
                     out_width, channels, xs, ys, output);
   }
 };
+
+template <typename T>
+struct ResizeBilinear<CPUDevice, T> : ResizeBilinearNonCuda<CPUDevice, T> {};
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ResizeBilinear<SYCLDevice, T> : ResizeBilinearNonCuda<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 template <typename Device, typename T>
@@ -271,11 +283,12 @@ class ResizeBilinearOpGrad : public OpKernel {
   bool align_corners_;
 };
 
-// Partial specialization of ResizeBilinearGrad functor for a CPUDevice.
+// Partial specialization of ResizeBilinearGrad functor for a CPUDevice
+// and SYCLDevice.
 namespace functor {
-template <typename T>
-struct ResizeBilinearGrad<CPUDevice, T> {
-  void operator()(const CPUDevice& d,
+template <typename Device, typename T>
+struct ResizeBilinearGradNonCuda {
+  void operator()(const Device& d,
                   typename TTypes<float, 4>::ConstTensor input_grad,
                   const float height_scale, const float width_scale,
                   typename TTypes<T, 4>::Tensor output_grad) {
@@ -326,6 +339,16 @@ struct ResizeBilinearGrad<CPUDevice, T> {
     }
   }
 };
+
+template <typename T>
+struct ResizeBilinearGrad<CPUDevice, T> :
+    ResizeBilinearGradNonCuda<CPUDevice, T> {};
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ResizeBilinearGrad<SYCLDevice, T> :
+    ResizeBilinearGradNonCuda<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 #define REGISTER_KERNEL(T)                            \
@@ -373,5 +396,27 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_GRAD_KERNEL);
 #undef REGISTER_GRAD_KERNEL
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_KERNEL(T)                            \
+  REGISTER_KERNEL_BUILDER(Name("ResizeBilinear")      \
+                              .Device(DEVICE_SYCL)    \
+                              .TypeConstraint<T>("T") \
+                              .HostMemory("size"),    \
+                          ResizeBilinearOp<SYCLDevice, T>);
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_KERNEL);
+
+#undef REGISTER_KERNEL
+
+#define REGISTER_GRAD_KERNEL(T)                                              \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("ResizeBilinearGrad").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+      ResizeBilinearOpGrad<SYCLDevice, T>);
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_GRAD_KERNEL);
+
+#undef REGISTER_GRAD_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
