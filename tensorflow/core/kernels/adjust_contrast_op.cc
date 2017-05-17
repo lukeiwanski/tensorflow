@@ -31,6 +31,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 // AdjustContrastOp is deprecated as of GraphDef version >= 2
 
@@ -135,6 +138,16 @@ REGISTER_GPU_KERNEL(double);
 
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(T)                                          \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("AdjustContrast").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+      AdjustContrastOp<SYCLDevice, T>);
+REGISTER_SYCL_KERNEL(float);
+REGISTER_SYCL_KERNEL(double);
+#undef REGISTER_SYCL_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
+
 class AdjustContrastOpV2Base : public OpKernel {
  protected:
   explicit AdjustContrastOpV2Base(OpKernelConstruction* context)
@@ -187,10 +200,7 @@ class AdjustContrastOpV2Base : public OpKernel {
 };
 
 template <typename Device>
-class AdjustContrastOpv2;
-
-template <>
-class AdjustContrastOpv2<CPUDevice> : public AdjustContrastOpV2Base {
+class AdjustContrastOpv2 : public AdjustContrastOpV2Base {
  public:
   explicit AdjustContrastOpv2(OpKernelConstruction* context)
       : AdjustContrastOpV2Base(context) {}
@@ -409,5 +419,10 @@ class AdjustContrastOpv2<GPUDevice> : public AdjustContrastOpV2Base {
 REGISTER_KERNEL_BUILDER(Name("AdjustContrastv2").Device(DEVICE_GPU),
                         AdjustContrastOpv2<GPUDevice>);
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("AdjustContrastv2").Device(DEVICE_SYCL),
+                        AdjustContrastOpv2<SYCLDevice>);
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
