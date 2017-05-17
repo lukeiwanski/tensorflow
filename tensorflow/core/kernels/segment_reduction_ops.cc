@@ -36,6 +36,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 // Static routines not in the templated class to reduce code size
 static void SegmentReductionValidationHelper(OpKernelContext* context,
@@ -229,12 +232,12 @@ REGISTER_COMPLEX_CPU_KERNELS_ALL(complex128);
 
 namespace functor {
 
-// UnsortedSegmentSumFunctor implementation for CPUDevice.
+// UnsortedSegmentSumFunctor implementation for CPUDevice and SYCLDevice.
 // todo: Remove duplicate code in UnsortedSegmentSumFunctor and UnsortedSegmentMaxFunctor.
-template <typename T, typename Index>
-struct UnsortedSegmentSumFunctor<CPUDevice, T, Index>
-    : UnsortedSegmentBaseFunctor<CPUDevice, T, Index> {
-  void operator()(OpKernelContext* ctx, const CPUDevice& d,
+template <typename Device, typename T, typename Index>
+struct UnsortedSegmentSumFunctorNonCuda
+    : UnsortedSegmentBaseFunctor<Device, T, Index> {
+  void operator()(OpKernelContext* ctx, const Device& d,
                   const Index output_rows, const TensorShape& segment_ids_shape,
                   typename TTypes<Index>::ConstFlat segment_ids,
                   const Index data_size, const T* data,
@@ -255,11 +258,11 @@ struct UnsortedSegmentSumFunctor<CPUDevice, T, Index>
     }
   }
 };
-// UnsortedSegmentMaxFunctor implementation for CPUDevice.
-template <typename T, typename Index>
-struct UnsortedSegmentMaxFunctor<CPUDevice, T, Index>
-    : UnsortedSegmentBaseFunctor<CPUDevice, T, Index> {
-  void operator()(OpKernelContext* ctx, const CPUDevice& d,
+// UnsortedSegmentMaxFunctor implementation for CPUDevice and SYCLDevice.
+template <typename Device, typename T, typename Index>
+struct UnsortedSegmentMaxFunctorNonCuda
+    : UnsortedSegmentBaseFunctor<Device, T, Index> {
+  void operator()(OpKernelContext* ctx, const Device& d,
                   const Index output_rows, const TensorShape& segment_ids_shape,
                   typename TTypes<Index>::ConstFlat segment_ids,
                   const Index data_size, const T* data,
@@ -281,6 +284,22 @@ struct UnsortedSegmentMaxFunctor<CPUDevice, T, Index>
     }
   }
 };
+
+template <typename T, typename Index>
+struct UnsortedSegmentSumFunctor<CPUDevice, T, Index> :
+    UnsortedSegmentSumFunctorNonCuda<CPUDevice, T, Index> {};
+template <typename T, typename Index>
+struct UnsortedSegmentMaxFunctor<CPUDevice, T, Index> :
+    UnsortedSegmentMaxFunctorNonCuda<CPUDevice, T, Index> {};
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T, typename Index>
+struct UnsortedSegmentSumFunctor<SYCLDevice, T, Index> :
+    UnsortedSegmentSumFunctorNonCuda<SYCLDevice, T, Index> {};
+template <typename T, typename Index>
+struct UnsortedSegmentMaxFunctor<SYCLDevice, T, Index> :
+    UnsortedSegmentMaxFunctorNonCuda<SYCLDevice, T, Index> {};
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 // Base class for SegmentReductionOps that can handle unsorted segment
@@ -412,6 +431,24 @@ TF_CALL_complex128(REGISTER_GPU_UNSORTED_KERNELS_ALL);
 #undef REGISTER_GPU_UNSORTED_KERNELS
 #undef REGISTER_GPU_UNSORTED_KERNELS_ALL
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_UNSORTED_KERNELS(type, index_type)               \
+  REGISTER_KERNEL_BUILDER(Name("UnsortedSegmentSum")                   \
+                              .Device(DEVICE_SYCL)                     \
+                              .HostMemory("num_segments")              \
+                              .TypeConstraint<type>("T")               \
+                              .TypeConstraint<index_type>("Tindices"), \
+                          UnsortedSegmentSumOp<SYCLDevice, type, index_type>);
+
+#define REGISTER_SYCL_UNSORTED_KERNELS_ALL(type) \
+  REGISTER_SYCL_UNSORTED_KERNELS(type, int32);   \
+  REGISTER_SYCL_UNSORTED_KERNELS(type, int64);
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_UNSORTED_KERNELS_ALL);
+#undef REGISTER_SYCL_UNSORTED_KERNELS
+#undef REGISTER_SYCL_UNSORTED_KERNELS_ALL
+#endif  // TENSORFLOW_USE_SYCL
 
 // Same as SegmentReductionOp but takes as input a "sparse" tensor, represented
 // by two dense tensors, one containing the data, and the other containing
