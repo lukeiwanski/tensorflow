@@ -28,6 +28,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T, typename Tindices>
 class SparseTensorDenseMatMulOp : public OpKernel {
@@ -223,6 +226,25 @@ REGISTER_KERNELS_GPU(float);
 #undef REGISTER_KERNELS_GPU
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL(TypeT, TypeIndex)          \
+  REGISTER_KERNEL_BUILDER(                       \
+      Name("SparseTensorDenseMatMul")            \
+          .Device(DEVICE_SYCL)                   \
+          .TypeConstraint<TypeT>("T")            \
+          .TypeConstraint<TypeIndex>("Tindices") \
+          .HostMemory("a_shape"),                \
+      SparseTensorDenseMatMulOp<SYCLDevice, TypeT, TypeIndex>);
+
+#define REGISTER_KERNELS_SYCL(T)    \
+  REGISTER_SYCL(T, int64);          \
+  REGISTER_SYCL(T, int32)
+
+REGISTER_KERNELS_SYCL(float);
+#undef REGISTER_SYCL
+#undef REGISTER_KERNELS_SYCL
+#endif  // TENSORFLOW_USE_SYCL
+
 namespace functor {
 
 namespace {
@@ -239,12 +261,13 @@ Status MOutOfBoundsError(int64 m, std::size_t i, int lhs_index_a,
 }
 }  // namespace
 
-template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
-struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B> {
+template <typename Device, typename T, typename Tindices,
+          bool ADJ_A, bool ADJ_B>
+struct SparseTensorDenseMatMulFunctorNonCuda {
   // Vectorize certain operations above this size.
   static const std::size_t kNumVectorize = 32;
 
-  static Status Compute(const CPUDevice& d, typename TTypes<T>::Matrix out,
+  static Status Compute(const Device& d, typename TTypes<T>::Matrix out,
                         typename TTypes<Tindices>::ConstMatrix a_indices,
                         typename TTypes<T>::ConstVec a_values,
                         typename TTypes<T>::ConstMatrix b) {
@@ -313,6 +336,18 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B> {
     return Status::OK();
   }
 };
+
+template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
+struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B> :
+    SparseTensorDenseMatMulFunctorNonCuda<CPUDevice, T, Tindices, ADJ_A, ADJ_B>
+    {};
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
+struct SparseTensorDenseMatMulFunctor<SYCLDevice, T, Tindices, ADJ_A, ADJ_B> :
+    SparseTensorDenseMatMulFunctorNonCuda<SYCLDevice, T, Tindices, ADJ_A, ADJ_B>
+    {};
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 
