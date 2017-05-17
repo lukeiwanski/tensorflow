@@ -43,6 +43,10 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
+
 using Callback = std::function<void()>;
 
 namespace {
@@ -78,12 +82,6 @@ static inline Status ParseAndCheckBoxSizes(const Tensor& boxes,
 // [0, batch_size) then calls done.
 template <typename Device>
 inline void RunIfBoxIndexIsValid(
-    OpKernelContext* context, typename TTypes<int32, 1>::ConstTensor box_index,
-    int batch_size, const Callback& compute, const Callback& done);
-
-// Specialization of CheckValidBoxIndex for a CPUDevice.
-template <>
-inline void RunIfBoxIndexIsValid<CPUDevice>(
     OpKernelContext* context, typename TTypes<int32, 1>::ConstTensor box_index,
     int batch_size, const Callback& compute, const Callback& done) {
   const int num_boxes = box_index.dimension(0);
@@ -189,11 +187,12 @@ class CropAndResizeOp : public AsyncOpKernel {
   float extrapolation_value_;
 };
 
-// Partial specialization of CropAndResize functor for a CPUDevice.
+// Partial specialization of CropAndResize functor for a CPUDevice and
+// SYCLDevice.
 namespace functor {
-template <typename T>
-struct CropAndResize<CPUDevice, T> {
-  bool operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor image,
+template <typename Device, typename T>
+struct CropAndResizeNonCuda {
+  bool operator()(const Device& d, typename TTypes<T, 4>::ConstTensor image,
                   typename TTypes<float, 2>::ConstTensor boxes,
                   typename TTypes<int32, 1>::ConstTensor box_index,
                   float extrapolation_value,
@@ -276,6 +275,13 @@ struct CropAndResize<CPUDevice, T> {
   }
 };
 
+template <typename T>
+struct CropAndResize<CPUDevice, T> : CropAndResizeNonCuda<CPUDevice, T> {};
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct CropAndResize<SYCLDevice, T> : CropAndResizeNonCuda<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 template <typename Device, typename T>
@@ -366,11 +372,12 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
   }
 };
 
-// Partial specialization of CropAndResizeBackpropImage functor for a CPUDevice.
+// Partial specialization of CropAndResizeBackpropImage functor for a CPUDevice
+// and SYCLDevice.
 namespace functor {
-template <typename T>
-struct CropAndResizeBackpropImage<CPUDevice, T> {
-  bool operator()(const CPUDevice& d,
+template <typename Device, typename T>
+struct CropAndResizeBackpropImageNonCuda {
+  bool operator()(const Device& d,
                   typename TTypes<float, 4>::ConstTensor grads,
                   typename TTypes<float, 2>::ConstTensor boxes,
                   typename TTypes<int32, 1>::ConstTensor box_index,
@@ -445,6 +452,15 @@ struct CropAndResizeBackpropImage<CPUDevice, T> {
   }
 };
 
+template <typename T>
+struct CropAndResizeBackpropImage<CPUDevice, T> :
+    CropAndResizeBackpropImageNonCuda<CPUDevice, T> {};
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct CropAndResizeBackpropImage<SYCLDevice, T> :
+    CropAndResizeBackpropImageNonCuda<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 template <typename Device, typename T>
@@ -531,11 +547,12 @@ class CropAndResizeGradBoxesOp : public AsyncOpKernel {
   }
 };
 
-// Partial specialization of CropAndResizeBackpropBoxes functor for a CPUDevice.
+// Partial specialization of CropAndResizeBackpropBoxes functor for a CPUDevice
+// and SYCLDevice.
 namespace functor {
-template <typename T>
-struct CropAndResizeBackpropBoxes<CPUDevice, T> {
-  bool operator()(const CPUDevice& d,
+template <typename Device, typename T>
+struct CropAndResizeBackpropBoxesNonCuda {
+  bool operator()(const Device& d,
                   typename TTypes<float, 4>::ConstTensor grads,
                   typename TTypes<T, 4>::ConstTensor image,
                   typename TTypes<float, 2>::ConstTensor boxes,
@@ -642,6 +659,15 @@ struct CropAndResizeBackpropBoxes<CPUDevice, T> {
   }
 };
 
+template <typename T>
+struct CropAndResizeBackpropBoxes<CPUDevice, T> :
+    CropAndResizeBackpropBoxesNonCuda<CPUDevice, T> {};
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct CropAndResizeBackpropBoxes<SYCLDevice, T> :
+    CropAndResizeBackpropBoxesNonCuda<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 #define REGISTER_KERNEL(T)                                \
@@ -781,5 +807,29 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_KERNEL(T)                                          \
+  REGISTER_KERNEL_BUILDER(Name("CropAndResize")                     \
+                              .Device(DEVICE_SYCL)                  \
+                              .TypeConstraint<T>("T")               \
+                              .HostMemory("crop_size"),             \
+                          CropAndResizeOp<SYCLDevice, T>);          \
+                                                                    \
+  REGISTER_KERNEL_BUILDER(Name("CropAndResizeGradImage")            \
+                              .Device(DEVICE_SYCL)                  \
+                              .TypeConstraint<T>("T")               \
+                              .HostMemory("image_size"),            \
+                          CropAndResizeGradImageOp<SYCLDevice, T>); \
+                                                                    \
+  REGISTER_KERNEL_BUILDER(Name("CropAndResizeGradBoxes")            \
+                              .Device(DEVICE_SYCL)                  \
+                              .TypeConstraint<T>("T"),              \
+                          CropAndResizeGradBoxesOp<SYCLDevice, T>);
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_KERNEL);
+
+#undef REGISTER_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
