@@ -38,6 +38,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class SpaceToDepthOp : public OpKernel {
@@ -99,11 +102,12 @@ class SpaceToDepthOp : public OpKernel {
   int block_size_;
 };
 
-// Partial specialization of SpaceToDepthOpFunctor for a CPUDevice.
+// Partial specialization of SpaceToDepthOpFunctor for a CPUDevice and
+// SYCLDevice.
 namespace functor {
-template <typename T>
-struct SpaceToDepthOpFunctor<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
+template <typename Device, typename T>
+struct SpaceToDepthOpFunctorNonCuda {
+  void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor input,
                   int block_size, typename TTypes<T, 4>::Tensor output) {
     const int batch_size = output.dimension(0);
     const int input_height = input.dimension(1);
@@ -127,6 +131,16 @@ struct SpaceToDepthOpFunctor<CPUDevice, T> {
     }
   }
 };
+
+template <typename T>
+struct SpaceToDepthOpFunctor<CPUDevice, T> :
+    SpaceToDepthOpFunctorNonCuda<CPUDevice, T> {};
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct SpaceToDepthOpFunctor<SYCLDevice, T> :
+    SpaceToDepthOpFunctorNonCuda<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 #define REGISTER(type)                                                   \
@@ -142,5 +156,11 @@ REGISTER_KERNEL_BUILDER(
     Name("SpaceToDepth").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     SpaceToDepthOp<GPUDevice, float>);
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("SpaceToDepth").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
+    SpaceToDepthOp<SYCLDevice, float>);
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow
