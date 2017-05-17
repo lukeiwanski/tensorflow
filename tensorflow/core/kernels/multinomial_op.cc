@@ -36,24 +36,15 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace functor {
 
 template <typename Device, typename T>
 struct MultinomialFunctor {
   void operator()(OpKernelContext* ctx, const Device& d,
-                  typename TTypes<T>::ConstMatrix logits,
-                  typename TTypes<float>::Flat noises,
-                  typename TTypes<float>::Flat scores,
-                  typename TTypes<float>::Flat scratch, int batch_size,
-                  int num_classes, int num_samples,
-                  const random::PhiloxRandom& gen,
-                  typename TTypes<int64>::Matrix output);
-};
-
-template <typename T>
-struct MultinomialFunctor<CPUDevice, T> {
-  void operator()(OpKernelContext* ctx, const CPUDevice& d,
                   typename TTypes<T>::ConstMatrix logits,
                   typename TTypes<float>::Flat /* noises */,
                   typename TTypes<float>::Flat /* scores */,
@@ -223,5 +214,16 @@ TF_CALL_double(REGISTER);
 #undef REGISTER
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER(TYPE)                                    \
+  REGISTER_KERNEL_BUILDER(Name("Multinomial")             \
+                              .Device(DEVICE_SYCL)        \
+                              .HostMemory("num_samples")  \
+                              .TypeConstraint<TYPE>("T"), \
+                          MultinomialOp<SYCLDevice, TYPE>)
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER);
+#undef REGISTER
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow
