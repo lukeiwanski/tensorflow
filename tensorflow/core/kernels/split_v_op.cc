@@ -42,6 +42,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T, typename Tlen>
 class SplitVOpBase : public OpKernel {
@@ -171,11 +174,11 @@ class SplitVOpBase : public OpKernel {
   }
 };
 
-template <typename T, typename Tlen>
-class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
+template <typename Device, typename T, typename Tlen>
+class SplitVOp : public SplitVOpBase<Device, T, Tlen> {
  public:
-  typedef SplitVOpBase<CPUDevice, T, Tlen> Base;
-  explicit SplitVOpCPU(OpKernelConstruction* c) : Base(c) {}
+  typedef SplitVOpBase<Device, T, Tlen> Base;
+  explicit SplitVOp(OpKernelConstruction* c) : Base(c) {}
 
   void Compute(OpKernelContext* context) override {
     bool done = false;
@@ -221,9 +224,9 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
         auto result_shaped = result->shaped<T, 3>(
             {prefix_dim_size, split_sizes_vec[i], suffix_dim_size});
 
-        functor::Split<CPUDevice, T>()(context->eigen_device<CPUDevice>(),
-                                       result_shaped, input_reshaped, indices,
-                                       sizes);
+        functor::Split<Device, T>()(context->eigen_device<Device>(),
+                                    result_shaped, input_reshaped, indices,
+                                    sizes);
       }
       indices[1] += split_sizes_vec[i];
     }
@@ -352,7 +355,7 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
                               .TypeConstraint<type>("T")        \
                               .HostMemory("size_splits")        \
                               .HostMemory("split_dim"),         \
-                          SplitVOpCPU<type, len_type>);
+                          SplitVOp<CPUDevice, type, len_type>);
 
 #define REGISTER_SPLIT_LEN(type) \
   REGISTER_SPLIT(type, int32);   \
@@ -397,7 +400,7 @@ REGISTER_GPU_LEN(bfloat16);
                               .HostMemory("split_dim")          \
                               .HostMemory("value")              \
                               .HostMemory("output"),            \
-                          SplitVOpCPU<int32, len_type>);
+                          SplitVOp<CPUDevice, int32, len_type>);
 
 REGISTER_GPU_int32(int32);
 REGISTER_GPU_int32(int64);
@@ -405,5 +408,41 @@ REGISTER_GPU_int32(int64);
 #undef REGISTER_GPU_int32
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL(type, len_type)                           \
+  REGISTER_KERNEL_BUILDER(Name("SplitV")                        \
+                              .Device(DEVICE_SYCL)              \
+                              .TypeConstraint<len_type>("Tlen") \
+                              .TypeConstraint<type>("T")        \
+                              .HostMemory("size_splits")        \
+                              .HostMemory("split_dim"),         \
+                          SplitVOp<SYCLDevice, type, len_type>);
+
+#define REGISTER_SYCL_LEN(type) \
+  REGISTER_SYCL(type, int32);   \
+  REGISTER_SYCL(type, int64);
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_LEN);
+#undef REGISTER_SYCL_LEN
+#undef REGISTER_SYCL
+
+// special SYCL kernel for int32
+#define REGISTER_SYCL_int32(len_type)                           \
+  REGISTER_KERNEL_BUILDER(Name("SplitV")                        \
+                              .Device(DEVICE_SYCL)              \
+                              .TypeConstraint<int32>("T")       \
+                              .TypeConstraint<len_type>("Tlen") \
+                              .HostMemory("size_splits")        \
+                              .HostMemory("split_dim")          \
+                              .HostMemory("value")              \
+                              .HostMemory("output"),            \
+                          SplitVOp<CPUDevice, int32, len_type>);
+
+REGISTER_SYCL_int32(int32);
+REGISTER_SYCL_int32(int64);
+
+#undef REGISTER_SYCL_int32
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow
