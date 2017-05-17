@@ -46,6 +46,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class AvgPoolingOp : public UnaryOp<T> {
@@ -197,6 +200,12 @@ REGISTER_KERNEL_BUILDER(
     Name("AvgPool").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     AvgPoolingOp<GPUDevice, float>);
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("AvgPool").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
+    AvgPoolingOp<SYCLDevice, float>);
+#endif  // TENSORFLOW_USE_SYCL
 
 // The operation to compute AvgPool gradients.
 // It takes two inputs:
@@ -556,5 +565,16 @@ REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
                         AvgPoolingGradOpCustomGPUKernel<Eigen::half>);
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(T)                                \
+  REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")                  \
+                              .Device(DEVICE_SYCL)             \
+                              .TypeConstraint<T>("T")          \
+                              .HostMemory("orig_input_shape"), \
+                          AvgPoolingGradOp<SYCLDevice, T>);
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNEL);
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
