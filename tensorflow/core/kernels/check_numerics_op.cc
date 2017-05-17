@@ -31,6 +31,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 template <typename T>
@@ -43,11 +46,7 @@ struct CheckNumericsLaunch {
 namespace {
 
 template <typename Device, typename T>
-class CheckNumericsOp;
-
-// Partial specialization for CPU
-template <typename T>
-class CheckNumericsOp<CPUDevice, T> : public OpKernel {
+class CheckNumericsOp : public OpKernel {
  public:
   explicit CheckNumericsOp(OpKernelConstruction* context) : OpKernel(context) {
     // message_ is used as the prefix for the assertion error message. For
@@ -205,5 +204,14 @@ REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
                             .TypeConstraint<double>("T"),
                         CheckNumericsOp<GPUDevice, double>);
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(T)                                         \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("CheckNumerics").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+      CheckNumericsOp<SYCLDevice, T>);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
