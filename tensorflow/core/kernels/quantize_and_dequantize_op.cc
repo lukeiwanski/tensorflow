@@ -32,6 +32,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 // Simulate quantization precision loss in a float tensor by:
 // 1. Quantize the tensor to fixed point numbers, which should match the target
@@ -133,19 +136,29 @@ class QuantizeAndDequantizeOp : public OpKernel {
   float input_max_;
 };
 
-// Specialization for CPUDevice.
+// Specialization for CPUDevice and SYCLDevice.
 namespace functor {
-template <typename T>
-struct QuantizeAndDequantizeOneScaleFunctor<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::ConstVec input,
+template <typename Device, typename T>
+struct QuantizeAndDequantizeOneScaleFunctorNonCuda {
+  void operator()(const Device& d, typename TTypes<T>::ConstVec input,
                   const bool signed_input, const int num_bits,
                   const bool range_given, Tensor* input_min_tensor,
                   Tensor* input_max_tensor, typename TTypes<T>::Vec out) {
-    QuantizeAndDequantizeOneScaleImpl<CPUDevice, T>::Compute(
+    QuantizeAndDequantizeOneScaleImpl<Device, T>::Compute(
         d, input, signed_input, num_bits, range_given, input_min_tensor,
         input_max_tensor, out);
   }
 };
+
+template <typename T>
+struct QuantizeAndDequantizeOneScaleFunctor<CPUDevice, T> :
+    QuantizeAndDequantizeOneScaleFunctorNonCuda<CPUDevice, T> {};
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct QuantizeAndDequantizeOneScaleFunctor<SYCLDevice, T> :
+    QuantizeAndDequantizeOneScaleFunctorNonCuda<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 #define REGISTER_CPU_KERNEL(T)                                                 \
@@ -175,4 +188,20 @@ TF_CALL_float(REGISTER_GPU_KERNEL);
 TF_CALL_double(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(T)                                      \
+  REGISTER_KERNEL_BUILDER(Name("QuantizeAndDequantizeV2")            \
+                              .Device(DEVICE_SYCL)                   \
+                              .HostMemory("input_max")               \
+                              .HostMemory("input_min")               \
+                              .TypeConstraint<T>("T"),               \
+                          QuantizeAndDequantizeV2Op<SYCLDevice, T>); \
+  REGISTER_KERNEL_BUILDER(Name("QuantizeAndDequantize")              \
+                              .Device(DEVICE_SYCL)                   \
+                              .TypeConstraint<T>("T"),               \
+                          QuantizeAndDequantizeOp<SYCLDevice, T>);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
