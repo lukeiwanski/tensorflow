@@ -36,6 +36,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 class AdjustHueOpBase : public OpKernel {
  protected:
@@ -276,6 +279,11 @@ class AdjustHueOp<GPUDevice> : public AdjustHueOpBase {
 
 REGISTER_KERNEL_BUILDER(Name("AdjustHue").Device(DEVICE_GPU),
                         AdjustHueOp<GPUDevice>);
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("AdjustHue").Device(DEVICE_SYCL),
+                        AdjustHueOp<SYCLDevice>);
+#endif  // TENSORFLOW_USE_SYCL
 
 #endif
 
