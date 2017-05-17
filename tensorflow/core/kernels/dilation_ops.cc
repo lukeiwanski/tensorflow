@@ -39,6 +39,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 void ParseAttributes(OpKernelConstruction* context, std::vector<int32>* strides,
                      std::vector<int32>* rates, Padding* padding) {
@@ -157,11 +160,10 @@ class DilationOp : public OpKernel {
   Padding padding_;
 };
 
-// Partial specialization of Dilation functor for a CPUDevice.
 namespace functor {
-template <typename T>
-struct Dilation<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
+template <typename Device, typename T>
+struct DilationNonCuda {
+  void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor input,
                   typename TTypes<T, 3>::ConstTensor filter, int stride_rows,
                   int stride_cols, int rate_rows, int rate_cols, int pad_top,
                   int pad_left, typename TTypes<T, 4>::Tensor output) {
@@ -206,6 +208,14 @@ struct Dilation<CPUDevice, T> {
     }
   }
 };
+
+template <typename T>
+struct Dilation<CPUDevice, T> : DilationNonCuda<CPUDevice, T> {};
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct Dilation<SYCLDevice, T> : DilationNonCuda<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 template <typename Device, typename T>
@@ -263,11 +273,10 @@ class DilationBackpropInputOp : public OpKernel {
   Padding padding_;
 };
 
-// Partial specialization of DilationBackpropInput functor for a CPUDevice.
 namespace functor {
-template <typename T>
-struct DilationBackpropInput<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
+template <typename Device, typename T>
+struct DilationBackpropInputNonCuda {
+  void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor input,
                   typename TTypes<T, 3>::ConstTensor filter,
                   typename TTypes<T, 4>::ConstTensor out_backprop,
                   int stride_rows, int stride_cols, int rate_rows,
@@ -325,6 +334,14 @@ struct DilationBackpropInput<CPUDevice, T> {
     }
   }
 };
+
+template <typename T>
+struct DilationBackpropInput<CPUDevice, T> : DilationBackpropInputNonCuda<CPUDevice, T> {};
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct DilationBackpropInput<SYCLDevice, T> : DilationBackpropInputNonCuda<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 template <typename Device, typename T>
@@ -382,11 +399,10 @@ class DilationBackpropFilterOp : public OpKernel {
   Padding padding_;
 };
 
-// Partial specialization of DilationBackpropFilter functor for a CPUDevice.
 namespace functor {
-template <typename T>
-struct DilationBackpropFilter<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
+template <typename Device, typename T>
+struct DilationBackpropFilterNonCuda {
+  void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor input,
                   typename TTypes<T, 3>::ConstTensor filter,
                   typename TTypes<T, 4>::ConstTensor out_backprop,
                   int stride_rows, int stride_cols, int rate_rows,
@@ -444,6 +460,14 @@ struct DilationBackpropFilter<CPUDevice, T> {
     }
   }
 };
+
+template <typename T>
+struct DilationBackpropFilter<CPUDevice, T> : DilationBackpropFilterNonCuda<CPUDevice, T> {};
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct DilationBackpropFilter<SYCLDevice, T> : DilationBackpropFilterNonCuda<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 #define REGISTER(T)                                                 \
@@ -487,5 +511,26 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER);
 #undef REGISTER
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER(T)                                                  \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("Dilation2D").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+      DilationOp<SYCLDevice, T>);                                    \
+                                                                     \
+  REGISTER_KERNEL_BUILDER(Name("Dilation2DBackpropInput")            \
+                              .Device(DEVICE_SYCL)                   \
+                              .TypeConstraint<T>("T"),               \
+                          DilationBackpropInputOp<SYCLDevice, T>);   \
+                                                                     \
+  REGISTER_KERNEL_BUILDER(Name("Dilation2DBackpropFilter")           \
+                              .Device(DEVICE_SYCL)                   \
+                              .TypeConstraint<T>("T"),               \
+                          DilationBackpropFilterOp<SYCLDevice, T>);
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER);
+
+#undef REGISTER
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
