@@ -83,6 +83,8 @@ class SplitOpBase : public OpKernel {
     // because if the immediate consumer of the resulting tensors are
     // not using eigen for computation, its perfectly fine to avoid
     // the copying.
+    // TODO(Luke): Enable for SYCL
+    #ifndef TENSORFLOW_USE_SYCL
     if ((split_dim == 0) && IsInnerDimsSizeAligned<T>(input_shape)) {
       VLOG(1) << "Slice dim 0: " << input_shape.DebugString();
       const int64 delta = input_shape.dim_size(0) / num_split;
@@ -92,6 +94,7 @@ class SplitOpBase : public OpKernel {
       *done = true;
       return;
     }
+    #endif
   }
 
   template <typename IndexType>
