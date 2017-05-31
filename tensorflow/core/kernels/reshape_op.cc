@@ -57,6 +57,7 @@ REGISTER_KERNEL_BUILDER(Name("Reshape")
                               .TypeConstraint<int32>("Tshape"), \
                           ReshapeOp);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNEL);
+TF_CALL_int64(REGISTER_SYCL_KERNEL);
 
 REGISTER_KERNEL_BUILDER(Name("Reshape")
                             .Device(DEVICE_SYCL)
