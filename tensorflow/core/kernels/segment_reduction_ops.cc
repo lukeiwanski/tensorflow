@@ -445,8 +445,9 @@ TF_CALL_complex128(REGISTER_GPU_UNSORTED_KERNELS_ALL);
 #if TENSORFLOW_USE_SYCL
 #define REGISTER_GPU_UNSORTED_KERNELS(type, index_type)                \
   REGISTER_KERNEL_BUILDER(Name("UnsortedSegmentSum")                   \
-                              .Device(DEVICE_SYCL)                      \
+                              .Device(DEVICE_SYCL)                     \
                               .HostMemory("num_segments")              \
+                              .HostMemory("segment_ids")               \
                               .TypeConstraint<type>("T")               \
                               .TypeConstraint<index_type>("Tindices"), \
                           UnsortedSegmentSumOp<SYCLDevice, type, index_type>);
