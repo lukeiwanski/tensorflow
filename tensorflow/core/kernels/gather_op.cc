@@ -28,6 +28,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T, typename Index>
 class GatherOp : public OpKernel {
@@ -120,6 +123,13 @@ TF_CALL_complex128(REGISTER_GATHER_GPU);
 #undef REGISTER_GATHER_GPU
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_GATHER_SYCL(type) REGISTER_GATHER_ALL_INDICES(SYCL, type)
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_GATHER_SYCL);
+#undef REGISTER_GATHER_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_GATHER_ALL_INDICES
 #undef REGISTER_GATHER_FULL
