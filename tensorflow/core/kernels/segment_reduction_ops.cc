@@ -36,6 +36,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 // Static routines not in the templated class to reduce code size
 static void SegmentReductionValidationHelper(OpKernelContext* context,
@@ -281,6 +284,32 @@ struct UnsortedSegmentMaxFunctor<CPUDevice, T, Index>
     }
   }
 };
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T, typename Index>
+struct UnsortedSegmentSumFunctor<SYCLDevice, T, Index>
+    : UnsortedSegmentBaseFunctor<SYCLDevice, T, Index> {
+  void operator()(OpKernelContext* ctx, const SYCLDevice& d,
+                  const Index output_rows, const TensorShape& segment_ids_shape,
+                  typename TTypes<Index>::ConstFlat segment_ids,
+                  const Index data_size, const T* data,
+                  typename TTypes<T, 2>::Tensor output) override {
+    output.setZero();
+    if (data_size == 0) {
+      return;
+    }
+    const int64 N = segment_ids.dimension(0);
+    auto data_flat = typename TTypes<T, 2>::ConstTensor(data, N, data_size / N);
+    for (int64 i = 0; i < N; ++i) {
+      Index j = internal::SubtleMustCopy(segment_ids(i));
+      OP_REQUIRES(ctx, FastBoundsCheck(j, output_rows),
+                  errors::InvalidArgument(
+                      "segment_ids", SliceDebugString(segment_ids_shape, i),
+                      " = ", j, " is out of range [0, ", output_rows, ")"));
+      output.template chip<0>(j) += data_flat.template chip<0>(i);
+    }
+  }
+};
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 // Base class for SegmentReductionOps that can handle unsorted segment
@@ -412,6 +441,24 @@ TF_CALL_complex128(REGISTER_GPU_UNSORTED_KERNELS_ALL);
 #undef REGISTER_GPU_UNSORTED_KERNELS
 #undef REGISTER_GPU_UNSORTED_KERNELS_ALL
 #endif  // GOOGLE_CUDA
+
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_GPU_UNSORTED_KERNELS(type, index_type)                \
+  REGISTER_KERNEL_BUILDER(Name("UnsortedSegmentSum")                   \
+                              .Device(DEVICE_SYCL)                      \
+                              .HostMemory("num_segments")              \
+                              .TypeConstraint<type>("T")               \
+                              .TypeConstraint<index_type>("Tindices"), \
+                          UnsortedSegmentSumOp<SYCLDevice, type, index_type>);
+
+#define REGISTER_GPU_UNSORTED_KERNELS_ALL(type) \
+  REGISTER_GPU_UNSORTED_KERNELS(type, int32);   \
+  REGISTER_GPU_UNSORTED_KERNELS(type, int64);
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_GPU_UNSORTED_KERNELS_ALL);
+#undef REGISTER_GPU_UNSORTED_KERNELS
+#undef REGISTER_GPU_UNSORTED_KERNELS_ALL
+#endif  // TENSORFLOW_USE_SYCL
 
 // Same as SegmentReductionOp but takes as input a "sparse" tensor, represented
 // by two dense tensors, one containing the data, and the other containing
