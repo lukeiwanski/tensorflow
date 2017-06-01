@@ -132,8 +132,10 @@ class SparseTensorDenseMatMulTest(test.TestCase):
       sparse_ops.sparse_tensor_dense_matmul(x_st_shape_inconsistent, y)
 
   def testInvalidIndicesForSparseTensorDenseMatmul(self):
-    # Note: use_gpu=False because nice errors are only returned from CPU kernel.
-    with self.test_session(use_gpu=False):
+    # Note: Don't want to test this on CUDA GPUs, as that kernel does not
+    # return these nice errors.
+    use_gpu = not test.is_gpu_available(cuda_only=True)
+    with self.test_session(use_gpu=use_gpu):
       indices = np.matrix([[1, 10]]).astype(np.int64)
       values = np.array([10]).astype(np.float32)
       shape = [3, 2]
