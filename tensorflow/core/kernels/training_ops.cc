@@ -446,7 +446,6 @@ REGISTER_KERNELS(GPU, double);
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
-
 TF_CALL_float(REGISTER_SYCL_KERNELS);
 TF_CALL_double(REGISTER_SYCL_KERNELS);
 #undef REGISTER_SYCL_KERNELS
@@ -2159,6 +2158,22 @@ class ApplyMomentumOp : public OpKernel {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
+#define REGISTER_KERNELS(D, T)                                         \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("ApplyMomentum").Device(DEVICE_##D).TypeConstraint<T>("T"), \
+      ApplyMomentumOp<D##Device, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("ResourceApplyMomentum")                \
+                              .Device(DEVICE_##D)                      \
+                              .HostMemory("var")                       \
+                              .HostMemory("accum")                     \
+                              .TypeConstraint<T>("T"),                 \
+                          ApplyMomentumOp<D##Device, T>);
+#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
+
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
+
 #if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
@@ -2180,38 +2195,6 @@ REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
 #endif
-
-#ifdef TENSORFLOW_USE_SYCL
-#define DECLARE_SYCL_SPEC(T)                                               \
-  template <>                                                             \
-  void ApplyMomentum<SYCLDevice, T>::operator()(                           \
-      const GPUDevice& d, typename TTypes<T>::Flat var,                   \
-      typename TTypes<T>::Flat accum, typename TTypes<T>::ConstScalar lr, \
-      typename TTypes<T>::ConstFlat grad,                                 \
-      typename TTypes<T>::ConstScalar momentum, bool use_nesterov);       \
-      template <typename T>
-      struct ApplyMomentum<SYCLDevice, T> {
-        void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
-                        typename TTypes<T>::Flat accum, T lr, typename TTypes<T>::ConstFlat grad,
-                        T momentum, bool use_nesterov) {
-          accum.device(d) = accum * momentum()+ grad;
-          if (use_nesterov) {
-            var.device(d) -= grad * lr() + accum * momentum() * lr();
-          } else {
-            var.device(d) -= accum * lr();
-          }
-        }
-      };
-DECLARE_SYCL_SPEC(float);
-DECLARE_SYCL_SPEC(double);
-#undef DECLARE_SYCL_SPEC
-}  // namespace functor
-
-REGISTER_KERNELS(GPU, Eigen::half);
-REGISTER_KERNELS(GPU, float);
-REGISTER_KERNELS(GPU, double);
-#endif
-
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
