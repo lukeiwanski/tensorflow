@@ -993,10 +993,11 @@ tf_kernel_library(
     visibility = [":friends"],
     deps = [
         ":bounds_check",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
-    ],
+    ] + if_sycl([
+        "//tensorflow/core:framework",
+    ]),
 )
 
 tf_cuda_cc_test(

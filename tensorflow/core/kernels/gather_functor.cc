@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/gather_functor.h"
+
+#if GOOGLE_CUDA || defined(TENSORFLOW_USE_SYCL)
 #include "tensorflow/core/framework/register_types.h"
+#endif  // GOOGLE_CUDA || defined(TENSORFLOW_USE_SYCL)
 
 namespace tensorflow {
 
