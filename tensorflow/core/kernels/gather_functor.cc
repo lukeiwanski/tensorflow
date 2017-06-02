@@ -52,7 +52,7 @@ TF_CALL_complex128(DECLARE_GPU_SPECS);
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-// Stipped down version of CPU functor which uses Eigen loops to copy slices
+// Stripped down version of CPU functor which uses Eigen loops to copy slices
 template <typename T, typename Index>
 struct GatherFunctor<SYCLDevice, T, Index> {
   int64 operator()(const SYCLDevice& d, typename TTypes<T>::ConstMatrix params,
