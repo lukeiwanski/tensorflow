@@ -41,6 +41,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 Pool3dParameters::Pool3dParameters(OpKernelContext* context,
                                    const std::vector<int32>& ksize,
@@ -109,15 +112,15 @@ struct LaunchPoolingOp<CPUDevice, T, AVG> {
   }
 };
 
-template <typename T>
-struct LaunchPoolingOp<CPUDevice, T, MAX> {
+template <typename Device, typename T>
+struct LaunchPoolingOp<Device, T, MAX> {
   static void launch(OpKernelContext* context, const Tensor& tensor_in,
                      const std::array<int64, 3>& window,
                      const std::array<int64, 3>& stride,
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Padding padding_type,
                      Tensor* output) {
-    output->tensor<T, 5>().device(context->eigen_device<CPUDevice>()) =
+    output->tensor<T, 5>().device(context->eigen_device<Device>()) =
         Eigen::CuboidMaxPooling(tensor_in.tensor<T, 5>(), window[0], window[1],
                                 window[2], stride[0], stride[1], stride[2],
                                 BrainPadding2EigenPadding(padding_type));
@@ -132,7 +135,8 @@ class Pooling3DOp : public UnaryOp<T> {
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
-    if (context->device_type() == DEVICE_CPU) {
+    if (context->device_type() == DEVICE_CPU ||
+        context->device_type() == DEVICE_SYCL) {
       OP_REQUIRES(
           context, data_format_ == FORMAT_NHWC,
           errors::InvalidArgument("Default Pooling3DOp only supports NDHWC ",
@@ -201,10 +205,7 @@ class Pooling3DOp : public UnaryOp<T> {
 };
 
 template <typename Device, typename T>
-struct LaunchMaxPooling3dGradOp;
-
-template <typename T>
-struct LaunchMaxPooling3dGradOp<CPUDevice, T> {
+struct LaunchMaxPooling3dGradOp {
   static void launch(OpKernelContext* context, const Tensor& tensor_in,
                      const Tensor& tensor_out, const Tensor& out_backprop,
                      const std::array<int64, 3>& window,
@@ -265,34 +266,34 @@ struct LaunchMaxPooling3dGradOp<CPUDevice, T> {
           bcast.set(3, psize);
 #endif
 
+          const Device& d = context->eigen_device<Device>();
           // Slice from tensor_in.
           Eigen::Tensor<T, 5, Eigen::RowMajor> tensor_in_slice(dst_sizes);
-          tensor_in_slice.device(context->eigen_cpu_device()) =
+          tensor_in_slice.device(d) =
               tensor_in.tensor<T, 5>().slice(dst_indices, dst_sizes);
 
           // Slice from tensor_out.
           Eigen::Tensor<T, 5, Eigen::RowMajor> tensor_out_slice(src_sizes);
-          tensor_out_slice.device(context->eigen_cpu_device()) =
+          tensor_out_slice.device(d) =
               tensor_out.tensor<T, 5>().slice(src_indices, src_sizes);
 
           // Backprop slice.
           Eigen::Tensor<T, 5, Eigen::RowMajor> out_backprop_slice(src_sizes);
-          out_backprop_slice.device(context->eigen_cpu_device()) =
+          out_backprop_slice.device(d) =
               out_backprop.tensor<T, 5>().slice(src_indices, src_sizes);
 
           // The true backprop slice: if an element is the max, choose
           // the backprop slice; otherwise set to 0.
           Eigen::Tensor<T, 5, Eigen::RowMajor> select_slice(dst_sizes);
           Eigen::Tensor<T, 5, Eigen::RowMajor> mat0(dst_sizes);
-          mat0.setZero();
-          select_slice =
+          mat0.setZero().device(d);
+          select_slice.device(d) =
               ((tensor_in_slice - tensor_out_slice.broadcast(bcast)).abs() <
                tensor_in_slice.constant(1e-5))
                   .select(out_backprop_slice.broadcast(bcast), mat0);
 
-          output->tensor<T, 5>()
-              .slice(dst_indices, dst_sizes)
-              .device(context->eigen_cpu_device()) += select_slice;
+          output->tensor<T, 5>().slice(dst_indices, dst_sizes).device(d) +=
+              select_slice;
         }
       }
     }
@@ -308,7 +309,8 @@ class MaxPooling3dGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
-    if (context->device_type() == DEVICE_CPU) {
+    if (context->device_type() == DEVICE_CPU ||
+        context->device_type() == DEVICE_SYCL) {
       OP_REQUIRES(
           context, data_format_ == FORMAT_NHWC,
           errors::InvalidArgument(
@@ -743,6 +745,21 @@ class MaxPooling3dGradGradOp : public OpKernel {
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T)
 TF_CALL_float(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_POOL_KERNELS(T)                               \
+  REGISTER_KERNEL_BUILDER(                                          \
+      Name("MaxPool3D").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+      Pooling3DOp<SYCLDevice, T, MAX>);                             \
+  REGISTER_KERNEL_BUILDER(Name("MaxPool3DGrad")                     \
+                              .Device(DEVICE_SYCL)                  \
+                              .TypeConstraint<T>("T")               \
+                              .TypeConstraint<T>("TInput"),         \
+                          MaxPooling3dGradOp<SYCLDevice, T>);
+TF_CALL_float(REGISTER_SYCL_POOL_KERNELS);
+TF_CALL_double(REGISTER_SYCL_POOL_KERNELS);
+#undef REGISTER_SYCL_POOL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 
