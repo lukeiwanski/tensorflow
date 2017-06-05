@@ -125,10 +125,24 @@ TF_CALL_complex128(REGISTER_GATHER_GPU);
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_GATHER_SYCL(type) REGISTER_GATHER_ALL_INDICES(SYCL, type)
+// Current SYCL GatherFunctor reads the indices on the Host, and so requires the
+// indices to be in the Host memory
+#define REGISTER_GATHER_FULL_SYCL(dev, type, index_type)               \
+  REGISTER_KERNEL_BUILDER(Name("Gather")                               \
+                              .Device(DEVICE_##dev)                    \
+                              .HostMemory("indices")                   \
+                              .TypeConstraint<type>("Tparams")         \
+                              .TypeConstraint<index_type>("Tindices"), \
+                          GatherOp<dev##Device, type, index_type>)
+#define REGISTER_GATHER_ALL_INDICES_SYCL(dev, type) \
+  REGISTER_GATHER_FULL_SYCL(dev, type, int32);      \
+  REGISTER_GATHER_FULL_SYCL(dev, type, int64)
+#define REGISTER_GATHER_SYCL(type) REGISTER_GATHER_ALL_INDICES_SYCL(SYCL, type)
 
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_GATHER_SYCL);
 #undef REGISTER_GATHER_SYCL
+#undef REGISTER_GATHER_ALL_INDICES_SYCL
+#undef REGISTER_GATHER_FULL_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_GATHER_ALL_INDICES
