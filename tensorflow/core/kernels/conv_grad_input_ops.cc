@@ -1019,14 +1019,14 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(T)                                              \
-  REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")                        \
-                              .Device(DEVICE_SYCL)                            \
-                              .Label("eigen_tensor")                         \
-                              .TypeConstraint<T>("T"),                       \
+#define REGISTER_SYCL_KERNELS(T)                                        \
+  REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")                   \
+                              .Device(DEVICE_SYCL)                      \
+                              .Label("eigen_tensor")                    \
+                              .TypeConstraint<T>("T"),                  \
                           Conv2DFastBackpropInputOp<SYCLDevice, T>);
 
 TF_CALL_float(REGISTER_SYCL_KERNELS);
-#undef REGISTER_CPU_KERNELS
+#undef REGISTER_SYCL_KERNELS
 #endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
