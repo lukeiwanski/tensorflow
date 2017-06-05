@@ -2215,80 +2215,8 @@ REGISTER_KERNELS(GPU, double);
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-class ApplyMomentumOp<SYCLDevice, T> : public OpKernel {
- public:
-  explicit ApplyMomentumOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
-
-    Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
-    Tensor accum;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
-    OP_REQUIRES(
-        ctx, var.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", def().input(0)));
-    OP_REQUIRES(
-        ctx, accum.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", def().input(1)));
-    const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
-                errors::InvalidArgument("lr is not a scalar: ",
-                                        lr.shape().DebugString()));
-    const Tensor& grad = ctx->input(3);
-    OP_REQUIRES(
-        ctx, var.shape().IsSameSize(accum.shape()),
-        errors::InvalidArgument("var and accum do not have the same shape",
-                                var.shape().DebugString(), " ",
-                                accum.shape().DebugString()));
-    OP_REQUIRES(
-        ctx, var.shape().IsSameSize(grad.shape()),
-        errors::InvalidArgument("var and grad do not have the same shape",
-                                var.shape().DebugString(), " ",
-                                grad.shape().DebugString()));
-
-    const Tensor& momentum = ctx->input(4);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(momentum.shape()),
-                errors::InvalidArgument("momentum is not a scalar: ",
-                                        momentum.shape().DebugString()));
-
-    const SYCLDevice& device = ctx->template eigen_device<SYCLDevice>();
-    functor::ApplyMomentum<SYCLDevice, T>()(device, var.flat<T>(), accum.flat<T>(),
-                                        lr.scalar<T>(), grad.flat<T>(),
-                                        momentum.scalar<T>(), use_nesterov_);
-    MaybeForwardRefInputToRefOutput(ctx, 0, 0);
-  }
-
- private:
-  bool use_exclusive_lock_;
-  bool use_nesterov_;
-};
-
-#define REGISTER_SYCL_KERNELS(T)                                             \
-  REGISTER_KERNEL_BUILDER(                                              \
-      Name("ApplyMomentum").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
-      ApplyMomentumOp<SYCLDevice, T>);                                  \
-  REGISTER_KERNEL_BUILDER(Name("ResourceApplyMomentum")                 \
-                              .Device(DEVICE_SYCL)                      \
-                              .HostMemory("var")                        \
-                              .HostMemory("accum")                      \
-                              .TypeConstraint<T>("T"),                  \
-                          ApplyMomentumOp<SYCLDevice, T>);
-
-TF_CALL_float(REGISTER_SYCL_KERNELS);
-TF_CALL_double(REGISTER_SYCL_KERNELS);
-
-#undef REGISTER_SYCL_KERNELS
+REGISTER_KERNELS(SYCL, float);
+REGISTER_KERNELS(SYCL, double);
 #endif  // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_CPU_KERNELS
