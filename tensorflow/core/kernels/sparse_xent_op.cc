@@ -28,6 +28,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Index>
 Status CheckInvalidLabelIndex(const Tensor& labels, int64 max_index) {
@@ -110,6 +113,18 @@ struct SparseXentFunctor<CPUDevice, T, Index> {
                                                       scratch, loss, backprop);
   }
 };
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T, typename Index>
+struct SparseXentFunctor<SYCLDevice, T, Index> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::ConstMatrix logits,
+                  typename TTypes<Index>::ConstVec labels,
+                  typename TTypes<T>::Vec scratch, typename TTypes<T>::Vec loss,
+                  typename TTypes<T>::Matrix backprop) {
+    SparseXentEigenImpl<SYCLDevice, T, Index>::Compute(d, logits, labels,
+                                                      scratch, loss, backprop);
+  }
+};
+#endif  //TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 #define REGISTER(Dev, T, Index)                   \
@@ -133,6 +148,10 @@ REGISTER(GPU, Eigen::half, int32)
 REGISTER(GPU, Eigen::half, int64)
 #endif  // GOOGLE_CUDA
 
-#undef REGISTER
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER(SYCL, float, int32)
+REGISTER(SYCL, float, int64)
+#endif  // TENSORFLOW_USE_SYCL
 
+#undef REGISTER
 }  // namespace tensorflow
