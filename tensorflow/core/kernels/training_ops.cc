@@ -240,17 +240,17 @@ struct ApplyMomentum<CPUDevice, T> {
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
-struct ApplyMomentum<SYCLDevice, T> {
+struct ApplyMomentumSYCL {
   void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,
-                  typename TTypes<T>::ConstScalar lr,
+                  T lr,
                   typename TTypes<T>::ConstFlat grad,
-                  typename TTypes<T>::ConstScalar momentum, bool use_nesterov) {
-    accum.device(d) = accum * momentum() + grad;
+                  T momentum, bool use_nesterov) {
+    accum.device(d) = accum * momentum + grad;
     if (use_nesterov) {
-      var.device(d) -= grad * lr() + accum * momentum() * lr();
+      var.device(d) -= grad * lr + accum * momentum * lr;
     } else {
-      var.device(d) -= accum * lr();
+      var.device(d) -= accum * lr;
     }
   }
 };
@@ -2172,6 +2172,74 @@ class ApplyMomentumOp : public OpKernel {
   bool use_exclusive_lock_;
   bool use_nesterov_;
 };
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+class ApplyMomentumOp < SYCLDevice, T> : public OpKernel {
+ public:
+  explicit ApplyMomentumOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    auto locks =
+        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+
+    Tensor var;
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    Tensor accum;
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES(
+        ctx, var.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", def().input(0)));
+    OP_REQUIRES(
+        ctx, accum.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", def().input(1)));
+    const Tensor& lr_dev = ctx->input(2);
+    T lr = 0;
+    auto device = ctx->eigen_sycl_device();
+    auto size = sizeof(T);
+    auto src_ptr = GetBase(&lr_dev);
+    device.memcpyDeviceToHost(&lr, static_cast<const T *>(src_ptr), size);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_dev.shape()),
+                errors::InvalidArgument("lr is not a scalar: ",
+                                        lr_dev.shape().DebugString()));
+    const Tensor& grad = ctx->input(3);
+    OP_REQUIRES(
+        ctx, var.shape().IsSameSize(accum.shape()),
+        errors::InvalidArgument("var and accum do not have the same shape",
+                                var.shape().DebugString(), " ",
+                                accum.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, var.shape().IsSameSize(grad.shape()),
+        errors::InvalidArgument("var and grad do not have the same shape",
+                                var.shape().DebugString(), " ",
+                                grad.shape().DebugString()));
+
+    const Tensor& momentum_dev = ctx->input(4);
+    T momentum = 0;
+    src_ptr = GetBase(&momentum_dev);
+    device.memcpyDeviceToHost(&momentum, static_cast<const T *>(src_ptr), size);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(momentum_dev.shape()),
+                errors::InvalidArgument("momentum is not a scalar: ",
+                                        momentum_dev.shape().DebugString()));
+
+    functor::ApplyMomentumSYCL<T>()(device, var.flat<T>(), accum.flat<T>(),
+                                        lr, grad.flat<T>(),
+                                        momentum, use_nesterov_);
+    MaybeForwardRefInputToRefOutput(ctx, 0, 0);
+  }
+
+ private:
+  bool use_exclusive_lock_;
+  bool use_nesterov_;
+};
+#endif
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
