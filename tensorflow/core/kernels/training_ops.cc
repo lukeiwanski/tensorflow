@@ -155,6 +155,26 @@ struct ApplyAdagrad<CPUDevice, T> {
     var.device(d) -= grad * lr() * accum.rsqrt();
   }
 };
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ApplyAdagrad<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstFlat grad) {
+    accum.device(d) += grad.square();
+#if !defined(EIGEN_HAS_INDEX_LIST)
+    Eigen::array<int, 1> rank1{1};
+#else
+    Eigen::IndexList<Eigen::type2index<1> > rank1;
+#endif
+    const int size = grad.dimension(0);
+    Eigen::array<int, 1> broadcast_dims{size};
+    var.device(d) -=
+        grad * lr.reshape(rank1).broadcast(broadcast_dims) * accum.rsqrt();
+  }
+};
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename T>
 struct ApplyProximalAdagrad<CPUDevice, T> {
@@ -1058,6 +1078,13 @@ REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T)
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS)
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
+
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
