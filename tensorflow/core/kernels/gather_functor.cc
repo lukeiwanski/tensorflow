@@ -67,7 +67,7 @@ struct GatherFunctor<SYCLDevice, T, Index> {
       // was a security risk since it could have changed in between.
       const Index index = internal::SubtleMustCopy(indices(i));
       if (!FastBoundsCheck(index, limit)) return i;
-      out.template chip<0>(i) = params.template chip<0>(index);
+      out.template chip<0>(i).device(d) = params.template chip<0>(index);
     }
     return -1;
   }
