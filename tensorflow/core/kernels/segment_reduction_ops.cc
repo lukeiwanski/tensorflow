@@ -38,7 +38,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // Static routines not in the templated class to reduce code size
 static void SegmentReductionValidationHelper(OpKernelContext* context,
@@ -232,32 +232,29 @@ REGISTER_COMPLEX_CPU_KERNELS_ALL(complex128);
 
 namespace functor {
 
-// UnsortedSegmentSumFunctor implementation for CPUDevice.
+// UnsortedSegmentSumFunctor implementation for CPUDevice and SYCLDevice.
 // todo: Remove duplicate code in UnsortedSegmentSumFunctor and UnsortedSegmentMaxFunctor.
-template <typename T, typename Index>
-struct UnsortedSegmentSumFunctor<CPUDevice, T, Index>
-    : UnsortedSegmentBaseFunctor<CPUDevice, T, Index> {
-  void operator()(OpKernelContext* ctx, const CPUDevice& d,
-                  const Index output_rows, const TensorShape& segment_ids_shape,
-                  typename TTypes<Index>::ConstFlat segment_ids,
-                  const Index data_size, const T* data,
-                  typename TTypes<T, 2>::Tensor output) override {
-    output.setZero();
-    if (data_size == 0) {
-      return;
-    }
-    const int64 N = segment_ids.dimension(0);
-    auto data_flat = typename TTypes<T, 2>::ConstTensor(data, N, data_size / N);
-    for (int64 i = 0; i < N; ++i) {
-      Index j = internal::SubtleMustCopy(segment_ids(i));
-      OP_REQUIRES(ctx, FastBoundsCheck(j, output_rows),
-                  errors::InvalidArgument(
-                      "segment_ids", SliceDebugString(segment_ids_shape, i),
-                      " = ", j, " is out of range [0, ", output_rows, ")"));
-      output.template chip<0>(j) += data_flat.template chip<0>(i);
-    }
+template <typename Device, typename T, typename Index>
+void UnsortedSegmentSumFunctor<Device, T, Index>::operator()(
+    OpKernelContext* ctx, const Device& d, const Index output_rows,
+    const TensorShape& segment_ids_shape,
+    typename TTypes<Index>::ConstFlat segment_ids, const Index data_size,
+    const T* data, typename TTypes<T, 2>::Tensor output) {
+  output.setZero();
+  if (data_size == 0) {
+    return;
   }
-};
+  const int64 N = segment_ids.dimension(0);
+  auto data_flat = typename TTypes<T, 2>::ConstTensor(data, N, data_size / N);
+  for (int64 i = 0; i < N; ++i) {
+    Index j = internal::SubtleMustCopy(segment_ids(i));
+    OP_REQUIRES(ctx, FastBoundsCheck(j, output_rows),
+                errors::InvalidArgument(
+                    "segment_ids", SliceDebugString(segment_ids_shape, i),
+                    " = ", j, " is out of range [0, ", output_rows, ")"));
+    output.template chip<0>(j).device(d) += data_flat.template chip<0>(i);
+  }
+}
 // UnsortedSegmentMaxFunctor implementation for CPUDevice.
 template <typename T, typename Index>
 struct UnsortedSegmentMaxFunctor<CPUDevice, T, Index>
@@ -284,32 +281,6 @@ struct UnsortedSegmentMaxFunctor<CPUDevice, T, Index>
     }
   }
 };
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T, typename Index>
-struct UnsortedSegmentSumFunctor<SYCLDevice, T, Index>
-    : UnsortedSegmentBaseFunctor<SYCLDevice, T, Index> {
-  void operator()(OpKernelContext* ctx, const SYCLDevice& d,
-                  const Index output_rows, const TensorShape& segment_ids_shape,
-                  typename TTypes<Index>::ConstFlat segment_ids,
-                  const Index data_size, const T* data,
-                  typename TTypes<T, 2>::Tensor output) override {
-    output.setZero();
-    if (data_size == 0) {
-      return;
-    }
-    const int64 N = segment_ids.dimension(0);
-    auto data_flat = typename TTypes<T, 2>::ConstTensor(data, N, data_size / N);
-    for (int64 i = 0; i < N; ++i) {
-      Index j = internal::SubtleMustCopy(segment_ids(i));
-      OP_REQUIRES(ctx, FastBoundsCheck(j, output_rows),
-                  errors::InvalidArgument(
-                      "segment_ids", SliceDebugString(segment_ids_shape, i),
-                      " = ", j, " is out of range [0, ", output_rows, ")"));
-      output.template chip<0>(j) += data_flat.template chip<0>(i);
-    }
-  }
-};
-#endif // TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 // Base class for SegmentReductionOps that can handle unsorted segment
