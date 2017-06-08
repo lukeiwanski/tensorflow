@@ -3001,7 +3001,7 @@ cuda_py_test(
 
 cuda_py_tests(
     name = "training_tests",
-    size = "small",
+    size = "medium",
     srcs = [
         "training/adadelta_test.py",
         "training/adagrad_da_test.py",
