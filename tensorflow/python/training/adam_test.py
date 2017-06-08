@@ -31,6 +31,18 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 
+def GetTestConfigs():
+  """Get all the valid tests configs to run.
+  Returns:
+    all the valid test configs as tuples of data_format and use_gpu.
+  """
+  test_configs = [(dtypes.float32, False), (dtypes.float32, True),
+                  (dtypes.float64, False), (dtypes.float64, True),
+                  (dtypes.half, False)]
+  if test.is_gpu_available(cuda_only=True):
+    # dtypes.half is currently supported exclusively on CUDA GPUs.
+    test_configs += [(dtypes.half, True)]
+  return test_configs
 
 def adam_update_numpy(param,
                       g_t,
@@ -53,8 +65,8 @@ def adam_update_numpy(param,
 class AdamOptimizerTest(test.TestCase):
 
   def doTestSparse(self, use_resource=False):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+    for dtype, test_gpu in GetTestConfigs():
+      with self.test_session(use_gpu=test_gpu):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -119,8 +131,8 @@ class AdamOptimizerTest(test.TestCase):
         minimize_op.run()
 
   def testSparseRepeatedIndices(self):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+    for dtype, test_gpu in GetTestConfigs():
+      with self.test_session(use_gpu=test_gpu):
         repeated_index_update_var = variables.Variable(
             [[1.0], [2.0]], dtype=dtype)
         aggregated_update_var = variables.Variable(
@@ -149,8 +161,8 @@ class AdamOptimizerTest(test.TestCase):
                               repeated_index_update_var.eval())
 
   def doTestBasic(self, use_resource=False):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+    for dtype, test_gpu in GetTestConfigs():
+      with self.test_session(use_gpu=test_gpu):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -196,8 +208,8 @@ class AdamOptimizerTest(test.TestCase):
     self.doTestBasic(use_resource=True)
 
   def testTensorLearningRate(self):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+    for dtype, test_gpu in GetTestConfigs():
+      with self.test_session(use_gpu=test_gpu):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -233,8 +245,8 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
   def testSharing(self):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+    for dtype, test_gpu in GetTestConfigs():
+      with self.test_session(use_gpu=test_gpu):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -275,22 +287,23 @@ class AdamOptimizerTest(test.TestCase):
 
   def testTwoSessions(self):
     optimizer = adam.AdamOptimizer()
-    g = ops.Graph()
-    with g.as_default():
-      with session.Session():
-        var0 = variables.Variable(np.array([1.0, 2.0]), name="v0")
-        grads0 = constant_op.constant(np.array([0.1, 0.1]))
-        optimizer.apply_gradients([(grads0, var0)])
+    for test_gpu in [False, True]:
+      g = ops.Graph()
+      with g.as_default():
+        with session.Session():
+          var0 = variables.Variable(np.array([1.0, 2.0]), name="v0")
+          grads0 = constant_op.constant(np.array([0.1, 0.1]))
+          optimizer.apply_gradients([(grads0, var0)])
 
-    gg = ops.Graph()
-    with gg.as_default():
-      with session.Session():
-        var0 = variables.Variable(np.array([1.0, 2.0]), name="v0")
-        grads0 = constant_op.constant(np.array([0.1, 0.1]))
+      gg = ops.Graph()
+      with gg.as_default():
+        with session.Session():
+          var0 = variables.Variable(np.array([1.0, 2.0]), name="v0")
+          grads0 = constant_op.constant(np.array([0.1, 0.1]))
 
-        # If the optimizer saves any state not keyed by graph the following line
-        # fails.
-        optimizer.apply_gradients([(grads0, var0)])
+          # If the optimizer saves any state not keyed by graph the following line
+          # fails.
+          optimizer.apply_gradients([(grads0, var0)])
 
 
 if __name__ == "__main__":
