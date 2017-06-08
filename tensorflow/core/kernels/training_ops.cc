@@ -302,6 +302,32 @@ struct ApplyRMSProp<CPUDevice, T> {
   }
 };
 
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ApplyRMSProp<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat ms, typename TTypes<T>::Flat mom,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar rho,
+                  typename TTypes<T>::ConstScalar momentum,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad) {
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+    const auto one = static_cast<T>(1.0);
+    ms.device(d) = ms +
+                   (rho.constant(one) - rho).reshape(single).broadcast(bcast) *
+                       (grad.square() - ms);
+    mom.device(d) =
+        mom * momentum.reshape(single).broadcast(bcast) +
+        lr.reshape(single).broadcast(bcast) * grad /
+            ((epsilon.reshape(single).broadcast(bcast) + ms).sqrt());
+    var.device(d) -= mom;
+  }
+};
+#endif
+
 template <typename T>
 struct ApplyCenteredRMSProp<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
@@ -2816,6 +2842,15 @@ DECLARE_GPU_SPEC(double);
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(CPU, T);
+
+TF_CALL_half(REGISTER_SYCL_KERNELS);
+TF_CALL_float(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
+#endif
+
 #endif
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
