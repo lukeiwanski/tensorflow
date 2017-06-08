@@ -183,11 +183,10 @@ class L2LossTest(test_lib.TestCase):
         [dtypes.float32, dtypes.float64], [False, True]):
       with self.test_session(use_gpu=test_gpu):
         x = constant_op.constant(
-          [1.0, 0.0, 3.0, 2.0], shape=[2, 2], name="x", dtype=dtype)
+            [1.0, 0.0, 3.0, 2.0], shape=[2, 2], name="x", dtype=dtype)
         l2loss = nn_ops.l2_loss(x)
         value = l2loss.eval()
       self.assertAllClose(7.0, value)
-
 
   def testGradient(self):
     x_shape = [20, 7, 3]
