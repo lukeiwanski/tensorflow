@@ -178,14 +178,15 @@ class LogSoftmaxTest(test_lib.TestCase):
 class L2LossTest(test_lib.TestCase):
 
   def testL2Loss(self):
-    for dtype in [dtypes.float32, dtypes.float64]:
-      for test_gpu in [ False, True ]:
-        with self.test_session(use_gpu=test_gpu):
-          x = constant_op.constant(
-              [1.0, 0.0, 3.0, 2.0], shape=[2, 2], name="x", dtype=dtype)
-          l2loss = nn_ops.l2_loss(x)
-          value = l2loss.eval()
-        self.assertAllClose(7.0, value)
+    for (dtype, test_gpu) in itertools.product(
+        [dtypes.float32, dtypes.float64], [False, True]):
+      with self.test_session(use_gpu=test_gpu):
+        x = constant_op.constant(
+          [1.0, 0.0, 3.0, 2.0], shape=[2, 2], name="x", dtype=dtype)
+        l2loss = nn_ops.l2_loss(x)
+        value = l2loss.eval()
+      self.assertAllClose(7.0, value)
+
 
   def testGradient(self):
     x_shape = [20, 7, 3]
@@ -198,7 +199,7 @@ class L2LossTest(test_lib.TestCase):
         err = gradient_checker.compute_gradient_error(x, x_shape, output, [1])
       print("L2Loss gradient err = %g " % err)
       err_tolerance = 1e-11
-    self.assertLess(err, err_tolerance)
+      self.assertLess(err, err_tolerance)
 
 
 class L2NormalizeTest(test_lib.TestCase):
