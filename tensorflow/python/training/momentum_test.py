@@ -32,7 +32,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import momentum as momentum_lib
-from tensorflow.core.protobuf import config_pb2
 
 def GetTestConfigs():
   """Get all the valid tests configs to run.
