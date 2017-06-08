@@ -269,16 +269,49 @@ struct ApplyAdamNonCuda {
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
-struct ApplyAdamSYCL {
+struct ApplyAdam<SYCLDevice, T> {
   void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
-                  T beta1_power, T beta2_power, T lr, T beta1, T beta2, T epsilon,
-                  typename TTypes<T>::ConstFlat grad) {
-    const T alpha = lr * Eigen::numext::sqrt(T(1) - beta2_power) /
-                    (T(1) - beta1_power);
-    m.device(d) += (grad - m) * (T(1) - beta1);
-    v.device(d) += (grad.square() - v) * (T(1) - beta2);
-    var.device(d) -= (m * alpha) / (v.sqrt() + epsilon);
+                  typename TTypes<T>::ConstScalar beta1_power,
+                  typename TTypes<T>::ConstScalar beta2_power,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar beta1,
+                  typename TTypes<T>::ConstScalar beta2,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad,
+                  bool use_nesterov) {
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+    const auto one = static_cast<T>(1.0);
+    m.device(d) =
+        m +
+        (beta1.constant(one) - beta1).reshape(single).broadcast(bcast) *
+            (grad - m);
+    v.device(d) =
+        v +
+        (beta2.constant(one) - beta2).reshape(single).broadcast(bcast) *
+            (grad.square() - v);
+
+    if (use_nesterov) {
+      var.device(d) -= (lr * (beta2_power.constant(one) - beta2_power).sqrt() /
+                        (beta1_power.constant(one) - beta1_power))
+                           .reshape(single)
+                           .broadcast(bcast) *
+                       (m * beta1.reshape(single).broadcast(bcast) +
+                        (beta1.constant(one) - beta1)
+                           .reshape(single)
+                           .broadcast(bcast) *
+                        grad) / (epsilon
+                           .reshape(single)
+                           .broadcast(bcast) + v.sqrt());
+    } else {
+      var.device(d) -= (lr * (beta2_power.constant(one) - beta2_power).sqrt() /
+                        (beta1_power.constant(one) - beta1_power))
+                           .reshape(single)
+                           .broadcast(bcast) *
+                       m / (epsilon.reshape(single).broadcast(bcast) + v.sqrt());
+    }
   }
 };
 #endif // TENSORFLOW_USE_SYCL
@@ -2406,120 +2439,6 @@ class ApplyAdamOp : public OpKernel {
   bool use_exclusive_lock_;
   bool use_nesterov_;
 };
-
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-class ApplyAdamOp < SYCLDevice, T> : public OpKernel {
- public:
-  explicit ApplyAdamOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1, 2});
-
-    Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
-    Tensor m;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &m));
-    Tensor v;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_, &v));
-    OP_REQUIRES(
-        ctx, var.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", def().input(0)));
-    OP_REQUIRES(
-        ctx, m.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", def().input(1)));
-    OP_REQUIRES(
-        ctx, v.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", def().input(2)));
-
-    const Tensor& beta1_power_dev = ctx->input(3);
-    const Tensor& beta2_power_dev = ctx->input(4);
-    const Tensor& lr_dev = ctx->input(5);
-    const Tensor& beta1_dev = ctx->input(6);
-    const Tensor& beta2_dev = ctx->input(7);
-    const Tensor& epsilon_dev = ctx->input(8);
-
-    T beta1_power = 0;
-    T beta2_power = 0;
-    T lr = 0;
-    T beta1 = 0;
-    T beta2 = 0;
-    T epsilon = 0;
-
-    auto device = ctx->eigen_sycl_device();
-    auto size = sizeof(T);
-    auto src_ptr = GetBase(&beta1_power_dev);
-    device.memcpyDeviceToHost(&beta1_power, static_cast<const T *>(src_ptr), size);
-
-    src_ptr = GetBase(&beta2_power_dev);
-    device.memcpyDeviceToHost(&beta2_power, static_cast<const T *>(src_ptr), size);
-
-    src_ptr = GetBase(&lr_dev);
-    device.memcpyDeviceToHost(&lr, static_cast<const T *>(src_ptr), size);
-
-    src_ptr = GetBase(&beta1_dev);
-    device.memcpyDeviceToHost(&beta1, static_cast<const T *>(src_ptr), size);
-
-    src_ptr = GetBase(&beta2_dev);
-    device.memcpyDeviceToHost(&beta2, static_cast<const T *>(src_ptr), size);
-
-    src_ptr = GetBase(&epsilon_dev);
-    device.memcpyDeviceToHost(&epsilon, static_cast<const T *>(src_ptr), size);
-
-
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_power_dev.shape()),
-                errors::InvalidArgument("beta1_power is not a scalar: ",
-                                        beta1_power_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta2_power_dev.shape()),
-                errors::InvalidArgument("beta2_power is not a scalar: ",
-                                        beta2_power_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_dev.shape()),
-                errors::InvalidArgument("lr is not a scalar : ",
-                                        lr_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_dev.shape()),
-                errors::InvalidArgument("beta1 is not a scalar: ",
-                                        beta1_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta2_dev.shape()),
-                errors::InvalidArgument("beta2 is not a scalar: ",
-                                        beta2_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon_dev.shape()),
-                errors::InvalidArgument("epsilon is not a scalar: ",
-                                        epsilon_dev.shape().DebugString()));
-
-    const Tensor& grad = ctx->input(9);
-
-    OP_REQUIRES(ctx, var.shape().IsSameSize(m.shape()),
-                errors::InvalidArgument("var and m do not have the same shape",
-                                        var.shape().DebugString(), " ",
-                                        m.shape().DebugString()));
-    OP_REQUIRES(ctx, var.shape().IsSameSize(v.shape()),
-                errors::InvalidArgument("var and v do not have the same shape",
-                                        var.shape().DebugString(), " ",
-                                        v.shape().DebugString()));
-    OP_REQUIRES(
-        ctx, var.shape().IsSameSize(grad.shape()),
-        errors::InvalidArgument("var and grad do not have the same shape",
-                                var.shape().DebugString(), " ",
-                                grad.shape().DebugString()));
-
-    functor::ApplyAdamSYCL<T>()(device, var.flat<T>(), m.flat<T>(),
-                                    v.flat<T>(), beta1_power,
-                                    beta2_power, lr,
-                                    beta1, beta2,
-                                    epsilon, grad.flat<T>());
-
-    MaybeForwardRefInputToRefOutput(ctx, 0, 0);
-  }
-
- private:
-  bool use_exclusive_lock_;
-};
-#endif // TENSORFLOW_USE_SYCL
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
