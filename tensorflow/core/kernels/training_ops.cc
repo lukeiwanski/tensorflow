@@ -280,41 +280,46 @@ struct ApplyAdam<SYCLDevice, T> {
                   typename TTypes<T>::ConstScalar epsilon,
                   typename TTypes<T>::ConstFlat grad,
                   bool use_nesterov) {
-    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
-    bcast[0] = grad.dimension(0);
-    Eigen::Sizes<1> single;
+    #if !defined(EIGEN_HAS_INDEX_LIST)
+        Eigen::array<int, 1> rank1{1};
+    #else
+        Eigen::IndexList<Eigen::type2index<1> > rank1;
+    #endif
+    const int size = grad.dimension(0);
+    Eigen::array<int, 1> broadcast_dim{size};
     const auto one = static_cast<T>(1.0);
     m.device(d) =
         m +
-        (beta1.constant(one) - beta1).reshape(single).broadcast(bcast) *
+        (beta1.constant(one) - beta1).reshape(rank1).broadcast(broadcast_dim) *
             (grad - m);
     v.device(d) =
         v +
-        (beta2.constant(one) - beta2).reshape(single).broadcast(bcast) *
+        (beta2.constant(one) - beta2).reshape(rank1).broadcast(broadcast_dim) *
             (grad.square() - v);
 
     if (use_nesterov) {
       var.device(d) -= (lr * (beta2_power.constant(one) - beta2_power).sqrt() /
                         (beta1_power.constant(one) - beta1_power))
-                           .reshape(single)
-                           .broadcast(bcast) *
-                       (m * beta1.reshape(single).broadcast(bcast) +
+                           .reshape(rank1)
+                           .broadcast(broadcast_dim) *
+                       (m * beta1.reshape(rank1).broadcast(broadcast_dim) +
                         (beta1.constant(one) - beta1)
-                           .reshape(single)
-                           .broadcast(bcast) *
+                           .reshape(rank1)
+                           .broadcast(broadcast_dim) *
                         grad) / (epsilon
-                           .reshape(single)
-                           .broadcast(bcast) + v.sqrt());
+                           .reshape(rank1)
+                           .broadcast(broadcast_dim) + v.sqrt());
     } else {
       var.device(d) -= (lr * (beta2_power.constant(one) - beta2_power).sqrt() /
                         (beta1_power.constant(one) - beta1_power))
-                           .reshape(single)
-                           .broadcast(bcast) *
-                       m / (epsilon.reshape(single).broadcast(bcast) + v.sqrt());
+                           .reshape(rank1)
+                           .broadcast(broadcast_dim) *
+                       m / (epsilon.reshape(rank1).broadcast(broadcast_dim) + v.sqrt());
     }
   }
 };
 #endif // TENSORFLOW_USE_SYCL
+
 
 template <typename T>
 struct ApplyAdam<CPUDevice, T> : ApplyAdamNonCuda<CPUDevice, T> {};
