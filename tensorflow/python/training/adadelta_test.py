@@ -29,15 +29,30 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adadelta
 
+def GetTestConfigs(use_float64=True):
+  """Get all the valid tests configs to run.
+  Args:
+      use_float64 (bool): Whether to add dtypes.float64 to test config
+  Returns:
+    all the valid test configs as tuples of dtype and use_gpu.
+  """
+  test_configs = [(dtypes.float32, False), (dtypes.float32, True),
+                  (dtypes.half, False)]
+  if use_float64:
+    test_configs += [(dtypes.float64, False), (dtypes.float64, True)]
+  if test.is_gpu_available(cuda_only=True):
+    # dtypes.half is currently only supported on CUDA devices not SYCL devices.
+    test_configs += [(dtypes.half, True)]
+  return test_configs
 
 class AdadeltaOptimizerTest(test.TestCase):
 
   def doTestBasic(self, use_resource=False):
     num_updates = 4  # number of ADADELTA steps to perform
-    for dtype in [dtypes.half, dtypes.float32]:
+    for dtype, test_gpu in GetTestConfigs(use_float64=False):
       for grad in [0.2, 0.1, 0.01]:
         for lr in [1.0, 0.5, 0.1]:
-          with self.test_session():
+          with self.test_session(use_gpu=test_gpu):
             var0_init = [1.0, 2.0]
             var1_init = [3.0, 4.0]
             if use_resource:
@@ -139,8 +154,8 @@ class AdadeltaOptimizerTest(test.TestCase):
     self.doTestBasic(use_resource=True)
 
   def testMinimizeSparseResourceVariable(self):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+    for dtype, test_gpu in GetTestConfigs():
+      with self.test_session(use_gpu=test_gpu):
         var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
         pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
