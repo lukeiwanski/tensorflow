@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import itertools
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
@@ -40,7 +41,7 @@ def GetTestConfigs():
                   (dtypes.float64, False), (dtypes.float64, True),
                   (dtypes.half, False)]
   if test.is_gpu_available(cuda_only=True):
-    # dtypes.half is currently supported exclusively on CUDA GPUs.
+    # dtypes.half is currently only supported on CUDA devices not SYCL devices.
     test_configs += [(dtypes.half, True)]
   return test_configs
 

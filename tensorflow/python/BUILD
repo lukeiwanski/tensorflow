@@ -2965,7 +2965,7 @@ py_test(
 
 cuda_py_test(
     name = "adam_test",
-    size = "medium",
+    size = "small",
     srcs = ["training/adam_test.py"],
     additional_deps = [
         ":array_ops",
