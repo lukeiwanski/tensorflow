@@ -40,11 +40,11 @@ def GetTestConfigs(use_half=True):
   Returns:
     all the valid test configs as tuples of dtype and use_gpu.
   """
-  test_configs = itertools.product(
-      [dtypes.float32, dtypes.float64], [False, True])
+  test_configs = [(dtypes.float32, False), (dtypes.float32, True),
+                  (dtypes.float64, False), (dtypes.float64, True)]
   if use_half:
     test_configs += [(dtypes.half, False)]
-  if use_half && test.is_gpu_available(cuda_only=True):
+  if use_half and test.is_gpu_available(cuda_only=True):
     # dtypes.half is currently only supported on CUDA devices not SYCL devices.
     test_configs += [(dtypes.half, True)]
   return test_configs
