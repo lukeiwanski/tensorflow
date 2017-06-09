@@ -176,6 +176,22 @@ struct ApplyAdagrad<SYCLDevice, T> {
 };
 #endif  // TENSORFLOW_USE_SYCL
 
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ApplyAdagrad<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstFlat grad) {
+    accum.device(d) += grad.square();
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+    var.device(d) -= lr.reshape(single).broadcast(bcast) * grad * accum.rsqrt();
+  }
+};
+#endif
+
 template <typename T>
 struct ApplyProximalAdagrad<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
