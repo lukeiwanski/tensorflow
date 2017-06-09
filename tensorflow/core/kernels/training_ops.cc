@@ -246,20 +246,25 @@ struct ApplyMomentum<SYCLDevice, T> {
                   typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstFlat grad,
                   typename TTypes<T>::ConstScalar momentum, bool use_nesterov) {
-    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
-    bcast[0] = grad.dimension(0);
-    Eigen::Sizes<1> single;
-    accum.device(d) = accum * momentum.reshape(single).broadcast(bcast) + grad;
+    #if !defined(EIGEN_HAS_INDEX_LIST)
+        Eigen::array<int, 1> rank1{1};
+    #else
+        Eigen::IndexList<Eigen::type2index<1> > rank1;
+    #endif
+    const int size = grad.dimension(0);
+    Eigen::array<int, 1> broadcast_dim{size};
+    const auto one = static_cast<T>(1.0);
+    accum.device(d) = accum * momentum.reshape(one).broadcast(broadcast_dim) + grad;
     if (use_nesterov) {
-      var.device(d) -= grad * lr.reshape(single).broadcast(bcast) +
-                       accum * momentum.reshape(single).broadcast(bcast) *
-                           lr.reshape(single).broadcast(bcast);
+      var.device(d) -= grad * lr.reshape(one).broadcast(broadcast_dim) +
+                       accum * momentum.reshape(one).broadcast(broadcast_dim) *
+                           lr.reshape(one).broadcast(broadcast_dim);
     } else {
-      var.device(d) -= lr.reshape(single).broadcast(bcast) * accum;
+      var.device(d) -= lr.reshape(one).broadcast(broadcast_dim) * accum;
     }
   }
 };
-#endif  // TENSORFLOW_USE_SYCL
+#endif // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 struct ApplyAdamNonCuda {
