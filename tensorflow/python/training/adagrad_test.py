@@ -30,12 +30,24 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adagrad
 
+def GetTestConfigs():
+  """Get all the valid tests configs to run.
+  Returns:
+    all the valid test configs as tuples of data_format and use_gpu.
+  """
+  test_configs = [(dtypes.float32, False), (dtypes.float32, True),
+                  (dtypes.float64, False), (dtypes.float64, True),
+                  (dtypes.half, False)]
+  if test.is_gpu_available(cuda_only=True):
+    # dtypes.half is currently only supported on CUDA devices not SYCL devices.
+    test_configs += [(dtypes.half, True)]
+return test_configs
 
 class AdagradOptimizerTest(test.TestCase):
 
   def doTestBasic(self, use_locking=False, use_resource=False):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+    for dtype, test_gpu in GetTestConfigs():
+      with self.test_session(use_gpu=test_gpu):
         if use_resource:
           var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
           var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
@@ -71,8 +83,8 @@ class AdagradOptimizerTest(test.TestCase):
     self.doTestBasic(use_locking=True)
 
   def testMinimizeSparseResourceVariable(self):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+    for dtype, test_gpu in GetTestConfigs():
+      with self.test_session(use_gpu=test_gpu):
         var0 = resource_variable_ops.ResourceVariable(
             [[1.0, 2.0], [3.0, 4.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
@@ -90,8 +102,8 @@ class AdagradOptimizerTest(test.TestCase):
             [[0, 1], [3, 4]], var0.eval(), atol=0.01)
 
   def testTensorLearningRate(self):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+    for dtype, test_gpu in GetTestConfigs():
+      with self.test_session(use_gpu=test_gpu):
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -114,8 +126,8 @@ class AdagradOptimizerTest(test.TestCase):
             np.array([2.715679168701172, 3.715679168701172]), var1.eval())
 
   def testSparseBasic(self):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+    for dtype, test_gpu in GetTestConfigs():
+      with self.test_session(use_gpu=test_gpu):
         var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
         var1 = variables.Variable([[3.0], [4.0]], dtype=dtype)
         grads0 = ops.IndexedSlices(
@@ -145,8 +157,8 @@ class AdagradOptimizerTest(test.TestCase):
             np.array([[3.0], [3.715679168701172]]), var1.eval())
 
   def testSparseRepeatedIndices(self):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+    for dtype, test_gpu in GetTestConfigs():
+      with self.test_session(use_gpu=test_gpu):
         repeated_index_update_var = variables.Variable(
             [[1.0], [2.0]], dtype=dtype)
         aggregated_update_var = variables.Variable(
@@ -175,8 +187,8 @@ class AdagradOptimizerTest(test.TestCase):
                               repeated_index_update_var.eval())
 
   def testSparseRepeatedIndicesResourceVariable(self):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+    for dtype, test_gpu in GetTestConfigs():
+      with self.test_session(use_gpu=test_gpu):
         var_repeated = resource_variable_ops.ResourceVariable(
             [1.0, 2.0], dtype=dtype)
         loss_repeated = math_ops.reduce_sum(
@@ -199,8 +211,8 @@ class AdagradOptimizerTest(test.TestCase):
               var_repeated.eval(), var_aggregated.eval())
 
   def testSparseStability(self):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+    for dtype, test_gpu in GetTestConfigs():
+      with self.test_session(use_gpu=test_gpu):
         shape = [1, 6]
         var0 = variables.Variable(
             [[
@@ -235,8 +247,8 @@ class AdagradOptimizerTest(test.TestCase):
               ]]), var0.eval())
 
   def testSharing(self):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+    for dtype, test_gpu in GetTestConfigs():
+      with self.test_session(use_gpu=test_gpu):
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
