@@ -33,16 +33,19 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import momentum as momentum_lib
 
-def GetTestConfigs():
+def GetTestConfigs(use_half=True):
   """Get all the valid tests configs to run.
+  Args:
+      use_half (bool): Whether to add dtypes.half to test config
   Returns:
-    all the valid test configs as tuples of data_format and use_gpu.
+    all the valid test configs as tuples of dtype and use_gpu.
   """
-  test_configs = [(dtypes.float32, False), (dtypes.float32, True),
-                  (dtypes.float64, False), (dtypes.float64, True),
-                  (dtypes.half, False)]
-  if test.is_gpu_available(cuda_only=True):
-    # dtypes.half is currently supported exclusively on CUDA GPUs.
+  test_configs = itertools.product(
+      [dtypes.float32, dtypes.float64], [False, True])
+  if use_half:
+    test_configs += [(dtypes.half, False)]
+  if use_half && test.is_gpu_available(cuda_only=True):
+    # dtypes.half is currently only supported on CUDA devices not SYCL devices.
     test_configs += [(dtypes.half, True)]
   return test_configs
 
@@ -120,8 +123,7 @@ class MomentumOptimizerTest(test.TestCase):
     self.doTestBasic(use_resource=True)
 
   def testNesterovMomentum(self):
-    for (dtype, test_gpu) in itertools.product(
-        [dtypes.float32, dtypes.float64], [False, True]):
+    for (dtype, test_gpu) in GetTestConfigs(use_half=False):
       with self.test_session(use_gpu=test_gpu):
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
@@ -444,8 +446,6 @@ class MomentumOptimizerTest(test.TestCase):
             ]), var1.eval()[2])
 
   def testSharing(self):
-    # for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-    #   with self.test_session():
     for dtype, test_gpu in GetTestConfigs():
       with self.test_session(use_gpu=test_gpu):
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
