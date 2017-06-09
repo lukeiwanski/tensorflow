@@ -81,6 +81,40 @@ struct ApplyAdadelta<CPUDevice, T> {
   }
 };
 
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ApplyAdadelta<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::Flat accum_update,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar rho,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad) {
+    #if !defined(EIGEN_HAS_INDEX_LIST)
+        Eigen::array<int, 1> rank1{1};
+    #else
+        Eigen::IndexList<Eigen::type2index<1> > rank1;
+    #endif
+    const int size = grad.dimension(0);
+    Eigen::array<int, 1> broadcast_dim{size};
+    const auto one = static_cast<T>(1.0);
+
+    accum.device(d) = accum * rho.reshape(rank1).broadcast(broadcast_dim) +
+                      grad.square() * (grad.constant(T(1)) -
+                                       rho.reshape(rank1).broadcast(broadcast_dim));
+    const auto update =
+        (accum_update + epsilon.reshape(rank1).broadcast(broadcast_dim)).sqrt() *
+        (accum + epsilon.reshape(rank1).broadcast(broadcast_dim)).rsqrt() * grad;
+    accum_update.device(d) =
+        accum_update * rho.reshape(rank1).broadcast(broadcast_dim) +
+        update.square() *
+            (grad.constant(T(1)) - rho.reshape(rank1).broadcast(broadcast_dim));
+    var.device(d) -= update * lr.reshape(rank1).broadcast(broadcast_dim);
+  }
+};
+#endif  // TENSORFLOW_USE_SYCL
+
 template <typename T>
 struct ApplyProximalGradientDescent<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
@@ -600,6 +634,12 @@ REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNELS(SYCL, float);
+REGISTER_KERNELS(SYCL, double);
+#endif
+
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
