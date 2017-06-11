@@ -995,7 +995,9 @@ tf_kernel_library(
         ":bounds_check",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
-    ],
+    ] + if_sycl([
+        "//tensorflow/core:framework",
+    ]),
 )
 
 tf_cuda_cc_test(

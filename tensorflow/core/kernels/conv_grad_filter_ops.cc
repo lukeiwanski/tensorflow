@@ -90,6 +90,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 #ifdef TENSORFLOW_USE_LIBXSMM
 template <typename Device, class T>
@@ -909,5 +912,16 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
                             .HostMemory("filter_sizes"),
                         Conv2DSlowBackpropFilterOp<GPUDevice, Eigen::half>);
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T)                                         \
+  REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")                   \
+                              .Device(DEVICE_SYCL)                       \
+                              .Label("eigen_tensor")                     \
+                              .TypeConstraint<T>("T"),                   \
+                          Conv2DFastBackpropFilterOp<SYCLDevice, T>);
+REGISTER_SYCL_KERNELS(float);
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

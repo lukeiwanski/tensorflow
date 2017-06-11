@@ -92,6 +92,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 // The fast versions using eigen computations directly. They are only enabled
 // for CPU for now since nvcc times out when trying to compile them.
@@ -1015,4 +1018,15 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
                         Conv2DSlowBackpropInputOp<GPUDevice, Eigen::half>);
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T)                                        \
+  REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")                   \
+                              .Device(DEVICE_SYCL)                      \
+                              .Label("eigen_tensor")                    \
+                              .TypeConstraint<T>("T"),                  \
+                          Conv2DFastBackpropInputOp<SYCLDevice, T>);
+
+TF_CALL_float(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

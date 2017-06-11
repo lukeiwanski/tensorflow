@@ -53,7 +53,7 @@ struct UnsortedSegmentSumFunctor: public UnsortedSegmentBaseFunctor<Device, T, I
                   const Index output_rows, const TensorShape& segment_ids_shape,
                   typename TTypes<Index>::ConstFlat segment_ids,
                   const Index data_size, const T* data,
-                  typename TTypes<T, 2>::Tensor output);
+                  typename TTypes<T, 2>::Tensor output) override;
 };
 
 // Functor for UnsortedSegmentMaxOp.
