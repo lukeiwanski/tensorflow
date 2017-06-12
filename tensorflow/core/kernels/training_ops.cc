@@ -273,14 +273,13 @@ struct ApplyMomentum<SYCLDevice, T> {
     #endif
     const int size = grad.dimension(0);
     Eigen::array<int, 1> broadcast_dim{size};
-    const auto one = static_cast<T>(1.0);
-    accum.device(d) = accum * momentum.reshape(one).broadcast(broadcast_dim) + grad;
+    accum.device(d) = accum * momentum.reshape(rank1).broadcast(broadcast_dim) + grad;
     if (use_nesterov) {
-      var.device(d) -= grad * lr.reshape(one).broadcast(broadcast_dim) +
-                       accum * momentum.reshape(one).broadcast(broadcast_dim) *
-                           lr.reshape(one).broadcast(broadcast_dim);
+      var.device(d) -= grad * lr.reshape(rank1).broadcast(broadcast_dim) +
+                       accum * momentum.reshape(rank1).broadcast(broadcast_dim) *
+                           lr.reshape(rank1).broadcast(broadcast_dim);
     } else {
-      var.device(d) -= lr.reshape(one).broadcast(broadcast_dim) * accum;
+      var.device(d) -= lr.reshape(rank1).broadcast(broadcast_dim) * accum;
     }
   }
 };
