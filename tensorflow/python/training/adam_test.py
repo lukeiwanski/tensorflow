@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import itertools
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
@@ -291,14 +290,14 @@ class AdamOptimizerTest(test.TestCase):
     for test_gpu in [False, True]:
       g = ops.Graph()
       with g.as_default():
-        with session.Session():
+        with session.Session(use_gpu=test_gpu):
           var0 = variables.Variable(np.array([1.0, 2.0]), name="v0")
           grads0 = constant_op.constant(np.array([0.1, 0.1]))
           optimizer.apply_gradients([(grads0, var0)])
 
       gg = ops.Graph()
       with gg.as_default():
-        with session.Session():
+        with session.Session(use_gpu=test_gpu):
           var0 = variables.Variable(np.array([1.0, 2.0]), name="v0")
           grads0 = constant_op.constant(np.array([0.1, 0.1]))
 
