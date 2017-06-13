@@ -149,8 +149,7 @@ class MomentumOptimizerTest(test.TestCase):
           self.assertAllClose(var1_np, var1.eval())
 
   def testSparseNesterovMomentum(self):
-    for (dtype, test_gpu) in itertools.product(
-        [dtypes.float32, dtypes.float64], [False, True]):
+    for (dtype, test_gpu) in GetTestConfigs(use_half=False):
       with self.test_session(use_gpu=test_gpu):
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
