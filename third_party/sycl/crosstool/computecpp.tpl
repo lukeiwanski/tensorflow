@@ -60,7 +60,7 @@ def main():
     return pipe.returncode
 
   # check if it has parallel_for in it
-  if not '.parallel_for' in preprocessed_file_str:
+  if not b'.parallel_for' in preprocessed_file_str:
     # call CXX compiler like usual
     with tempfile.NamedTemporaryFile(suffix=".ii") as preprocessed_file: # Force '.ii' extension so that g++ does not preprocess the file again
       preprocessed_file.write(preprocessed_file_str)
