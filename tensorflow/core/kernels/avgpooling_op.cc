@@ -261,7 +261,7 @@ class AvgPoolingOp<SYCLDevice, T> : public UnaryOp<T> {
 REGISTER_KERNEL_BUILDER(
     Name("AvgPool").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
     AvgPoolingOp<SYCLDevice, float>);
-#endif
+#endif  // TENSORFLOW_USE_SYCL
 
 // The operation to compute AvgPool gradients.
 // It takes two inputs:
