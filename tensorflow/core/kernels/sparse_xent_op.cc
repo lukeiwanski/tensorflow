@@ -121,7 +121,7 @@ struct SparseXentFunctor<SYCLDevice, T, Index> {
                   typename TTypes<T>::Vec scratch, typename TTypes<T>::Vec loss,
                   typename TTypes<T>::Matrix backprop) {
     SparseXentEigenImpl<SYCLDevice, T, Index>::Compute(d, logits, labels,
-                                                      scratch, loss, backprop);
+                                                       scratch, loss, backprop);
   }
 };
 #endif  //TENSORFLOW_USE_SYCL
