@@ -33,7 +33,7 @@ REGISTER3(SimpleBinaryOp, GPU, "RsqrtGrad", functor::rsqrt_grad, float,
           Eigen::half, double);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER2(SimpleBinaryOp, GPU, "RsqrtGrad", functor::rsqrt_grad, float,
+REGISTER2(SimpleBinaryOp, SYCL, "RsqrtGrad", functor::rsqrt_grad, float,
           double);
 #endif  //  TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
