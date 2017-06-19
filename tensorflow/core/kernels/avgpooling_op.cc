@@ -197,6 +197,72 @@ REGISTER_KERNEL_BUILDER(
     AvgPoolingOp<GPUDevice, float>);
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+class AvgPoolingOp<SYCLDevice, T> : public UnaryOp<T> {
+ public:
+  explicit AvgPoolingOp(OpKernelConstruction* context) : UnaryOp<T>(context) {
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+    OP_REQUIRES(
+        context, data_format_ == FORMAT_NHWC,
+        errors::InvalidArgument("OpenCL AvgPoolingOp only supports NHWC."));
+    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+    OP_REQUIRES(context, ksize_.size() == 4,
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES(context, stride_.size() == 4,
+                errors::InvalidArgument("Sliding window stride field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    const int32 ksize_n = GetTensorDim(ksize_, data_format_, 'N');
+    const int32 stride_n = GetTensorDim(stride_, data_format_, 'N');
+    OP_REQUIRES(context, ksize_n == 1 && stride_n == 1,
+                errors::Unimplemented(
+                    "Pooling is not yet supported on the batch dimension."));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& tensor_in = context->input(0);
+    PoolParameters params{context,  ksize_,       stride_,
+                          padding_, data_format_, tensor_in.shape()};
+    if (!context->status().ok()) {
+      return;
+    }
+    OP_REQUIRES(context, params.depth_window == 1,
+                errors::Unimplemented("Non-spatial pooling is not "
+                                      "yet supported. Volunteers? :)"));
+
+    // For avgpooling, tensor_in should have 4 dimensions.
+    OP_REQUIRES(context, tensor_in.dims() == 4,
+                errors::InvalidArgument("tensor_in must be 4-dimensional"));
+
+    TensorShape output_shape = params.forward_output_shape();
+
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, output_shape, &output));
+    Eigen::PaddingType pt = BrainPadding2EigenPadding(padding_);
+    functor::SpatialAvgPooling<SYCLDevice, T>()(
+        context->eigen_device<SYCLDevice>(), output->tensor<T, 4>(),
+        tensor_in.tensor<T, 4>(), params.window_rows, params.window_cols,
+        params.row_stride, params.col_stride, pt);
+  }
+
+ private:
+  std::vector<int32> ksize_;
+  std::vector<int32> stride_;
+  Padding padding_;
+  TensorFormat data_format_;
+};
+REGISTER_KERNEL_BUILDER(
+    Name("AvgPool").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
+    AvgPoolingOp<SYCLDevice, float>);
+#endif
+
 // The operation to compute AvgPool gradients.
 // It takes two inputs:
 //   - The original input tensor shape
