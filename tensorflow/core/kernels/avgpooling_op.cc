@@ -45,6 +45,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif
 
 template <typename Device, typename T>
 class AvgPoolingOp : public UnaryOp<T> {
@@ -556,4 +559,161 @@ REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
 
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct LaunchAvgPoolingGradOpSYCL {
+  static void launch(OpKernelContext* context,
+                     const TensorShape& tensor_in_shape,
+                     const Tensor& out_backprop,
+                     const std::array<int64, 2>& window,
+                     const std::array<int64, 2>& stride,
+                     const std::array<int64, 2>& output_shape,
+                     const std::array<int64, 2>& padding,
+                     TensorFormat data_format, Tensor* output) {
+    output->flat<T>().setZero();
+    std::array<int64, 3> input_size = {{tensor_in_shape.dim_size(2),
+                                        tensor_in_shape.dim_size(1)}};
+    for (int64 r = 0; r < out_backprop.dim_size(2); ++r) {
+      // Calculates row broadcast size.  For SAME padding, current
+      // index could be in the padding area, and r*row_stride +
+      // window_rows could be beyond the input tensor's boundary. In
+      // such cases, change the starting index and reduce the
+      // broadcast size.
+      int rindex, rsize;
+      OP_REQUIRES_OK(context,
+                     GetBroadcastSize(r, input_size[0], window[0], stride[0],
+                                      padding[0], &rindex, &rsize));
+      for (int64 c = 0; c < out_backprop.dim_size(1); ++c) {
+        // Calculates col broadcast size.  For SAME padding, current
+        // index could be in the padding area, and c*col_stride +
+        // window_cols could be beyond the input tensor's boundary. In
+        // such cases, change the starting index and reduce the
+        // broadcast size.
+        int cindex, csize;
+        OP_REQUIRES_OK(
+            context, GetBroadcastSize(c, input_size[1], window[1], stride[1],
+                                      padding[1], &cindex, &csize));
+        TensorSlice src{{0, -1}, {c, 1}, {r, 1}, {0, -1}};
+        TensorSlice dst{{0, -1},
+                        {cindex, csize},
+                        {rindex, rsize},
+                        {0, -1}};
+        Eigen::DSizes<Eigen::DenseIndex, 4> src_indices;
+        Eigen::DSizes<Eigen::DenseIndex, 4> src_sizes;
+        Eigen::DSizes<Eigen::DenseIndex, 4> dst_indices;
+        Eigen::DSizes<Eigen::DenseIndex, 4> dst_sizes;
+        src.FillIndicesAndSizes<4>(out_backprop.shape(), &src_indices,
+                                   &src_sizes);
+        dst.FillIndicesAndSizes<4>(tensor_in_shape, &dst_indices,
+                                   &dst_sizes);
+#if !defined(EIGEN_HAS_INDEX_LIST)
+        Eigen::array<int, 4> bcast = {1, csize, rsize, 1};
+#else
+        Eigen::IndexList<Eigen::type2index<1>, int, int,
+                         Eigen::type2index<1> >
+            bcast;
+        bcast.set(1, csize);
+        bcast.set(2, rsize);
+#endif
+
+        auto slices =
+            out_backprop.tensor<T, 4>().slice(src_indices, src_sizes);
+        // Divide by the size of the actual patch (rsize * csize).
+        float divide_size = rsize * csize * 1.0f;
+        auto slices_multiplied = slices * slices.constant(1.0f / divide_size);
+
+        output->tensor<T, 4>()
+            .slice(dst_indices, dst_sizes)
+            .device(context->eigen_sycl_device()) += slices_multiplied.broadcast(bcast);
+      }
+    }
+  }
+};
+template <class T>
+class AvgPoolingGradOp<SYCLDevice, T> : public OpKernel {
+
+public:
+  explicit AvgPoolingGradOp(OpKernelConstruction* context) : OpKernel(context) {
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+    OP_REQUIRES(context, ksize_.size() == 4,
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES(context, stride_.size() == 4,
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    const int32 ksize_n = GetTensorDim(ksize_, data_format_, 'N');
+    const int32 stride_n = GetTensorDim(stride_, data_format_, 'N');
+    OP_REQUIRES(context, ksize_n == 1 && stride_n == 1,
+                errors::Unimplemented(
+                    "Pooling is not yet supported on the batch dimension."));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& tensor_in_shape = context->input(0);
+    const Tensor& out_backprop = context->input(1);
+    // For avgpooling, tensor_in_shape should have 1 dimension, and 4 elements.
+    OP_REQUIRES(
+        context,
+        tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
+        errors::InvalidArgument("out_backprop must be 1-dimensional and 4 "
+                                "elements"));
+    // For avgpooling, out_backprop should have 4 dimensions.
+    OP_REQUIRES(context, out_backprop.dims() == 4,
+                errors::InvalidArgument("out_backprop must be 4-dimensional"));
+
+    TensorShape output_shape;
+    auto shape_vec = tensor_in_shape.vec<int32>();
+    for (int64 i = 0; i < tensor_in_shape.NumElements(); ++i) {
+      output_shape.AddDim(shape_vec(i));
+    }
+
+    Tensor* output;
+    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+
+    // Dimension order for these arrays is x, y.
+    std::array<int64, 2> input_size{{
+         GetTensorDim(output_shape, data_format_, '1'),
+         GetTensorDim(output_shape, data_format_, '0')}};
+    std::array<int64, 2> window{{GetTensorDim(ksize_, data_format_, '1'),
+                                 GetTensorDim(ksize_, data_format_, '0')}};
+    std::array<int64, 2> stride{{GetTensorDim(stride_, data_format_, '1'),
+                                 GetTensorDim(stride_, data_format_, '0')}};
+
+    int64 out_height, out_width, pad_rows, pad_cols;
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSize(input_size[0], window[0], stride[0],
+                                         padding_, &out_height, &pad_rows));
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSize(input_size[1], window[1], stride[1],
+                                         padding_, &out_width, &pad_cols));
+    std::array<int64, 2> padding = {{pad_rows, pad_cols}};
+    std::array<int64, 2> out = {{out_width, out_height}};
+
+    LaunchAvgPoolingGradOpSYCL<T>::launch(
+        context, output_shape, out_backprop, window, stride, out, padding,
+        data_format_, output);
+  }
+
+ private:
+  std::vector<int32> ksize_;
+  std::vector<int32> stride_;
+  Padding padding_;
+  TensorFormat data_format_;
+};
+#define REGISTER_SYCL_KERNEL(T)                                 \
+  REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")                   \
+                              .Device(DEVICE_SYCL)              \
+                              .TypeConstraint<T>("T")           \
+                              .HostMemory("orig_input_shape"),  \
+                          AvgPoolingGradOp<SYCLDevice, T>);
+
+TF_CALL_float(REGISTER_SYCL_KERNEL);
+TF_CALL_double(REGISTER_SYCL_KERNEL);
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
