@@ -153,7 +153,7 @@ TF_CALL_double(REGISTER_GPU);
 #define REGISTER_SYCL(T)                                       \
   REGISTER_KERNEL_BUILDER(Name("RGBToHSV").Device(DEVICE_SYCL) \
                               .TypeConstraint<T>("T"),         \
-                          RGBToHSVOp<SYCLDevice, T>);           \
+                          RGBToHSVOp<SYCLDevice, T>);          \
   REGISTER_KERNEL_BUILDER(Name("HSVToRGB").Device(DEVICE_SYCL) \
                               .TypeConstraint<T>("T"),         \
                           HSVToRGBOp<SYCLDevice, T>);
