@@ -58,9 +58,9 @@ static Graph* BM_AdjustContrast(int batches, int width, int height) {
 BM_AdjustContrastDev(cpu, 1, 299, 299);
 #if GOOGLE_CUDA
 BM_AdjustContrastDev(gpu, 32, 299, 299);
-#endif
+#endif  // GOOGLE_CUDA
 #ifdef TENSORFLOW_USE_SYCL
 BM_AdjustContrastDev(sycl, 32, 299, 299);
-#endif
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
