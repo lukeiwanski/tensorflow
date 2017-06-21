@@ -1051,8 +1051,8 @@ class MaxPoolGradSYCL {
 
  public:
   MaxPoolGradSYCL(const int depth, const int batch, const int in_planes,
-                  const int in_rows, const int in_cols, const int out_planes,
-                  const int out_rows, const int out_cols,
+                  const int in_rows, const int in_cols,
+                  const std::array<int64, 3>& output_shape,
                   const std::array<int64, 3>& window,
                   const std::array<int64, 3>& stride,
                   const std::array<int64, 3>& padding,
@@ -1060,8 +1060,8 @@ class MaxPoolGradSYCL {
                   const read_accessor output_data_accessor,
                   const read_accessor input_backprop_accessor,
                   write_accessor output_backprop_accessor)
-      : p_(depth, batch, in_planes, in_rows, in_cols, out_planes, out_rows,
-           out_cols, window, stride, padding),
+      : p_(depth, batch, in_planes, in_rows, in_cols, output_shape, window, stride,
+           padding),
         input_data_accessor_(input_data_accessor),
         output_data_accessor_(output_data_accessor),
         input_backprop_accessor_(input_backprop_accessor),
@@ -1131,9 +1131,6 @@ struct LaunchMaxPooling3dGradOp<SYCLDevice, T> {
                      TensorFormat data_format, Tensor* output) {
     const SYCLDevice& device = context->eigen_device<SYCLDevice>();
     output->template flat<T>().setZero().device(device);
-    const int out_planes = GetTensorDim(tensor_out, data_format, '0');
-    const int out_rows = GetTensorDim(tensor_out, data_format, '1');
-    const int out_cols = GetTensorDim(tensor_out, data_format, '2');
     const int batch = GetTensorDim(tensor_in, data_format, 'N');
     const int in_planes = GetTensorDim(tensor_in, data_format, '0');
     const int in_rows = GetTensorDim(tensor_in, data_format, '1');
@@ -1165,9 +1162,9 @@ struct LaunchMaxPooling3dGradOp<SYCLDevice, T> {
           output_backprop_buffer
               .template get_access<cl::sycl::access::mode::write>(cgh);
       MaxPoolGradSYCL<T> max_pool(
-          depth, batch, in_planes, in_rows, in_cols, out_planes, out_rows,
-          out_cols, window, stride, padding, input_data_access,
-          output_data_access, input_backprop_access, output_backprop_access);
+          depth, batch, in_planes, in_rows, in_cols, out, window, stride,
+          padding, input_data_access, output_data_access, input_backprop_access,
+          output_backprop_access);
 
       cgh.parallel_for(cl::sycl::range<1>(output_size), max_pool);
     });
