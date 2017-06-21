@@ -840,6 +840,9 @@ TF_CALL_float(REGISTER_GPU_KERNELS) TF_CALL_half(REGISTER_GPU_KERNELS)
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
+// Helper struct to contain the various pool parameters used in the SYCL
+// pooling kernels. Similar to the Pool3dParameters, but with a number of
+// convenient constructors.
 struct SYCL3DPoolParams {
   SYCL3DPoolParams(const int depth, const int batch, const int in_planes,
                    const int in_rows, const int in_cols,
@@ -930,6 +933,12 @@ struct SYCL3DPoolParams {
   const int pad_rows_;
   const int pad_cols_;
 };
+// MaxPool3d SYCL kernel. Expects the number of threads to be equal to the
+// number of elements in the output tensor.
+//
+// For each output element, find the corresponding input window and run over
+// all values in the window to find the maximum value. This value is then
+// copied into that output element.
 template <typename T>
 class MaxPool3DSYCL {
   using write_accessor =
@@ -1031,6 +1040,11 @@ struct LaunchPoolingOp<SYCLDevice, T, MAX> {
     });
   }
 };
+
+// Need an atomic add for the MaxPool3DGrad kernel. For the device, this need a
+// pointer to global memory which isn't understood by the host. The host should
+// never be calling this method, but we provide the header so that the host
+// compiler can compile the MaxPool3DGrad functor.
 #ifdef __SYCL_DEVICE_ONLY__
 template <typename T>
 void SyclAtomicAdd(__attribute__((address_space(1))) T* address,
@@ -1039,7 +1053,15 @@ void SyclAtomicAdd(__attribute__((address_space(1))) T* address,
 template <typename T>
 void SyclAtomicAdd(T* address, const T increment);
 #endif  // __SYCL_DEVICE_ONLY__
-
+// MaxPool3DGrad SYCL kernel. Expects the number of threads to be equal to the
+// number of elements in the pooled output tensor (i.e. the number of elements
+// in the backprop input tensor).
+//
+// For each gradient in the input backprop tensor we compare the input data to
+// the output data to find the max value in the input window. This gradient is
+// then added to the corresponding output gradient. We need to perform the
+// addition atomically as a single value may be the maximum of a number of
+// input windows.
 template <typename T>
 class MaxPool3DGradSYCL {
   using write_accessor =
@@ -1172,7 +1194,15 @@ struct LaunchMaxPooling3dGradOp<SYCLDevice, T> {
 };
 #ifdef __SYCL_DEVICE_ONLY__
 // Use the OpenCL atomic uint operations to provide a floating point atomic add.
+// For the device we use the atomic compare-exchange builtin to keep trying to
+// add to the memory in a thread safe way. The union is needed as these
+// builtins are not availble for floating point types, only integer types, so
+// we do the addition on the float and the memory update on the uint.
+//
 // TODO(jwlawson): Remove once we have different type accessors for SYCL buffers
+// Providing a way to cast the types of buffers or accessors has been proposed
+// as a SYCL extension, so once this is available we can use and atomic
+// accessor and remove this.
 template <>
 void SyclAtomicAdd<float>(__attribute__((address_space(1))) float* address,
                           const float increment) {
@@ -1207,15 +1237,25 @@ void SyclAtomicAdd<double>(__attribute__((address_space(1))) double* address,
   } while (current.u64 != expected.u64);
 }
 #else
+// Provide a dummy implementation for the host compiler. This code will not be
+// seen by the SYCL device, and so should not be run.
 template <>
 void SyclAtomicAdd<float>(float* address, const float increment) {
-  *address += increment;
+  LOG(FATAL) << "MaxPool3DGradSYCL should only be run on a SYCL device";
 }
 template <>
 void SyclAtomicAdd<double>(double* address, const double increment) {
-  *address += increment;
+  LOG(FATAL) << "MaxPool3DGradSYCL should only be run on a SYCL device";
 }
 #endif  // __SYCL_DEVICE_ONLY__
+// MaxPool3DGradGrad SYCL kernel. Expects the number of threads to be equal to
+// the number of elements in the output backprop tensor, i.e. the number of
+// elements in the output tensor.
+//
+// For each element in the output backprop tensor, find the corresponding input
+// window, and compare the input and output data to find the index of the
+// maximum value in the input tensor. This is then the index of the gradient to
+// pass through to the output backprop tensor.
 template <typename T>
 class MaxPool3DGradGradSYCL {
   using write_accessor =
@@ -1327,6 +1367,12 @@ struct LaunchMaxPooling3dGradGradOp<SYCLDevice, T> {
     });
   }
 };
+// AvgPool3D SYCL kernel. Expects the number of threads to be equal to the number of elements in the output tensor.
+//
+// For each output value find the corresponding input window, and run through
+// the window accumulating the values to form an average. We divide each value
+// before accumulating to prevent the accumulator from becoming significantly
+// bigger than the values we are adding and so decrease any errors.
 template <typename T>
 class AvgPool3DSYCL {
   using write_accessor =
@@ -1428,6 +1474,16 @@ struct LaunchPoolingOp<SYCLDevice, T, AVG> {
     });
   }
 };
+// AvgPool3DGrad SYCL kernel. Expects the number of threads to be equal to the
+// number of elements in the output backprop tensor, i.e. the number of
+// elements in the input tensor.
+//
+// For each output backprop index find a window in the input backprop tensor
+// which corresponds to all the values of the output which were affected by the
+// input value at this index. Then for each gradient in this window, compute
+// the size of the input window which was averaged to give this output, and use
+// this size to scale the gradient accordingly. Add this scaled gradient to the
+// output backprop value.
 template <typename T>
 class AvgPool3DGradSYCL {
   using write_accessor =
