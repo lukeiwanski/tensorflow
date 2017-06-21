@@ -931,7 +931,7 @@ struct SYCL3DPoolParams {
   const int pad_cols_;
 };
 template <typename T>
-class MaxPoolSYCL {
+class MaxPool3DSYCL {
   using write_accessor =
       cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::write,
                          cl::sycl::access::target::global_buffer>;
@@ -940,7 +940,7 @@ class MaxPoolSYCL {
                          cl::sycl::access::target::global_buffer>;
 
  public:
-  MaxPoolSYCL(const int depth, const int batch, const int in_planes,
+  MaxPool3DSYCL(const int depth, const int batch, const int in_planes,
               const int in_rows, const int in_cols, const int out_planes,
               const int out_rows, const int out_cols,
               const std::array<int64, 3>& window,
@@ -1023,7 +1023,7 @@ struct LaunchPoolingOp<SYCLDevice, T, MAX> {
           input_buffer.template get_access<cl::sycl::access::mode::read>(cgh);
       auto output_access =
           output_buffer.template get_access<cl::sycl::access::mode::write>(cgh);
-      MaxPoolSYCL<T> max_pool(depth, batch, in_planes, in_rows, in_cols,
+      MaxPool3DSYCL<T> max_pool(depth, batch, in_planes, in_rows, in_cols,
                               out_planes, out_rows, out_cols, window, stride,
                               padding, input_access, output_access);
 
@@ -1041,7 +1041,7 @@ void SyclAtomicAdd(T* address, const T increment);
 #endif  // __SYCL_DEVICE_ONLY__
 
 template <typename T>
-class MaxPoolGradSYCL {
+class MaxPool3DGradSYCL {
   using write_accessor =
       cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::write,
                          cl::sycl::access::target::global_buffer>;
@@ -1050,7 +1050,7 @@ class MaxPoolGradSYCL {
                          cl::sycl::access::target::global_buffer>;
 
  public:
-  MaxPoolGradSYCL(const int depth, const int batch, const int in_planes,
+  MaxPool3DGradSYCL(const int depth, const int batch, const int in_planes,
                   const int in_rows, const int in_cols,
                   const std::array<int64, 3>& output_shape,
                   const std::array<int64, 3>& window,
@@ -1161,7 +1161,7 @@ struct LaunchMaxPooling3dGradOp<SYCLDevice, T> {
       auto output_backprop_access =
           output_backprop_buffer
               .template get_access<cl::sycl::access::mode::write>(cgh);
-      MaxPoolGradSYCL<T> max_pool(
+      MaxPool3DGradSYCL<T> max_pool(
           depth, batch, in_planes, in_rows, in_cols, out, window, stride,
           padding, input_data_access, output_data_access, input_backprop_access,
           output_backprop_access);
@@ -1217,7 +1217,7 @@ void SyclAtomicAdd<double>(double* address, const double increment) {
 }
 #endif  // __SYCL_DEVICE_ONLY__
 template <typename T>
-class MaxPoolGradGradSYCL {
+class MaxPool3DGradGradSYCL {
   using write_accessor =
       cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::write,
                          cl::sycl::access::target::global_buffer>;
@@ -1226,7 +1226,7 @@ class MaxPoolGradGradSYCL {
                          cl::sycl::access::target::global_buffer>;
 
  public:
-  MaxPoolGradGradSYCL(const Pool3dParameters& params,
+  MaxPool3DGradGradSYCL(const Pool3dParameters& params,
                       const read_accessor input_data_accessor,
                       const read_accessor output_data_accessor,
                       const read_accessor input_backprop_accessor,
@@ -1319,7 +1319,7 @@ struct LaunchMaxPooling3dGradGradOp<SYCLDevice, T> {
       auto output_backprop_access =
           output_backprop_buffer
               .template get_access<cl::sycl::access::mode::write>(cgh);
-      MaxPoolGradGradSYCL<T> functor(params, input_data_access,
+      MaxPool3DGradGradSYCL<T> functor(params, input_data_access,
                                      output_data_access, input_backprop_access,
                                      output_backprop_access);
 
@@ -1328,7 +1328,7 @@ struct LaunchMaxPooling3dGradGradOp<SYCLDevice, T> {
   }
 };
 template <typename T>
-class AvgPoolSYCL {
+class AvgPool3DSYCL {
   using write_accessor =
       cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::write,
                          cl::sycl::access::target::global_buffer>;
@@ -1337,7 +1337,7 @@ class AvgPoolSYCL {
                          cl::sycl::access::target::global_buffer>;
 
  public:
-  AvgPoolSYCL(const int depth, const int batch, const int in_planes,
+  AvgPool3DSYCL(const int depth, const int batch, const int in_planes,
               const int in_rows, const int in_cols, const int out_planes,
               const int out_rows, const int out_cols,
               const std::array<int64, 3>& window,
@@ -1420,7 +1420,7 @@ struct LaunchPoolingOp<SYCLDevice, T, AVG> {
           input_buffer.template get_access<cl::sycl::access::mode::read>(cgh);
       auto output_access =
           output_buffer.template get_access<cl::sycl::access::mode::write>(cgh);
-      AvgPoolSYCL<T> avg_pool(depth, batch, in_planes, in_rows, in_cols,
+      AvgPool3DSYCL<T> avg_pool(depth, batch, in_planes, in_rows, in_cols,
                               out_planes, out_rows, out_cols, window, stride,
                               padding, input_access, output_access);
 
@@ -1429,7 +1429,7 @@ struct LaunchPoolingOp<SYCLDevice, T, AVG> {
   }
 };
 template <typename T>
-class AvgPoolGradSYCL {
+class AvgPool3DGradSYCL {
   using write_accessor =
       cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::write,
                          cl::sycl::access::target::global_buffer>;
@@ -1438,7 +1438,7 @@ class AvgPoolGradSYCL {
                          cl::sycl::access::target::global_buffer>;
 
  public:
-  AvgPoolGradSYCL(const int depth, const int batch, const int in_planes,
+  AvgPool3DGradSYCL(const int depth, const int batch, const int in_planes,
                   const int in_rows, const int in_cols,
                   const std::array<int64, 3>& out_shape,
                   const std::array<int64, 3>& window,
@@ -1545,7 +1545,7 @@ struct LaunchAvgPooling3dGradOp<SYCLDevice, T> {
       auto output_backprop_access =
           output_backprop_buffer
               .template get_access<cl::sycl::access::mode::write>(cgh);
-      AvgPoolGradSYCL<T> functor(depth, batch, in_planes, in_rows, in_cols,
+      AvgPool3DGradSYCL<T> functor(depth, batch, in_planes, in_rows, in_cols,
                                  output_shape, window, stride, padding,
                                  input_backprop_access, output_backprop_access);
 
