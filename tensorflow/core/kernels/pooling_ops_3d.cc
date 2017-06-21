@@ -37,6 +37,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/cudnn_pooling_gpu.h"
 #include "tensorflow/core/kernels/pooling_ops_3d_gpu.h"
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#include "tensorflow/core/util/sycl_util.h"
+#endif  // TENSORFLOW_USE_SYCL
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -1041,19 +1046,6 @@ struct LaunchPoolingOp<SYCLDevice, T, MAX> {
     });
   }
 };
-
-// Need an atomic add for the MaxPool3DGrad kernel. For the device, this need a
-// pointer to global memory which isn't understood by the host. The host should
-// never be calling this method, but we provide the header so that the host
-// compiler can compile the MaxPool3DGrad functor.
-#ifdef __SYCL_DEVICE_ONLY__
-template <typename T>
-void SyclAtomicAdd(__attribute__((address_space(1))) T* address,
-                   const T increment);
-#else
-template <typename T>
-void SyclAtomicAdd(T* address, const T increment);
-#endif  // __SYCL_DEVICE_ONLY__
 // MaxPool3DGrad SYCL kernel. Expects the number of threads to be equal to the
 // number of elements in the pooled output tensor (i.e. the number of elements
 // in the backprop input tensor).
@@ -1193,62 +1185,6 @@ struct LaunchMaxPooling3dGradOp<SYCLDevice, T> {
     });
   }
 };
-#ifdef __SYCL_DEVICE_ONLY__
-// Use the OpenCL atomic uint operations to provide a floating point atomic add.
-// For the device we use the atomic compare-exchange builtin to keep trying to
-// add to the memory in a thread safe way. The union is needed as these
-// builtins are not availble for floating point types, only integer types, so
-// we do the addition on the float and the memory update on the uint.
-//
-// TODO(jwlawson): Remove once we have different type accessors for SYCL buffers
-// Providing a way to cast the types of buffers or accessors has been proposed
-// as a SYCL extension, so once this is available we can use and atomic
-// accessor and remove this.
-template <>
-void SyclAtomicAdd<float>(__attribute__((address_space(1))) float* address,
-                          const float increment) {
-  union {
-    uint32_t u32;
-    float f32;
-  } next, expected, current;
-  current.f32 = *address;
-  __attribute__((address_space(1))) uint32_t* uint_addr =
-      reinterpret_cast<__attribute__((address_space(1))) uint32_t*>(address);
-  do {
-    expected.f32 = current.f32;
-    next.f32 = expected.f32 + increment;
-    current.u32 =
-        _Z14atomic_cmpxchgPVU3AS1jjj(uint_addr, expected.u32, next.u32);
-  } while (current.u32 != expected.u32);
-}
-template <>
-void SyclAtomicAdd<double>(__attribute__((address_space(1))) double* address,
-                           const double increment) {
-  union {
-    uint64_t u64;
-    double d64;
-  } next, expected, current;
-  current.d64 = *address;
-  __attribute__((address_space(1))) uint64_t* uint_addr =
-      reinterpret_cast<__attribute__((address_space(1))) uint64_t*>(address);
-  do {
-    expected.d64 = current.d64;
-    next.d64 = expected.d64 + increment;
-    current.d64 = _Z12atom_cmpxchgPVU3AS1mmm(uint_addr, expected.u64, next.u64);
-  } while (current.u64 != expected.u64);
-}
-#else
-// Provide a dummy implementation for the host compiler. This code will not be
-// seen by the SYCL device, and so should not be run.
-template <>
-void SyclAtomicAdd<float>(float* address, const float increment) {
-  LOG(FATAL) << "MaxPool3DGradSYCL should only be run on a SYCL device";
-}
-template <>
-void SyclAtomicAdd<double>(double* address, const double increment) {
-  LOG(FATAL) << "MaxPool3DGradSYCL should only be run on a SYCL device";
-}
-#endif  // __SYCL_DEVICE_ONLY__
 // MaxPool3DGradGrad SYCL kernel. Expects the number of threads to be equal to
 // the number of elements in the output backprop tensor, i.e. the number of
 // elements in the output tensor.
