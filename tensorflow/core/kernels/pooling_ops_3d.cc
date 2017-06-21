@@ -851,30 +851,6 @@ TF_CALL_float(REGISTER_GPU_KERNELS) TF_CALL_half(REGISTER_GPU_KERNELS)
 // convenient constructors.
 struct SYCL3DPoolParams {
   SYCL3DPoolParams(const int depth, const int batch, const int in_planes,
-                   const int in_rows, const int in_cols,
-                   const std::array<int64, 3>& out_shape,
-                   const std::array<int64, 3>& window,
-                   const std::array<int64, 3>& stride,
-                   const std::array<int64, 3>& padding)
-      : depth_(depth),
-        batch_(batch),
-        in_planes_(in_planes),
-        in_rows_(in_rows),
-        in_cols_(in_cols),
-        window_planes_(window[2]),
-        window_rows_(window[1]),
-        window_cols_(window[0]),
-        stride_planes_(stride[2]),
-        stride_rows_(stride[1]),
-        stride_cols_(stride[0]),
-        out_planes_(out_shape[2]),
-        out_rows_(out_shape[1]),
-        out_cols_(out_shape[0]),
-        pad_planes_(padding[2]),
-        pad_rows_(padding[1]),
-        pad_cols_(padding[0]) {}
-
-  SYCL3DPoolParams(const int depth, const int batch, const int in_planes,
                    const int in_rows, const int in_cols, const int out_planes,
                    const int out_rows, const int out_cols,
                    const std::array<int64, 3>& window,
@@ -897,6 +873,16 @@ struct SYCL3DPoolParams {
         pad_planes_(padding[2]),
         pad_rows_(padding[1]),
         pad_cols_(padding[0]) {}
+
+  SYCL3DPoolParams(const int depth, const int batch, const int in_planes,
+                   const int in_rows, const int in_cols,
+                   const std::array<int64, 3>& out_shape,
+                   const std::array<int64, 3>& window,
+                   const std::array<int64, 3>& stride,
+                   const std::array<int64, 3>& padding)
+      : SYCL3DPoolParams(depth, batch, in_planes, in_rows, in_cols,
+                         out_shape[2], out_shape[1], out_shape[0], window,
+                         stride, padding) {}
 
   SYCL3DPoolParams(const Pool3dParameters& params)
       : depth_(params.depth),
