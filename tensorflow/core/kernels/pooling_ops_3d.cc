@@ -840,24 +840,37 @@ TF_CALL_float(REGISTER_GPU_KERNELS) TF_CALL_half(REGISTER_GPU_KERNELS)
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-class MaxPoolSYCL {
-  using write_accessor =
-      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::write,
-                         cl::sycl::access::target::global_buffer>;
-  using read_accessor =
-      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::read,
-                         cl::sycl::access::target::global_buffer>;
+struct SYCL3DPoolParams {
+  SYCL3DPoolParams(const int depth, const int batch, const int in_planes,
+                   const int in_rows, const int in_cols,
+                   const std::array<int64, 3>& out_shape,
+                   const std::array<int64, 3>& window,
+                   const std::array<int64, 3>& stride,
+                   const std::array<int64, 3>& padding)
+      : depth_(depth),
+        batch_(batch),
+        in_planes_(in_planes),
+        in_rows_(in_rows),
+        in_cols_(in_cols),
+        window_planes_(window[2]),
+        window_rows_(window[1]),
+        window_cols_(window[0]),
+        stride_planes_(stride[2]),
+        stride_rows_(stride[1]),
+        stride_cols_(stride[0]),
+        out_planes_(out_shape[2]),
+        out_rows_(out_shape[1]),
+        out_cols_(out_shape[0]),
+        pad_planes_(padding[2]),
+        pad_rows_(padding[1]),
+        pad_cols_(padding[0]) {}
 
- public:
-  MaxPoolSYCL(const int depth, const int batch, const int in_planes,
-              const int in_rows, const int in_cols, const int out_planes,
-              const int out_rows, const int out_cols,
-              const std::array<int64, 3>& window,
-              const std::array<int64, 3>& stride,
-              const std::array<int64, 3>& padding,
-              const read_accessor input_accessor,
-              write_accessor output_accessor)
+  SYCL3DPoolParams(const int depth, const int batch, const int in_planes,
+                   const int in_rows, const int in_cols, const int out_planes,
+                   const int out_rows, const int out_cols,
+                   const std::array<int64, 3>& window,
+                   const std::array<int64, 3>& stride,
+                   const std::array<int64, 3>& padding)
       : depth_(depth),
         batch_(batch),
         in_planes_(in_planes),
@@ -874,46 +887,27 @@ class MaxPoolSYCL {
         out_cols_(out_cols),
         pad_planes_(padding[2]),
         pad_rows_(padding[1]),
-        pad_cols_(padding[0]),
-        input_accessor_(input_accessor),
-        output_accessor_(output_accessor) {}
-  void operator()(cl::sycl::item<1> item) {
-    T* input_data = ConvertToActualTypeSycl(T, input_accessor_);
-    T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
+        pad_cols_(padding[0]) {}
 
-    int index = item.get_linear_id();
-    int n = index;
-    int d = n % depth_;
-    n /= depth_;
-    int cstart = (n % out_cols_) * stride_cols_ - pad_cols_;
-    int cend = std::min(cstart + window_cols_, in_cols_);
-    cstart = std::max(cstart, 0);
-    n /= out_cols_;
-    int rstart = (n % out_rows_) * stride_rows_ - pad_rows_;
-    int rend = std::min(rstart + window_rows_, in_rows_);
-    rstart = std::max(rstart, 0);
-    n /= out_rows_;
-    int pstart = (n % out_planes_) * stride_planes_ - pad_planes_;
-    int pend = std::min(pstart + window_planes_, in_planes_);
-    pstart = std::max(pstart, 0);
-    n /= out_planes_;
-    T maxval = Eigen::NumTraits<T>::lowest();
-    const T* input_data_n =
-        input_data + n * in_planes_ * in_cols_ * in_rows_ * depth_;
-    for (int p = pstart; p < pend; ++p) {
-      for (int r = rstart; r < rend; ++r) {
-        for (int c = cstart; c < cend; ++c) {
-          int idx = ((p * in_rows_ + r) * in_cols_ + c) * depth_ + d;
-          if (input_data_n[idx] > maxval) {
-            maxval = input_data_n[idx];
-          }
-        }
-      }
-    }
-    output_data[index] = maxval;
-  }
+  SYCL3DPoolParams(const Pool3dParameters& params)
+      : depth_(params.depth),
+        batch_(params.tensor_in_batch),
+        in_planes_(params.tensor_in_planes),
+        in_rows_(params.tensor_in_rows),
+        in_cols_(params.tensor_in_cols),
+        window_planes_(params.window_planes),
+        window_rows_(params.window_rows),
+        window_cols_(params.window_cols),
+        stride_planes_(params.plane_stride),
+        stride_rows_(params.row_stride),
+        stride_cols_(params.col_stride),
+        out_planes_(params.out_plane),
+        out_rows_(params.out_height),
+        out_cols_(params.out_width),
+        pad_planes_(params.pad_planes),
+        pad_rows_(params.pad_rows),
+        pad_cols_(params.pad_cols) {}
 
- private:
   const int depth_;
   const int batch_;
   const int in_planes_;
@@ -935,7 +929,67 @@ class MaxPoolSYCL {
   const int pad_planes_;
   const int pad_rows_;
   const int pad_cols_;
+};
+template <typename T>
+class MaxPoolSYCL {
+  using write_accessor =
+      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::write,
+                         cl::sycl::access::target::global_buffer>;
+  using read_accessor =
+      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::read,
+                         cl::sycl::access::target::global_buffer>;
 
+ public:
+  MaxPoolSYCL(const int depth, const int batch, const int in_planes,
+              const int in_rows, const int in_cols, const int out_planes,
+              const int out_rows, const int out_cols,
+              const std::array<int64, 3>& window,
+              const std::array<int64, 3>& stride,
+              const std::array<int64, 3>& padding,
+              const read_accessor input_accessor,
+              write_accessor output_accessor)
+      : p_(depth, batch, in_planes, in_rows, in_cols, out_planes, out_rows,
+           out_cols, window, stride, padding),
+        input_accessor_(input_accessor),
+        output_accessor_(output_accessor) {}
+  void operator()(cl::sycl::item<1> item) {
+    T* input_data = ConvertToActualTypeSycl(T, input_accessor_);
+    T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
+
+    int index = item.get_linear_id();
+    int n = index;
+    int d = n % p_.depth_;
+    n /= p_.depth_;
+    int cstart = (n % p_.out_cols_) * p_.stride_cols_ - p_.pad_cols_;
+    int cend = std::min(cstart + p_.window_cols_, p_.in_cols_);
+    cstart = std::max(cstart, 0);
+    n /= p_.out_cols_;
+    int rstart = (n % p_.out_rows_) * p_.stride_rows_ - p_.pad_rows_;
+    int rend = std::min(rstart + p_.window_rows_, p_.in_rows_);
+    rstart = std::max(rstart, 0);
+    n /= p_.out_rows_;
+    int pstart = (n % p_.out_planes_) * p_.stride_planes_ - p_.pad_planes_;
+    int pend = std::min(pstart + p_.window_planes_, p_.in_planes_);
+    pstart = std::max(pstart, 0);
+    n /= p_.out_planes_;
+    T maxval = Eigen::NumTraits<T>::lowest();
+    const T* input_data_n =
+        input_data + n * p_.in_planes_ * p_.in_cols_ * p_.in_rows_ * p_.depth_;
+    for (int p = pstart; p < pend; ++p) {
+      for (int r = rstart; r < rend; ++r) {
+        for (int c = cstart; c < cend; ++c) {
+          int idx = ((p * p_.in_rows_ + r) * p_.in_cols_ + c) * p_.depth_ + d;
+          if (input_data_n[idx] > maxval) {
+            maxval = input_data_n[idx];
+          }
+        }
+      }
+    }
+    output_data[index] = maxval;
+  }
+
+ private:
+  const SYCL3DPoolParams p_;
   const read_accessor input_accessor_;
   write_accessor output_accessor_;
 };
@@ -1001,29 +1055,13 @@ class MaxPoolGradSYCL {
                   const int out_rows, const int out_cols,
                   const std::array<int64, 3>& window,
                   const std::array<int64, 3>& stride,
-                  // const std::array<int64, 3>& out_shape,
                   const std::array<int64, 3>& padding,
                   const read_accessor input_data_accessor,
                   const read_accessor output_data_accessor,
                   const read_accessor input_backprop_accessor,
                   write_accessor output_backprop_accessor)
-      : depth_(depth),
-        batch_(batch),
-        in_planes_(in_planes),
-        in_rows_(in_rows),
-        in_cols_(in_cols),
-        window_planes_(window[2]),
-        window_rows_(window[1]),
-        window_cols_(window[0]),
-        stride_planes_(stride[2]),
-        stride_rows_(stride[1]),
-        stride_cols_(stride[0]),
-        out_planes_(out_planes),
-        out_rows_(out_rows),
-        out_cols_(out_cols),
-        pad_planes_(padding[2]),
-        pad_rows_(padding[1]),
-        pad_cols_(padding[0]),
+      : p_(depth, batch, in_planes, in_rows, in_cols, out_planes, out_rows,
+           out_cols, window, stride, padding),
         input_data_accessor_(input_data_accessor),
         output_data_accessor_(output_data_accessor),
         input_backprop_accessor_(input_backprop_accessor),
@@ -1036,28 +1074,28 @@ class MaxPoolGradSYCL {
 
     int index = item.get_linear_id();
     int n = index;
-    int d = n % depth_;
-    n /= depth_;
-    int cstart = (n % out_cols_) * stride_cols_ - pad_cols_;
-    int cend = std::min(cstart + window_cols_, in_cols_);
+    int d = n % p_.depth_;
+    n /= p_.depth_;
+    int cstart = (n % p_.out_cols_) * p_.stride_cols_ - p_.pad_cols_;
+    int cend = std::min(cstart + p_.window_cols_, p_.in_cols_);
     cstart = std::max(cstart, 0);
-    n /= out_cols_;
-    int rstart = (n % out_rows_) * stride_rows_ - pad_rows_;
-    int rend = std::min(rstart + window_rows_, in_rows_);
+    n /= p_.out_cols_;
+    int rstart = (n % p_.out_rows_) * p_.stride_rows_ - p_.pad_rows_;
+    int rend = std::min(rstart + p_.window_rows_, p_.in_rows_);
     rstart = std::max(rstart, 0);
-    n /= out_rows_;
-    int pstart = (n % out_planes_) * stride_planes_ - pad_planes_;
-    int pend = std::min(pstart + window_planes_, in_planes_);
+    n /= p_.out_rows_;
+    int pstart = (n % p_.out_planes_) * p_.stride_planes_ - p_.pad_planes_;
+    int pend = std::min(pstart + p_.window_planes_, p_.in_planes_);
     pstart = std::max(pstart, 0);
-    n /= out_planes_;
+    n /= p_.out_planes_;
     int maxidx = -1;
     bool should_stop = false;
     const T* input_data_n =
-        input_data + n * in_planes_ * in_cols_ * in_rows_ * depth_;
+        input_data + n * p_.in_planes_ * p_.in_cols_ * p_.in_rows_ * p_.depth_;
     for (int p = pstart; p < pend && !should_stop; ++p) {
       for (int r = rstart; r < rend && !should_stop; ++r) {
         for (int c = cstart; c < cend && !should_stop; ++c) {
-          int idx = ((p * in_rows_ + r) * in_cols_ + c) * depth_ + d;
+          int idx = ((p * p_.in_rows_ + r) * p_.in_cols_ + c) * p_.depth_ + d;
           if (output_data[index] == input_data_n[idx]) {
             maxidx = idx;
             should_stop = true;
@@ -1066,34 +1104,16 @@ class MaxPoolGradSYCL {
       }
     }
     if (maxidx != -1) {
-      SyclAtomicAdd(output_backprop +
-                        n * in_planes_ * in_rows_ * in_cols_ * depth_ + maxidx,
-                    input_backprop[index]);
+      SyclAtomicAdd(
+          output_backprop +
+              n * p_.in_planes_ * p_.in_rows_ * p_.in_cols_ * p_.depth_ +
+              maxidx,
+          input_backprop[index]);
     }
   }
 
  private:
-  const int depth_;
-  const int batch_;
-  const int in_planes_;
-  const int in_rows_;
-  const int in_cols_;
-
-  const int window_planes_;
-  const int window_rows_;
-  const int window_cols_;
-
-  const int stride_planes_;
-  const int stride_rows_;
-  const int stride_cols_;
-
-  const int out_planes_;
-  const int out_rows_;
-  const int out_cols_;
-
-  const int pad_planes_;
-  const int pad_rows_;
-  const int pad_cols_;
+  const SYCL3DPoolParams p_;
 
   const read_accessor input_data_accessor_;
   const read_accessor output_data_accessor_;
@@ -1214,23 +1234,7 @@ class MaxPoolGradGradSYCL {
                       const read_accessor output_data_accessor,
                       const read_accessor input_backprop_accessor,
                       write_accessor output_backprop_accessor)
-      : depth_(params.depth),
-        batch_(params.tensor_in_batch),
-        in_planes_(params.tensor_in_planes),
-        in_rows_(params.tensor_in_rows),
-        in_cols_(params.tensor_in_cols),
-        window_planes_(params.window_planes),
-        window_rows_(params.window_rows),
-        window_cols_(params.window_cols),
-        stride_planes_(params.plane_stride),
-        stride_rows_(params.row_stride),
-        stride_cols_(params.col_stride),
-        out_planes_(params.out_plane),
-        out_rows_(params.out_height),
-        out_cols_(params.out_width),
-        pad_planes_(params.pad_planes),
-        pad_rows_(params.pad_rows),
-        pad_cols_(params.pad_cols),
+      : p_(params),
         input_data_accessor_(input_data_accessor),
         output_data_accessor_(output_data_accessor),
         input_backprop_accessor_(input_backprop_accessor),
@@ -1243,28 +1247,28 @@ class MaxPoolGradGradSYCL {
 
     int index = item.get_linear_id();
     int n = index;
-    int d = n % depth_;
-    n /= depth_;
-    int cstart = (n % out_cols_) * stride_cols_ - pad_cols_;
-    int cend = std::min(cstart + window_cols_, in_cols_);
+    int d = n % p_.depth_;
+    n /= p_.depth_;
+    int cstart = (n % p_.out_cols_) * p_.stride_cols_ - p_.pad_cols_;
+    int cend = std::min(cstart + p_.window_cols_, p_.in_cols_);
     cstart = std::max(cstart, 0);
-    n /= out_cols_;
-    int rstart = (n % out_rows_) * stride_rows_ - pad_rows_;
-    int rend = std::min(rstart + window_rows_, in_rows_);
+    n /= p_.out_cols_;
+    int rstart = (n % p_.out_rows_) * p_.stride_rows_ - p_.pad_rows_;
+    int rend = std::min(rstart + p_.window_rows_, p_.in_rows_);
     rstart = std::max(rstart, 0);
-    n /= out_rows_;
-    int pstart = (n % out_planes_) * stride_planes_ - pad_planes_;
-    int pend = std::min(pstart + window_planes_, in_planes_);
+    n /= p_.out_rows_;
+    int pstart = (n % p_.out_planes_) * p_.stride_planes_ - p_.pad_planes_;
+    int pend = std::min(pstart + p_.window_planes_, p_.in_planes_);
     pstart = std::max(pstart, 0);
-    n /= out_planes_;
+    n /= p_.out_planes_;
     int maxidx = -1;
     bool should_stop = false;
     const T* input_data_n =
-        input_data + n * in_planes_ * in_cols_ * in_rows_ * depth_;
+        input_data + n * p_.in_planes_ * p_.in_cols_ * p_.in_rows_ * p_.depth_;
     for (int p = pstart; p < pend && !should_stop; ++p) {
       for (int r = rstart; r < rend && !should_stop; ++r) {
         for (int c = cstart; c < cend && !should_stop; ++c) {
-          int idx = ((p * in_rows_ + r) * in_cols_ + c) * depth_ + d;
+          int idx = ((p * p_.in_rows_ + r) * p_.in_cols_ + c) * p_.depth_ + d;
           if (output_data[index] == input_data_n[idx]) {
             maxidx = idx;
             should_stop = true;
@@ -1273,34 +1277,14 @@ class MaxPoolGradGradSYCL {
       }
     }
     if (maxidx != -1) {
-      output_backprop[index] =
-          input_backprop[n * in_planes_ * in_rows_ * in_cols_ * depth_ +
-                         maxidx];
+      output_backprop[index] = input_backprop[n * p_.in_planes_ * p_.in_rows_ *
+                                                  p_.in_cols_ * p_.depth_ +
+                                              maxidx];
     }
   }
 
  private:
-  const int depth_;
-  const int batch_;
-  const int in_planes_;
-  const int in_rows_;
-  const int in_cols_;
-
-  const int window_planes_;
-  const int window_rows_;
-  const int window_cols_;
-
-  const int stride_planes_;
-  const int stride_rows_;
-  const int stride_cols_;
-
-  const int out_planes_;
-  const int out_rows_;
-  const int out_cols_;
-
-  const int pad_planes_;
-  const int pad_rows_;
-  const int pad_cols_;
+  const SYCL3DPoolParams p_;
 
   const read_accessor input_data_accessor_;
   const read_accessor output_data_accessor_;
@@ -1364,23 +1348,8 @@ class AvgPoolSYCL {
               const std::array<int64, 3>& padding,
               const read_accessor input_accessor,
               write_accessor output_accessor)
-      : depth_(depth),
-        batch_(batch),
-        in_planes_(in_planes),
-        in_rows_(in_rows),
-        in_cols_(in_cols),
-        window_planes_(window[2]),
-        window_rows_(window[1]),
-        window_cols_(window[0]),
-        stride_planes_(stride[2]),
-        stride_rows_(stride[1]),
-        stride_cols_(stride[0]),
-        out_planes_(out_planes),
-        out_rows_(out_rows),
-        out_cols_(out_cols),
-        pad_planes_(padding[2]),
-        pad_rows_(padding[1]),
-        pad_cols_(padding[0]),
+      : p_(depth, batch, in_planes, in_rows, in_cols, out_planes, out_rows,
+           out_cols, window, stride, padding),
         input_accessor_(input_accessor),
         output_accessor_(output_accessor) {}
   void operator()(cl::sycl::item<1> item) {
@@ -1389,29 +1358,29 @@ class AvgPoolSYCL {
 
     int index = item.get_linear_id();
     int n = index;
-    int d = n % depth_;
-    n /= depth_;
-    int cstart = (n % out_cols_) * stride_cols_ - pad_cols_;
-    int cend = std::min(cstart + window_cols_, in_cols_);
+    int d = n % p_.depth_;
+    n /= p_.depth_;
+    int cstart = (n % p_.out_cols_) * p_.stride_cols_ - p_.pad_cols_;
+    int cend = std::min(cstart + p_.window_cols_, p_.in_cols_);
     cstart = std::max(cstart, 0);
-    n /= out_cols_;
-    int rstart = (n % out_rows_) * stride_rows_ - pad_rows_;
-    int rend = std::min(rstart + window_rows_, in_rows_);
+    n /= p_.out_cols_;
+    int rstart = (n % p_.out_rows_) * p_.stride_rows_ - p_.pad_rows_;
+    int rend = std::min(rstart + p_.window_rows_, p_.in_rows_);
     rstart = std::max(rstart, 0);
-    n /= out_rows_;
-    int pstart = (n % out_planes_) * stride_planes_ - pad_planes_;
-    int pend = std::min(pstart + window_planes_, in_planes_);
+    n /= p_.out_rows_;
+    int pstart = (n % p_.out_planes_) * p_.stride_planes_ - p_.pad_planes_;
+    int pend = std::min(pstart + p_.window_planes_, p_.in_planes_);
     pstart = std::max(pstart, 0);
-    n /= out_planes_;
+    n /= p_.out_planes_;
     T accum = T(0);
     T count =
         static_cast<T>((pend - pstart) * (rend - rstart) * (cend - cstart));
     const T* input_data_n =
-        input_data + n * in_planes_ * in_cols_ * in_rows_ * depth_;
+        input_data + n * p_.in_planes_ * p_.in_cols_ * p_.in_rows_ * p_.depth_;
     for (int p = pstart; p < pend; ++p) {
       for (int r = rstart; r < rend; ++r) {
         for (int c = cstart; c < cend; ++c) {
-          int idx = ((p * in_rows_ + r) * in_cols_ + c) * depth_ + d;
+          int idx = ((p * p_.in_rows_ + r) * p_.in_cols_ + c) * p_.depth_ + d;
           accum += input_data_n[idx] / count;
         }
       }
@@ -1420,28 +1389,7 @@ class AvgPoolSYCL {
   }
 
  private:
-  const int depth_;
-  const int batch_;
-  const int in_planes_;
-  const int in_rows_;
-  const int in_cols_;
-
-  const int window_planes_;
-  const int window_rows_;
-  const int window_cols_;
-
-  const int stride_planes_;
-  const int stride_rows_;
-  const int stride_cols_;
-
-  const int out_planes_;
-  const int out_rows_;
-  const int out_cols_;
-
-  const int pad_planes_;
-  const int pad_rows_;
-  const int pad_cols_;
-
+  const SYCL3DPoolParams p_;
   const read_accessor input_accessor_;
   write_accessor output_accessor_;
 };
@@ -1501,23 +1449,8 @@ class AvgPoolGradSYCL {
                   const std::array<int64, 3>& padding,
                   const read_accessor input_backprop_accessor,
                   write_accessor output_backprop_accessor)
-      : depth_(depth),
-        batch_(batch),
-        in_planes_(in_planes),
-        in_rows_(in_rows),
-        in_cols_(in_cols),
-        window_planes_(window[2]),
-        window_rows_(window[1]),
-        window_cols_(window[0]),
-        stride_planes_(stride[2]),
-        stride_rows_(stride[1]),
-        stride_cols_(stride[0]),
-        out_planes_(out_shape[2]),
-        out_rows_(out_shape[1]),
-        out_cols_(out_shape[0]),
-        pad_planes_(padding[2]),
-        pad_rows_(padding[1]),
-        pad_cols_(padding[0]),
+      : p_(depth, batch, in_planes, in_rows, in_cols, out_shape, window, stride,
+           padding),
         input_backprop_accessor_(input_backprop_accessor),
         output_backprop_accessor_(output_backprop_accessor) {}
   void operator()(cl::sycl::item<1> item) {
@@ -1526,42 +1459,47 @@ class AvgPoolGradSYCL {
 
     const int index = item.get_linear_id();
     int n = index;
-    const int d = n % depth_;
-    n /= depth_;
-    const int c = (n % in_cols_) + pad_cols_;
+    const int d = n % p_.depth_;
+    n /= p_.depth_;
+    const int c = (n % p_.in_cols_) + p_.pad_cols_;
     const int poolcstart =
-        (c < window_cols_) ? 0 : (c - window_cols_) / stride_cols_ + 1;
-    const int poolcend = std::min(c / stride_cols_ + 1, out_cols_);
-    n /= in_cols_;
-    const int r = (n % in_rows_) + pad_rows_;
+        (c < p_.window_cols_) ? 0 : (c - p_.window_cols_) / p_.stride_cols_ + 1;
+    const int poolcend = std::min(c / p_.stride_cols_ + 1, p_.out_cols_);
+    n /= p_.in_cols_;
+    const int r = (n % p_.in_rows_) + p_.pad_rows_;
     const int poolrstart =
-        (r < window_rows_) ? 0 : (r - window_rows_) / stride_rows_ + 1;
-    const int poolrend = std::min(r / stride_rows_ + 1, out_rows_);
-    n /= in_rows_;
-    const int p = (n % in_planes_) + pad_planes_;
+        (r < p_.window_rows_) ? 0 : (r - p_.window_rows_) / p_.stride_rows_ + 1;
+    const int poolrend = std::min(r / p_.stride_rows_ + 1, p_.out_rows_);
+    n /= p_.in_rows_;
+    const int p = (n % p_.in_planes_) + p_.pad_planes_;
     const int poolpstart =
-        (p < window_planes_) ? 0 : (p - window_planes_) / stride_planes_ + 1;
-    const int poolpend = std::min(p / stride_planes_ + 1, out_planes_);
-    n /= in_planes_;
+        (p < p_.window_planes_)
+            ? 0
+            : (p - p_.window_planes_) / p_.stride_planes_ + 1;
+    const int poolpend = std::min(p / p_.stride_planes_ + 1, p_.out_planes_);
+    n /= p_.in_planes_;
 
     T gradient = T(0);
     const T* input_backprop_n =
-        input_backprop + n * out_planes_ * out_cols_ * out_rows_ * depth_;
+        input_backprop +
+        n * p_.out_planes_ * p_.out_cols_ * p_.out_rows_ * p_.depth_;
     for (int poolp = poolpstart; poolp < poolpend; ++poolp) {
-      int pstart = poolp * stride_planes_ - pad_planes_;
-      const int pend = std::min(pstart + window_planes_, in_planes_);
+      int pstart = poolp * p_.stride_planes_ - p_.pad_planes_;
+      const int pend = std::min(pstart + p_.window_planes_, p_.in_planes_);
       pstart = std::max(pstart, 0);
       const int plane_window_size = pend - pstart;
       for (int poolr = poolrstart; poolr < poolrend; ++poolr) {
-        int rstart = poolr * stride_rows_ - pad_rows_;
-        const int rend = std::min(rstart + window_rows_, in_rows_);
+        int rstart = poolr * p_.stride_rows_ - p_.pad_rows_;
+        const int rend = std::min(rstart + p_.window_rows_, p_.in_rows_);
         rstart = std::max(rstart, 0);
         const int row_window_size = rend - rstart;
         for (int poolc = poolcstart; poolc < poolcend; ++poolc) {
           const int idx =
-              ((poolp * out_rows_ + poolr) * out_cols_ + poolc) * depth_ + d;
-          int cstart = poolc * stride_cols_ - pad_cols_;
-          const int cend = std::min(cstart + window_cols_, in_cols_);
+              ((poolp * p_.out_rows_ + poolr) * p_.out_cols_ + poolc) *
+                  p_.depth_ +
+              d;
+          int cstart = poolc * p_.stride_cols_ - p_.pad_cols_;
+          const int cend = std::min(cstart + p_.window_cols_, p_.in_cols_);
           cstart = std::max(cstart, 0);
           const int col_window_size = cend - cstart;
           const int window_size =
@@ -1574,28 +1512,7 @@ class AvgPoolGradSYCL {
   }
 
  private:
-  const int depth_;
-  const int batch_;
-  const int in_planes_;
-  const int in_rows_;
-  const int in_cols_;
-
-  const int window_planes_;
-  const int window_rows_;
-  const int window_cols_;
-
-  const int stride_planes_;
-  const int stride_rows_;
-  const int stride_cols_;
-
-  const int out_planes_;
-  const int out_rows_;
-  const int out_cols_;
-
-  const int pad_planes_;
-  const int pad_rows_;
-  const int pad_cols_;
-
+  const SYCL3DPoolParams p_;
   const read_accessor input_backprop_accessor_;
   write_accessor output_backprop_accessor_;
 };
