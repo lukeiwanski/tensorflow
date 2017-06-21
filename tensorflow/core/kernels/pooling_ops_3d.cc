@@ -951,13 +951,13 @@ class MaxPool3DSYCL {
 
  public:
   MaxPool3DSYCL(const int depth, const int batch, const int in_planes,
-              const int in_rows, const int in_cols, const int out_planes,
-              const int out_rows, const int out_cols,
-              const std::array<int64, 3>& window,
-              const std::array<int64, 3>& stride,
-              const std::array<int64, 3>& padding,
-              const read_accessor input_accessor,
-              write_accessor output_accessor)
+                const int in_rows, const int in_cols, const int out_planes,
+                const int out_rows, const int out_cols,
+                const std::array<int64, 3>& window,
+                const std::array<int64, 3>& stride,
+                const std::array<int64, 3>& padding,
+                const read_accessor input_accessor,
+                write_accessor output_accessor)
       : p_(depth, batch, in_planes, in_rows, in_cols, out_planes, out_rows,
            out_cols, window, stride, padding),
         input_accessor_(input_accessor),
@@ -1034,8 +1034,8 @@ struct LaunchPoolingOp<SYCLDevice, T, MAX> {
       auto output_access =
           output_buffer.template get_access<cl::sycl::access::mode::write>(cgh);
       MaxPool3DSYCL<T> max_pool(depth, batch, in_planes, in_rows, in_cols,
-                              out_planes, out_rows, out_cols, window, stride,
-                              padding, input_access, output_access);
+                                out_planes, out_rows, out_cols, window, stride,
+                                padding, input_access, output_access);
 
       cgh.parallel_for(cl::sycl::range<1>(num_threads), max_pool);
     });
@@ -1074,17 +1074,17 @@ class MaxPool3DGradSYCL {
 
  public:
   MaxPool3DGradSYCL(const int depth, const int batch, const int in_planes,
-                  const int in_rows, const int in_cols,
-                  const std::array<int64, 3>& output_shape,
-                  const std::array<int64, 3>& window,
-                  const std::array<int64, 3>& stride,
-                  const std::array<int64, 3>& padding,
-                  const read_accessor input_data_accessor,
-                  const read_accessor output_data_accessor,
-                  const read_accessor input_backprop_accessor,
-                  write_accessor output_backprop_accessor)
-      : p_(depth, batch, in_planes, in_rows, in_cols, output_shape, window, stride,
-           padding),
+                    const int in_rows, const int in_cols,
+                    const std::array<int64, 3>& output_shape,
+                    const std::array<int64, 3>& window,
+                    const std::array<int64, 3>& stride,
+                    const std::array<int64, 3>& padding,
+                    const read_accessor input_data_accessor,
+                    const read_accessor output_data_accessor,
+                    const read_accessor input_backprop_accessor,
+                    write_accessor output_backprop_accessor)
+      : p_(depth, batch, in_planes, in_rows, in_cols, output_shape, window,
+           stride, padding),
         input_data_accessor_(input_data_accessor),
         output_data_accessor_(output_data_accessor),
         input_backprop_accessor_(input_backprop_accessor),
@@ -1268,10 +1268,10 @@ class MaxPool3DGradGradSYCL {
 
  public:
   MaxPool3DGradGradSYCL(const Pool3dParameters& params,
-                      const read_accessor input_data_accessor,
-                      const read_accessor output_data_accessor,
-                      const read_accessor input_backprop_accessor,
-                      write_accessor output_backprop_accessor)
+                        const read_accessor input_data_accessor,
+                        const read_accessor output_data_accessor,
+                        const read_accessor input_backprop_accessor,
+                        write_accessor output_backprop_accessor)
       : p_(params),
         input_data_accessor_(input_data_accessor),
         output_data_accessor_(output_data_accessor),
@@ -1360,15 +1360,16 @@ struct LaunchMaxPooling3dGradGradOp<SYCLDevice, T> {
       auto output_backprop_access =
           output_backprop_buffer
               .template get_access<cl::sycl::access::mode::write>(cgh);
-      MaxPool3DGradGradSYCL<T> functor(params, input_data_access,
-                                     output_data_access, input_backprop_access,
-                                     output_backprop_access);
+      MaxPool3DGradGradSYCL<T> functor(
+          params, input_data_access, output_data_access, input_backprop_access,
+          output_backprop_access);
 
       cgh.parallel_for(cl::sycl::range<1>(num_threads), functor);
     });
   }
 };
-// AvgPool3D SYCL kernel. Expects the number of threads to be equal to the number of elements in the output tensor.
+// AvgPool3D SYCL kernel. Expects the number of threads to be equal to the
+// number of elements in the output tensor.
 //
 // For each output value find the corresponding input window, and run through
 // the window accumulating the values to form an average. We divide each value
@@ -1385,13 +1386,13 @@ class AvgPool3DSYCL {
 
  public:
   AvgPool3DSYCL(const int depth, const int batch, const int in_planes,
-              const int in_rows, const int in_cols, const int out_planes,
-              const int out_rows, const int out_cols,
-              const std::array<int64, 3>& window,
-              const std::array<int64, 3>& stride,
-              const std::array<int64, 3>& padding,
-              const read_accessor input_accessor,
-              write_accessor output_accessor)
+                const int in_rows, const int in_cols, const int out_planes,
+                const int out_rows, const int out_cols,
+                const std::array<int64, 3>& window,
+                const std::array<int64, 3>& stride,
+                const std::array<int64, 3>& padding,
+                const read_accessor input_accessor,
+                write_accessor output_accessor)
       : p_(depth, batch, in_planes, in_rows, in_cols, out_planes, out_rows,
            out_cols, window, stride, padding),
         input_accessor_(input_accessor),
@@ -1468,8 +1469,8 @@ struct LaunchPoolingOp<SYCLDevice, T, AVG> {
       auto output_access =
           output_buffer.template get_access<cl::sycl::access::mode::write>(cgh);
       AvgPool3DSYCL<T> avg_pool(depth, batch, in_planes, in_rows, in_cols,
-                              out_planes, out_rows, out_cols, window, stride,
-                              padding, input_access, output_access);
+                                out_planes, out_rows, out_cols, window, stride,
+                                padding, input_access, output_access);
 
       cgh.parallel_for(cl::sycl::range<1>(num_threads), avg_pool);
     });
@@ -1496,13 +1497,13 @@ class AvgPool3DGradSYCL {
 
  public:
   AvgPool3DGradSYCL(const int depth, const int batch, const int in_planes,
-                  const int in_rows, const int in_cols,
-                  const std::array<int64, 3>& out_shape,
-                  const std::array<int64, 3>& window,
-                  const std::array<int64, 3>& stride,
-                  const std::array<int64, 3>& padding,
-                  const read_accessor input_backprop_accessor,
-                  write_accessor output_backprop_accessor)
+                    const int in_rows, const int in_cols,
+                    const std::array<int64, 3>& out_shape,
+                    const std::array<int64, 3>& window,
+                    const std::array<int64, 3>& stride,
+                    const std::array<int64, 3>& padding,
+                    const read_accessor input_backprop_accessor,
+                    write_accessor output_backprop_accessor)
       : p_(depth, batch, in_planes, in_rows, in_cols, out_shape, window, stride,
            padding),
         input_backprop_accessor_(input_backprop_accessor),
@@ -1581,7 +1582,6 @@ struct LaunchAvgPooling3dGradOp<SYCLDevice, T> {
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Tensor* output) {
     const SYCLDevice& device = context->eigen_device<SYCLDevice>();
-    output->template flat<T>().setZero().device(device);
     const int batch = GetTensorDim(tensor_in_shape, data_format, 'N');
     const int in_planes = GetTensorDim(tensor_in_shape, data_format, '0');
     const int in_rows = GetTensorDim(tensor_in_shape, data_format, '1');
@@ -1602,9 +1602,9 @@ struct LaunchAvgPooling3dGradOp<SYCLDevice, T> {
       auto output_backprop_access =
           output_backprop_buffer
               .template get_access<cl::sycl::access::mode::write>(cgh);
-      AvgPool3DGradSYCL<T> functor(depth, batch, in_planes, in_rows, in_cols,
-                                 output_shape, window, stride, padding,
-                                 input_backprop_access, output_backprop_access);
+      AvgPool3DGradSYCL<T> functor(
+          depth, batch, in_planes, in_rows, in_cols, output_shape, window,
+          stride, padding, input_backprop_access, output_backprop_access);
 
       cgh.parallel_for(cl::sycl::range<1>(num_threads), functor);
     });
