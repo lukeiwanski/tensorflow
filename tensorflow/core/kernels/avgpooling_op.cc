@@ -198,6 +198,169 @@ REGISTER_KERNEL_BUILDER(
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
+// Helper struct to contain the various pool parameters used in the SYCL
+// pooling kernels in 2D. Similar to the PoolParameters,
+// but with a number of convenient constructors.
+struct SYCL2DPoolParams {
+  SYCL2DPoolParams(const int depth, const int batch, const int in_rows,
+                   const int in_cols, const int out_rows, const int out_cols,
+                   const std::array<int64, 2>& window,
+                   const std::array<int64, 2>& stride,
+                   const std::array<int64, 2>& padding)
+      : depth_(depth),
+        batch_(batch),
+        in_rows_(in_rows),
+        in_cols_(in_cols),
+        window_rows_(window[1]),
+        window_cols_(window[0]),
+        stride_rows_(stride[1]),
+        stride_cols_(stride[0]),
+        out_rows_(out_rows),
+        out_cols_(out_cols),
+        pad_rows_(padding[1]),
+        pad_cols_(padding[0]) {}
+
+  SYCL2DPoolParams(const int depth, const int batch, const int in_rows,
+                   const int in_cols, const std::array<int64, 2>& out_shape,
+                   const std::array<int64, 2>& window,
+                   const std::array<int64, 2>& stride,
+                   const std::array<int64, 2>& padding)
+      : SYCL2DPoolParams(depth, batch, in_rows, in_cols, out_shape[1],
+                         out_shape[0], window, stride, padding) {}
+  SYCL2DPoolParams(const PoolParameters& params)
+     : depth_(params.depth),
+       batch_(params.tensor_in_batch),
+       in_rows_(params.tensor_in_rows),
+       in_cols_(params.tensor_in_cols),
+       window_rows_(params.window_rows),
+       window_cols_(params.window_cols),
+       stride_rows_(params.row_stride),
+       stride_cols_(params.col_stride),
+       out_rows_(params.out_height),
+       out_cols_(params.out_width),
+       pad_rows_(params.pad_rows),
+       pad_cols_(params.pad_cols) {}
+
+  const int depth_;
+  const int batch_;
+  const int in_rows_;
+  const int in_cols_;
+
+  const int window_rows_;
+  const int window_cols_;
+
+  const int stride_rows_;
+  const int stride_cols_;
+
+  const int out_rows_;
+  const int out_cols_;
+
+  const int pad_rows_;
+  const int pad_cols_;
+};
+
+// AvgPool SYCL kernel. Expects the number of threads to be equal to the
+// number of elements in the output tensor.
+//
+// For each output value find the corresponding input window, and run through
+// the window accumulating the values to form an average. We divide each value
+// before accumulating to prevent the accumulator from becoming significantly
+// bigger than the values we are adding and so decrease any errors.
+template <typename T>
+class AvgPoolSYCL {
+  using write_accessor =
+      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::write,
+                         cl::sycl::access::target::global_buffer>;
+  using read_accessor =
+      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::read,
+                         cl::sycl::access::target::global_buffer>;
+
+ public:
+  AvgPoolSYCL(const int depth, const int batch,
+                    const int in_rows, const int in_cols,
+                    const int out_rows, const int out_cols,
+                    const std::array<int64, 2>& window,
+                    const std::array<int64, 2>& stride,
+                    const std::array<int64, 2>& padding,
+                    const read_accessor input_accessor,
+                    write_accessor output_accessor)
+      : p_(depth, batch, in_rows, in_cols, out_rows, out_cols,
+           window, stride, padding),
+        input_accessor_(input_accessor),
+        output_accessor_(output_accessor) {}
+  void operator()(cl::sycl::item<1> item) {
+    T* input_data = ConvertToActualTypeSycl(T, input_accessor_);
+    T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
+
+    int index = item.get_linear_id();
+    int n = index;
+    int d = n % p_.depth_;
+    n /= p_.depth_;
+    int cstart = (n % p_.out_cols_) * p_.stride_cols_ - p_.pad_cols_;
+    int cend = std::min(cstart + p_.window_cols_, p_.in_cols_);
+    cstart = std::max(cstart, 0);
+    n /= p_.out_cols_;
+    int rstart = (n % p_.out_rows_) * p_.stride_rows_ - p_.pad_rows_;
+    int rend = std::min(rstart + p_.window_rows_, p_.in_rows_);
+    rstart = std::max(rstart, 0);
+    n /= p_.out_rows_;
+    T accum = T(0);
+    T count =
+        static_cast<T>((rend - rstart) * (cend - cstart));
+    const T* input_data_n =
+        input_data + n * p_.in_cols_ * p_.in_rows_ * p_.depth_;
+    for (int r = rstart; r < rend; ++r) {
+      for (int c = cstart; c < cend; ++c) {
+        int idx = (r * p_.in_cols_ + c) * p_.depth_ + d;
+        accum += input_data_n[idx] / count;
+      }
+    }
+    output_data[index] = accum;
+  }
+
+ private:
+  const SYCL2DPoolParams p_;
+  const read_accessor input_accessor_;
+  write_accessor output_accessor_;
+};
+
+template <typename T>
+struct LaunchAvgPoolingOpSYCL {
+  static void launch(OpKernelContext* context, const Tensor& tensor_in,
+                     const std::array<int64, 2>& window,
+                     const std::array<int64, 2>& stride,
+                     const std::array<int64, 2>& padding,
+                     TensorFormat data_format, Padding padding_type,
+                     Tensor* output) {
+    const SYCLDevice& device = context->eigen_device<SYCLDevice>();
+    const int out_rows = GetTensorDim(*output, data_format, '0');
+    const int out_cols = GetTensorDim(*output, data_format, '1');
+    const int batch = GetTensorDim(tensor_in, data_format, 'N');
+    const int in_rows = GetTensorDim(tensor_in, data_format, '0');
+    const int in_cols = GetTensorDim(tensor_in, data_format, '1');
+    const int depth = GetTensorDim(tensor_in, data_format, 'C');
+
+    const int num_threads = output->NumElements();
+
+    auto input_buffer =
+        device.get_sycl_buffer(tensor_in.template flat<T>().data());
+    auto output_buffer =
+        device.get_sycl_buffer(output->template flat<T>().data());
+
+    device.sycl_queue().submit([&](cl::sycl::handler& cgh) {
+    auto input_access =
+        input_buffer.template get_access<cl::sycl::access::mode::read>(cgh);
+    auto output_access =
+        output_buffer.template get_access<cl::sycl::access::mode::write>(cgh);
+    AvgPoolSYCL<T> avg_pool(depth, batch, in_rows, in_cols,
+                              out_rows, out_cols, window, stride,
+                              padding, input_access, output_access);
+
+    cgh.parallel_for(cl::sycl::range<1>(num_threads), avg_pool);
+    });
+  }
+};
+
 template <typename T>
 class AvgPoolingOp<SYCLDevice, T> : public UnaryOp<T> {
  public:
@@ -227,29 +390,35 @@ class AvgPoolingOp<SYCLDevice, T> : public UnaryOp<T> {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor_in = context->input(0);
-    PoolParameters params{context,  ksize_,       stride_,
-                          padding_, data_format_, tensor_in.shape()};
-    if (!context->status().ok()) {
-      return;
-    }
-    OP_REQUIRES(context, params.depth_window == 1,
-                errors::Unimplemented("Non-spatial pooling is not "
-                                      "yet supported. Volunteers? :)"));
 
-    // For avgpooling, tensor_in should have 4 dimensions.
     OP_REQUIRES(context, tensor_in.dims() == 4,
-                errors::InvalidArgument("tensor_in must be 4-dimensional"));
+        errors::InvalidArgument("tensor_in must be 1-dimensional and 4 "
+                                "elements"));
+    const int64 depth = GetTensorDim(tensor_in, data_format_, 'C');
+    const int64 in_batch = GetTensorDim(tensor_in, data_format_, 'N');
 
-    TensorShape output_shape = params.forward_output_shape();
+    // Dimension order for these arrays is x, y.
+    std::array<int64, 2> input_size{
+        {GetTensorDim(tensor_in, data_format_, '1'),
+         GetTensorDim(tensor_in, data_format_, '0')}};
+    std::array<int64, 2> window{{GetTensorDim(ksize_, data_format_, '1'),
+                                 GetTensorDim(ksize_, data_format_, '0')}};
+    std::array<int64, 2> stride{{GetTensorDim(stride_, data_format_, '1'),
+                                 GetTensorDim(stride_, data_format_, '0')}};
+    std::array<int64, 2> out, padding;
 
-    Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
-                   context->allocate_output(0, output_shape, &output));
-    Eigen::PaddingType pt = BrainPadding2EigenPadding(padding_);
-    functor::SpatialAvgPooling<SYCLDevice, T>()(
-        context->eigen_device<SYCLDevice>(), output->tensor<T, 4>(),
-        tensor_in.tensor<T, 4>(), params.window_rows, params.window_cols,
-        params.row_stride, params.col_stride, pt);
+                   GetWindowedOutputSize(input_size[0], window[0], stride[0], padding_, &out[0], &padding[0]));
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSize(input_size[1], window[1], stride[1], padding_, &out[1], &padding[1]));
+    TensorShape output_shape =
+        ShapeFromFormat(data_format_, in_batch, {{out[1], out[0]}}, depth);
+
+    Tensor* output;
+    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+
+    LaunchAvgPoolingOpSYCL<T>::launch(context, tensor_in, window, stride,
+                                    padding, data_format_, padding_, output);
   }
 
  private:
