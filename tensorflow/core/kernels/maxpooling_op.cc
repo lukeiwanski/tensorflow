@@ -47,7 +47,6 @@ limitations under the License.
 #ifdef TENSORFLOW_USE_SYCL
 #include "tensorflow/core/util/sycl_util.h"
 #endif // TENSORFLOW_USE_SYCL
-#include <iostream>
 
 namespace tensorflow {
 
@@ -1284,10 +1283,6 @@ struct LaunchMaxPoolingGradOpSYCL {
     auto output_backprop_buffer =
         device.get_sycl_buffer(output->template flat<T>().data());
 
-    std::cout << "tensor_in value: " << tensor_in.SummarizeValue(12) << std::endl;
-    std::cout << "tensor_out value: " << tensor_out.SummarizeValue(12) << std::endl;
-    std::cout << "out_backprop value: " << out_backprop.SummarizeValue(12) << std::endl;
-
     device.sycl_queue().submit([&](cl::sycl::handler& cgh) {
       auto input_data_access =
           input_data_buffer.template get_access<cl::sycl::access::mode::read>(
@@ -1503,9 +1498,10 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_ONLY_POOL_KERNELS);
 #define REGISTER_SYCL_MAX_POOL_KERNELS(T) REGISTER_MAX_POOL_KERNELS(SYCL, T)
 TF_CALL_float(REGISTER_SYCL_MAX_POOL_KERNELS);
 #undef REGISTER_SYCL_MAX_POOL_KERNELS
-REGISTER_KERNEL_BUILDER(                                               \
-    Name("MaxPoolGradGrad").Device(DEVICE_SYCL).TypeConstraint<double>("T"), \
-    MaxPoolingGradGradOp<SYCLDevice, double>);
+REGISTER_KERNEL_BUILDER(Name("MaxPoolGradGrad")
+                       .Device(DEVICE_SYCL)
+                       .TypeConstraint<double>("T"),
+                    MaxPoolingGradGradOp<SYCLDevice, double>);
 #endif  // TENSORFLOW_USE_SYCL
 #undef REGISTER_MAX_POOL_KERNELS
 
