@@ -556,4 +556,207 @@ REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
 
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+// AvgPoolGrad SYCL kernel. Expects the number of threads to be equal to the
+// number of elements in the output backprop tensor, i.e. the number of
+// elements in the input tensor.
+//
+// For each output backprop index find a window in the input backprop tensor
+// which corresponds to all the values of the output which were affected by the
+// input value at this index. Then for each gradient in this window, compute
+// the size of the input window which was averaged to give this output, and use
+// this size to scale the gradient accordingly. Add this scaled gradient to the
+// output backprop value.
+template <typename T>
+class AvgPoolGradSYCL {
+  using write_accessor =
+      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::write,
+                         cl::sycl::access::target::global_buffer>;
+  using read_accessor =
+      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::read,
+                         cl::sycl::access::target::global_buffer>;
+
+ public:
+  AvgPoolGradSYCL(const int depth, const int batch,
+                    const int in_rows, const int in_cols,
+                    const std::array<int64, 2>& out_shape,
+                    const std::array<int64, 2>& window,
+                    const std::array<int64, 2>& stride,
+                    const std::array<int64, 2>& padding,
+                    const read_accessor input_backprop_accessor,
+                    write_accessor output_backprop_accessor)
+      : p_(depth, batch, in_rows, in_cols, out_shape, window, stride,
+           padding),
+        input_backprop_accessor_(input_backprop_accessor),
+        output_backprop_accessor_(output_backprop_accessor) {}
+  void operator()(cl::sycl::item<1> item) {
+    T* input_backprop = ConvertToActualTypeSycl(T, input_backprop_accessor_);
+    T* output_backprop = ConvertToActualTypeSycl(T, output_backprop_accessor_);
+
+    const int index = item.get_linear_id();
+    int n = index;
+    const int d = n % p_.depth_;
+    n /= p_.depth_;
+    const int c = (n % p_.in_cols_) + p_.pad_cols_;
+    const int poolcstart =
+        (c < p_.window_cols_) ? 0 : (c - p_.window_cols_) / p_.stride_cols_ + 1;
+    const int poolcend = std::min(c / p_.stride_cols_ + 1, p_.out_cols_);
+    n /= p_.in_cols_;
+    const int r = (n % p_.in_rows_) + p_.pad_rows_;
+    const int poolrstart =
+        (r < p_.window_rows_) ? 0 : (r - p_.window_rows_) / p_.stride_rows_ + 1;
+    const int poolrend = std::min(r / p_.stride_rows_ + 1, p_.out_rows_);
+    n /= p_.in_rows_;
+
+    T gradient = T(0);
+    const T* input_backprop_n =
+        input_backprop + n * p_.out_cols_ * p_.out_rows_ * p_.depth_;
+    for (int poolr = poolrstart; poolr < poolrend; ++poolr) {
+      int rstart = poolr * p_.stride_rows_ - p_.pad_rows_;
+      const int rend = std::min(rstart + p_.window_rows_, p_.in_rows_);
+      rstart = std::max(rstart, 0);
+      const int row_window_size = rend - rstart;
+      for (int poolc = poolcstart; poolc < poolcend; ++poolc) {
+        const int idx =
+            (poolr * p_.out_cols_ + poolc) * p_.depth_ + d;
+        int cstart = poolc * p_.stride_cols_ - p_.pad_cols_;
+        const int cend = std::min(cstart + p_.window_cols_, p_.in_cols_);
+        cstart = std::max(cstart, 0);
+        const int col_window_size = cend - cstart;
+        const int window_size = row_window_size * col_window_size;
+        gradient += input_backprop_n[idx] / static_cast<T>(window_size);
+      }
+    }
+    output_backprop[index] = gradient;
+  }
+
+ private:
+  const SYCL2DPoolParams p_;
+  const read_accessor input_backprop_accessor_;
+  write_accessor output_backprop_accessor_;
+};
+template <typename T>
+struct LaunchAvgPoolingGradOpSYCL {
+  static void launch(OpKernelContext* context,
+                     const TensorShape& tensor_in_shape,
+                     const Tensor& out_backprop,
+                     const std::array<int64, 2>& window,
+                     const std::array<int64, 2>& stride,
+                     const std::array<int64, 2>& output_shape,
+                     const std::array<int64, 2>& padding,
+                     TensorFormat data_format, Tensor* output) {
+    const SYCLDevice& device = context->eigen_device<SYCLDevice>();
+    const int batch = GetTensorDim(tensor_in_shape, data_format, 'N');
+    const int in_rows = GetTensorDim(tensor_in_shape, data_format, '0');
+    const int in_cols = GetTensorDim(tensor_in_shape, data_format, '1');
+    const int depth = GetTensorDim(tensor_in_shape, data_format, 'C');
+
+    const int num_threads = output->NumElements();
+
+    auto input_backprop_buffer =
+        device.get_sycl_buffer(out_backprop.template flat<T>().data());
+    auto output_backprop_buffer =
+        device.get_sycl_buffer(output->template flat<T>().data());
+
+    device.sycl_queue().submit([&](cl::sycl::handler& cgh) {
+      auto input_backprop_access =
+          input_backprop_buffer
+              .template get_access<cl::sycl::access::mode::read>(cgh);
+      auto output_backprop_access =
+          output_backprop_buffer
+              .template get_access<cl::sycl::access::mode::write>(cgh);
+      AvgPoolGradSYCL<T> avgpoolgrad(
+          depth, batch, in_rows, in_cols, output_shape, window,
+          stride, padding, input_backprop_access, output_backprop_access);
+
+      cgh.parallel_for(cl::sycl::range<1>(num_threads), avgpoolgrad);
+    });
+  }
+};
+
+template <class T>
+class AvgPoolingGradOp <SYCLDevice, T> : public OpKernel {
+ public:
+  explicit AvgPoolingGradOp(OpKernelConstruction* context)
+      : OpKernel(context) {
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+    OP_REQUIRES(context, ksize_.size() == 4,
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES(context, stride_.size() == 4,
+                errors::InvalidArgument("Sliding window stride field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES(context,
+                (GetTensorDim(ksize_, data_format_, 'N') == 1 &&
+                 GetTensorDim(stride_, data_format_, 'N') == 1),
+                errors::Unimplemented(
+                    "Pooling is not yet supported on the batch dimension."));
+    OP_REQUIRES(context,
+                (GetTensorDim(ksize_, data_format_, 'C') == 1 &&
+                 GetTensorDim(stride_, data_format_, 'C') == 1),
+                errors::Unimplemented(
+                    "Pooling is not yet supported on the depth dimension."));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& tensor_in_shape = context->input(0);
+    const Tensor& out_backprop = context->input(1);
+    OP_REQUIRES(
+        context,
+        tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
+        errors::InvalidArgument("tensor_in must be 1-dimensional and 5 "
+                                "elements"));
+    OP_REQUIRES(context, out_backprop.dims() == 4,
+                errors::InvalidArgument("out_backprop must be 4-dimensional"));
+
+    TensorShape output_shape;
+    auto shape_vec = tensor_in_shape.vec<int32>();
+    for (int64 i = 0; i < tensor_in_shape.NumElements(); ++i) {
+      output_shape.AddDim(shape_vec(i));
+    }
+
+    Tensor* output;
+    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+
+    // Dimension order for these arrays is x, y, z.
+    std::array<int64, 2> input_size{
+        {GetTensorDim(output_shape, data_format_, '1'),
+         GetTensorDim(output_shape, data_format_, '0')}};
+    std::array<int64, 2> window{{GetTensorDim(ksize_, data_format_, '1'),
+                                 GetTensorDim(ksize_, data_format_, '0')}};
+    std::array<int64, 2> stride{{GetTensorDim(stride_, data_format_, '1'),
+                                 GetTensorDim(stride_, data_format_, '0')}};
+    std::array<int64, 2> out, padding;
+
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSize(input_size[0], window[0], stride[0], padding_, &out[0], &padding[0]));
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSize(input_size[1], window[1], stride[1], padding_, &out[1], &padding[1]));
+
+    LaunchAvgPoolingGradOpSYCL<T>::launch(
+        context, output_shape, out_backprop, window, stride, out, padding,
+        data_format_, output);
+  }
+
+ private:
+  std::vector<int32> ksize_;
+  std::vector<int32> stride_;
+  Padding padding_;
+  TensorFormat data_format_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<float>("T")
+                            .HostMemory("orig_input_shape")
+                            .Label("cudnn"),
+                        AvgPoolingGradOp<SYCLDevice, float>);
+#endif  // TENSORFLOW_USE_SYCL
+
 }  // namespace tensorflow
