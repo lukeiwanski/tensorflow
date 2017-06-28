@@ -119,6 +119,8 @@ class StridedSliceOp : public OpKernel {
     }
 
     // Optimization #2, slice is memory contiguous (only occurs in dim 0)
+    // This optimization is currently not applicable for SYCL devices
+    #ifndef TENSORFLOW_USE_SYCL
     if (slice_dim0 && IsDim0SliceAligned<T>(input.shape(), begin[0], end[0])) {
       CHECK_GE(input.dims(), 1);  // Otherwise, is_identity should be true.
       VLOG(1) << "Strided slice dim 0: " << input.shape().DebugString();
@@ -127,6 +129,7 @@ class StridedSliceOp : public OpKernel {
       context->set_output(0, tmp);
       return;
     }
+    #endif  // TENSORFLOW_USE_SYCL
 
     Tensor* result = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, final_shape, &result));
