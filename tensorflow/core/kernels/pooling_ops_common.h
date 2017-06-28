@@ -68,6 +68,69 @@ struct PoolParameters {
   TensorFormat data_format;
 };
 
+#ifdef TENSORFLOW_USE_SYCL
+// Helper struct to contain the various pool parameters used in the SYCL
+// pooling kernels in 2D. Similar to the PoolParameters,
+// but with a number of convenient constructors.
+struct SYCL2DPoolParams {
+  SYCL2DPoolParams(const int depth, const int batch, const int in_rows,
+                   const int in_cols, const int out_rows, const int out_cols,
+                   const std::array<int64, 2>& window,
+                   const std::array<int64, 2>& stride,
+                   const std::array<int64, 2>& padding)
+      : depth_(depth),
+        batch_(batch),
+        in_rows_(in_rows),
+        in_cols_(in_cols),
+        window_rows_(window[1]),
+        window_cols_(window[0]),
+        stride_rows_(stride[1]),
+        stride_cols_(stride[0]),
+        out_rows_(out_rows),
+        out_cols_(out_cols),
+        pad_rows_(padding[1]),
+        pad_cols_(padding[0]) {}
+
+  SYCL2DPoolParams(const int depth, const int batch, const int in_rows,
+                   const int in_cols, const std::array<int64, 2>& out_shape,
+                   const std::array<int64, 2>& window,
+                   const std::array<int64, 2>& stride,
+                   const std::array<int64, 2>& padding)
+      : SYCL2DPoolParams(depth, batch, in_rows, in_cols, out_shape[1],
+                         out_shape[0], window, stride, padding) {}
+  SYCL2DPoolParams(const PoolParameters& params)
+     : depth_(params.depth),
+       batch_(params.tensor_in_batch),
+       in_rows_(params.tensor_in_rows),
+       in_cols_(params.tensor_in_cols),
+       window_rows_(params.window_rows),
+       window_cols_(params.window_cols),
+       stride_rows_(params.row_stride),
+       stride_cols_(params.col_stride),
+       out_rows_(params.out_height),
+       out_cols_(params.out_width),
+       pad_rows_(params.pad_rows),
+       pad_cols_(params.pad_cols) {}
+
+  const int depth_;
+  const int batch_;
+  const int in_rows_;
+  const int in_cols_;
+
+  const int window_rows_;
+  const int window_cols_;
+
+  const int stride_rows_;
+  const int stride_cols_;
+
+  const int out_rows_;
+  const int out_cols_;
+
+  const int pad_rows_;
+  const int pad_cols_;
+};
+#endif  // TENSORFLOW_USE_SYCL
+
 // An implementation of MaxPooling (forward).
 template <typename Device, typename T>
 class MaxPoolingOp : public OpKernel {
