@@ -18,7 +18,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/avgpooling_op.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
@@ -36,10 +36,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
-<<<<<<< HEAD
-
-=======
->>>>>>> ce8373560c9404e278c1960f29f79c7eeb555eba
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
