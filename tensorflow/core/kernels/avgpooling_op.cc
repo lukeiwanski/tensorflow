@@ -47,7 +47,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class AvgPoolingOp : public UnaryOp<T> {
@@ -290,15 +290,15 @@ struct LaunchAvgPoolingOpSYCL {
         device.get_sycl_buffer(output->template flat<T>().data());
 
     device.sycl_queue().submit([&](cl::sycl::handler& cgh) {
-    auto input_access =
-        input_buffer.template get_access<cl::sycl::access::mode::read>(cgh);
-    auto output_access =
-        output_buffer.template get_access<cl::sycl::access::mode::write>(cgh);
-    AvgPoolSYCL<T> avg_pool(depth, batch, in_rows, in_cols,
-                              out_rows, out_cols, window, stride,
-                              padding, input_access, output_access);
+        auto input_access =
+            input_buffer.template get_access<cl::sycl::access::mode::read>(cgh);
+        auto output_access =
+            output_buffer.template get_access<cl::sycl::access::mode::write>(cgh);
+        AvgPoolSYCL<T> avg_pool(depth, batch, in_rows, in_cols,
+                                  out_rows, out_cols, window, stride,
+                                  padding, input_access, output_access);
 
-    cgh.parallel_for(cl::sycl::range<1>(num_threads), avg_pool);
+        cgh.parallel_for(cl::sycl::range<1>(num_threads), avg_pool);
     });
   }
 };
