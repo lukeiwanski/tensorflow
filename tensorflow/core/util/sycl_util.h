@@ -30,11 +30,11 @@ namespace tensorflow {
 // the header so that the host compiler can compile the functor.
 #ifdef __SYCL_DEVICE_ONLY__
 template <typename T>
-void SyclAtomicAdd(__attribute__((address_space(1))) T* address,
+inline void SyclAtomicAdd(__attribute__((address_space(1))) T* address,
                    const T increment);
 #else
 template <typename T>
-void SyclAtomicAdd(T* address, const T increment);
+inline void SyclAtomicAdd(T* address, const T increment);
 #endif  // __SYCL_DEVICE_ONLY__
 
 #ifdef __SYCL_DEVICE_ONLY__
@@ -49,7 +49,7 @@ void SyclAtomicAdd(T* address, const T increment);
 // as a SYCL extension, so once this is available we can use an atomic
 // accessor and remove this.
 template <>
-void SyclAtomicAdd<float>(__attribute__((address_space(1))) float* address,
+inline void SyclAtomicAdd<float>(__attribute__((address_space(1))) float* address,
                           const float increment) {
   union {
     uint32_t u32;
@@ -66,7 +66,7 @@ void SyclAtomicAdd<float>(__attribute__((address_space(1))) float* address,
   } while (current.u32 != expected.u32);
 }
 template <>
-void SyclAtomicAdd<double>(__attribute__((address_space(1))) double* address,
+inline void SyclAtomicAdd<double>(__attribute__((address_space(1))) double* address,
                            const double increment) {
   union {
     uint64_t u64;
@@ -85,11 +85,11 @@ void SyclAtomicAdd<double>(__attribute__((address_space(1))) double* address,
 // Provide a dummy implementation for the host compiler. This code will not be
 // seen by the SYCL device, and so should not be run.
 template <>
-void SyclAtomicAdd<float>(float* address, const float increment) {
+inline void SyclAtomicAdd<float>(float* address, const float increment) {
   LOG(FATAL) << "MaxPool3DGradSYCL should only be run on a SYCL device";
 }
 template <>
-void SyclAtomicAdd<double>(double* address, const double increment) {
+inline void SyclAtomicAdd<double>(double* address, const double increment) {
   LOG(FATAL) << "MaxPool3DGradSYCL should only be run on a SYCL device";
 }
 #endif  // __SYCL_DEVICE_ONLY__
