@@ -260,10 +260,6 @@ struct LaunchMaxPoolingOpSYCL {
   static void launch(OpKernelContext* context, Tensor* output,
                      const Tensor& tensor_in, const PoolParameters& params) {
     const SYCLDevice& device = context->eigen_device<SYCLDevice>();
-    // std::array<int64, 2> window = {{params.window_rows, params.window_cols}};
-    // std::array<int64, 2> stride = {{params.row_stride, params.col_stride}};
-    // std::array<int64, 2> padding = {{params.pad_rows, params.pad_cols}};
-
     const int num_threads = output->NumElements();
 
     auto input_buffer =
