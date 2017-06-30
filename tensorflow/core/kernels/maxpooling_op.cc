@@ -196,6 +196,177 @@ static void SpatialMaxPoolWithArgMaxHelper(
         params.tensor_in_batch, shard_cost, shard);
 }
 
+#ifdef TENSORFLOW_USE_SYCL
+// MaxPool2D SYCL kernel. Expects the number of threads to be equal to the
+// number of elements in the output tensor.
+//
+// For each output element, find the corresponding input window and run over
+// all values in the window to find the maximum value. This value is then
+// copied into that output element.
+template <typename T>
+class MaxPool2DSYCL {
+  using write_accessor =
+      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::write,
+                         cl::sycl::access::target::global_buffer>;
+  using read_accessor =
+      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::read,
+                         cl::sycl::access::target::global_buffer>;
+
+ public:
+  MaxPool2DSYCL(const int depth, const int batch, const int in_rows,
+                const int in_cols, const int out_rows, const int out_cols,
+                const std::array<int64, 2>& window,
+                const std::array<int64, 2>& stride,
+                const std::array<int64, 2>& padding,
+                const read_accessor input_accessor,
+                write_accessor output_accessor)
+      : p_(depth, batch, in_rows, in_cols, out_rows, out_cols, window, stride,
+           padding),
+        input_accessor_(input_accessor),
+        output_accessor_(output_accessor) {}
+  void operator()(cl::sycl::item<1> item) {
+    T* input_data = ConvertToActualTypeSycl(T, input_accessor_);
+    T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
+
+    int index = item.get_linear_id();
+    int n = index;
+    int d = n % p_.depth_;
+    n /= p_.depth_;
+    int cstart = (n % p_.out_cols_) * p_.stride_cols_ - p_.pad_cols_;
+    int cend = std::min(cstart + p_.window_cols_, p_.in_cols_);
+    cstart = std::max(cstart, 0);
+    n /= p_.out_cols_;
+    int rstart = (n % p_.out_rows_) * p_.stride_rows_ - p_.pad_rows_;
+    int rend = std::min(rstart + p_.window_rows_, p_.in_rows_);
+    rstart = std::max(rstart, 0);
+    n /= p_.out_rows_;
+    T maxval = Eigen::NumTraits<T>::lowest();
+    const T* input_data_n =
+        input_data + n * p_.in_cols_ * p_.in_rows_ * p_.depth_;
+    for (int r = rstart; r < rend; ++r) {
+      for (int c = cstart; c < cend; ++c) {
+        int idx = (r * p_.in_cols_ + c) * p_.depth_ + d;
+        if (input_data_n[idx] > maxval) {
+          maxval = input_data_n[idx];
+        }
+      }
+    }
+    output_data[index] = maxval;
+  }
+
+ private:
+  const SYCL2DPoolParams p_;
+  const read_accessor input_accessor_;
+  write_accessor output_accessor_;
+};
+
+template <typename T>
+struct LaunchMaxPoolingOpSYCL {
+  static void launch(OpKernelContext* context, const Tensor& tensor_in,
+                     const std::array<int64, 2>& window,
+                     const std::array<int64, 2>& stride,
+                     const std::array<int64, 2>& padding,
+                     TensorFormat data_format, Padding padding_type,
+                     Tensor* output) {
+    const SYCLDevice& device = context->eigen_device<SYCLDevice>();
+    const int out_rows = GetTensorDim(*output, data_format, '0');
+    const int out_cols = GetTensorDim(*output, data_format, '1');
+    const int batch = GetTensorDim(tensor_in, data_format, 'N');
+    const int in_rows = GetTensorDim(tensor_in, data_format, '0');
+    const int in_cols = GetTensorDim(tensor_in, data_format, '1');
+    const int depth = GetTensorDim(tensor_in, data_format, 'C');
+
+    const int num_threads = output->NumElements();
+
+    auto input_buffer =
+        device.get_sycl_buffer(tensor_in.template flat<T>().data());
+    auto output_buffer =
+        device.get_sycl_buffer(output->template flat<T>().data());
+
+    device.sycl_queue().submit([&](cl::sycl::handler& cgh) {
+      auto input_access =
+          input_buffer.template get_access<cl::sycl::access::mode::read>(cgh);
+      auto output_access =
+          output_buffer.template get_access<cl::sycl::access::mode::write>(cgh);
+      MaxPool2DSYCL<T> avg_pool(depth, batch, in_rows, in_cols, out_rows,
+                                out_cols, window, stride, padding, input_access,
+                                output_access);
+
+      cgh.parallel_for(cl::sycl::range<1>(num_threads), avg_pool);
+    });
+  }
+};
+
+template <typename T>
+class MaxPoolingOp<SYCLDevice, T> : public UnaryOp<T> {
+ public:
+  explicit MaxPoolingOp(OpKernelConstruction* context) : UnaryOp<T>(context) {
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+    OP_REQUIRES(
+        context, data_format_ == FORMAT_NHWC,
+        errors::InvalidArgument("OpenCL AvgPoolingOp only supports NHWC."));
+    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+    OP_REQUIRES(context, ksize_.size() == 4,
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES(context, stride_.size() == 4,
+                errors::InvalidArgument("Sliding window stride field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    const int32 ksize_n = GetTensorDim(ksize_, data_format_, 'N');
+    const int32 stride_n = GetTensorDim(stride_, data_format_, 'N');
+    OP_REQUIRES(context, ksize_n == 1 && stride_n == 1,
+                errors::Unimplemented(
+                    "Pooling is not yet supported on the batch dimension."));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& tensor_in = context->input(0);
+
+    OP_REQUIRES(context, tensor_in.dims() == 4,
+                errors::InvalidArgument("tensor_in must be 1-dimensional and 4 "
+                                        "elements"));
+    const int64 depth = GetTensorDim(tensor_in, data_format_, 'C');
+    const int64 in_batch = GetTensorDim(tensor_in, data_format_, 'N');
+
+    // Dimension order for these arrays is x, y.
+    std::array<int64, 2> input_size{
+        {GetTensorDim(tensor_in, data_format_, '1'),
+         GetTensorDim(tensor_in, data_format_, '0')}};
+    std::array<int64, 2> window{{GetTensorDim(ksize_, data_format_, '1'),
+                                 GetTensorDim(ksize_, data_format_, '0')}};
+    std::array<int64, 2> stride{{GetTensorDim(stride_, data_format_, '1'),
+                                 GetTensorDim(stride_, data_format_, '0')}};
+    std::array<int64, 2> out, padding;
+
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSize(input_size[0], window[0], stride[0],
+                                         padding_, &out[0], &padding[0]));
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSize(input_size[1], window[1], stride[1],
+                                         padding_, &out[1], &padding[1]));
+    TensorShape output_shape =
+        ShapeFromFormat(data_format_, in_batch, {{out[1], out[0]}}, depth);
+
+    Tensor* output;
+    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+
+    LaunchMaxPoolingOpSYCL<T>::launch(context, tensor_in, window, stride,
+                                      padding, data_format_, padding_, output);
+  }
+
+ private:
+  std::vector<int32> ksize_;
+  std::vector<int32> stride_;
+  Padding padding_;
+  TensorFormat data_format_;
+};
+#endif  // TENSORFLOW_USE_SYCL
+
 // The operation to compute MaxPool gradients.
 // It takes three inputs:
 //   - The original input tensor
