@@ -196,6 +196,139 @@ static void SpatialMaxPoolWithArgMaxHelper(
         params.tensor_in_batch, shard_cost, shard);
 }
 
+#ifdef TENSORFLOW_USE_SYCL
+// MaxPool2D SYCL kernel. Expects the number of threads to be equal to the
+// number of elements in the output tensor.
+//
+// For each output element, find the corresponding input window and run over
+// all values in the window to find the maximum value. This value is then
+// copied into that output element.
+template <typename T>
+class MaxPool2DSYCL {
+  using write_accessor =
+      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::write,
+                         cl::sycl::access::target::global_buffer>;
+  using read_accessor =
+      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::read,
+                         cl::sycl::access::target::global_buffer>;
+
+ public:
+  MaxPool2DSYCL(const PoolParameters& params,
+                const read_accessor input_accessor,
+                write_accessor output_accessor)
+      : p_(params),
+        input_accessor_(input_accessor),
+        output_accessor_(output_accessor) {}
+  void operator()(cl::sycl::item<1> item) {
+    T* input_data = ConvertToActualTypeSycl(T, input_accessor_);
+    T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
+
+    int index = item.get_linear_id();
+    int n = index;
+    int d = n % p_.depth_;
+    n /= p_.depth_;
+    int cstart = (n % p_.out_cols_) * p_.stride_cols_ - p_.pad_cols_;
+    int cend = std::min(cstart + p_.window_cols_, p_.in_cols_);
+    cstart = std::max(cstart, 0);
+    n /= p_.out_cols_;
+    int rstart = (n % p_.out_rows_) * p_.stride_rows_ - p_.pad_rows_;
+    int rend = std::min(rstart + p_.window_rows_, p_.in_rows_);
+    rstart = std::max(rstart, 0);
+    n /= p_.out_rows_;
+    T maxval = Eigen::NumTraits<T>::lowest();
+    const T* input_data_n =
+        input_data + n * p_.in_cols_ * p_.in_rows_ * p_.depth_;
+    for (int r = rstart; r < rend; ++r) {
+      for (int c = cstart; c < cend; ++c) {
+        int idx = (r * p_.in_cols_ + c) * p_.depth_ + d;
+        if (input_data_n[idx] > maxval) {
+          maxval = input_data_n[idx];
+        }
+      }
+    }
+    output_data[index] = maxval;
+  }
+
+ private:
+  const SYCL2DPoolParams p_;
+  const read_accessor input_accessor_;
+  write_accessor output_accessor_;
+};
+
+template <typename T>
+struct LaunchMaxPoolingOpSYCL {
+  static void launch(OpKernelContext* context, Tensor* output,
+                     const Tensor& tensor_in, const PoolParameters& params) {
+    const SYCLDevice& device = context->eigen_device<SYCLDevice>();
+    const int num_threads = output->NumElements();
+
+    auto input_buffer =
+        device.get_sycl_buffer(tensor_in.template flat<T>().data());
+    auto output_buffer =
+        device.get_sycl_buffer(output->template flat<T>().data());
+
+    device.sycl_queue().submit([&](cl::sycl::handler& cgh) {
+      auto input_access =
+          input_buffer.template get_access<cl::sycl::access::mode::read>(cgh);
+      auto output_access =
+          output_buffer.template get_access<cl::sycl::access::mode::write>(cgh);
+      MaxPool2DSYCL<T> max_pool(params, input_access, output_access);
+
+      cgh.parallel_for(cl::sycl::range<1>(num_threads), max_pool);
+    });
+  }
+};
+
+template <typename T>
+class MaxPoolingOp<SYCLDevice, T> : public UnaryOp<T> {
+ public:
+  explicit MaxPoolingOp(OpKernelConstruction* context) : UnaryOp<T>(context) {
+    string data_format;
+    auto status = context->GetAttr("data_format", &data_format);
+    if (status.ok()) {
+      OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                  errors::InvalidArgument("Invalid data format"));
+      OP_REQUIRES(
+          context, data_format_ == FORMAT_NHWC,
+          errors::InvalidArgument("Default MaxPoolingOp only supports NHWC."));
+    } else {
+      data_format_ = FORMAT_NHWC;
+    }
+    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+    OP_REQUIRES(context, ksize_.size() == 4,
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES(context, stride_.size() == 4,
+                errors::InvalidArgument("Sliding window stride field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
+                errors::Unimplemented(
+                    "Pooling is not yet supported on the batch dimension."));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& tensor_in = context->input(0);
+    PoolParameters params{context,  ksize_,       stride_,
+                          padding_, data_format_, tensor_in.shape()};
+    if (!context->status().ok()) {
+      return;
+    }
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                0, params.forward_output_shape(), &output));
+    LaunchMaxPoolingOpSYCL<T>::launch(context, output, tensor_in, params);
+  }
+
+ private:
+  std::vector<int32> ksize_;
+  std::vector<int32> stride_;
+  Padding padding_;
+  TensorFormat data_format_;
+};
+#endif  // TENSORFLOW_USE_SYCL
+
 // The operation to compute MaxPool gradients.
 // It takes three inputs:
 //   - The original input tensor
@@ -1435,8 +1568,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_ONLY_POOL_KERNELS);
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("MaxPool")
                             .Device(DEVICE_SYCL)
-                            .TypeConstraint<float>("T")
-                            .Label("eigen_tensor"),
+                            .TypeConstraint<float>("T"),
                         MaxPoolingOp<SYCLDevice, float>);
 #define REGISTER_SYCL_MAX_POOL_KERNELS(T) REGISTER_MAX_POOL_KERNELS(SYCL, T)
 TF_CALL_float(REGISTER_SYCL_MAX_POOL_KERNELS);
