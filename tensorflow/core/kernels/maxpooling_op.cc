@@ -1282,7 +1282,7 @@ class MaxPoolGradSYCL {
     T* output_backprop = ConvertToActualTypeSycl(T, output_backprop_accessor_);
 
     const int index = item.get_linear_id();
-    output_backprop[index] = T{0};
+    T output_value = 0;
     int n = index;
     const int d = n % p_.depth_;
     n /= p_.depth_;
@@ -1318,8 +1318,7 @@ class MaxPoolGradSYCL {
         const int output_data_idx =
             (poolr * p_.out_cols_ + poolc) * p_.depth_ + d;
         bool should_continue = true;
-        bool is_max =
-            (input_data_n[index_no_n] == output_data_n[output_data_idx]);
+        bool is_max = (input_data[index] == output_data_n[output_data_idx]);
         for (int win_r = rstart; win_r < rend && should_continue; ++win_r) {
           for (int win_c = cstart; win_c < cend && should_continue; ++win_c) {
             const int input_data_idx =
@@ -1334,10 +1333,11 @@ class MaxPoolGradSYCL {
           }
         }
         if (is_max) {
-          output_backprop[index] += input_backprop_n[output_data_idx];
+          output_value += input_backprop_n[output_data_idx];
         }
       }
     }
+    output_backprop[index] = output_value;
   }
 
  private:
