@@ -44,10 +44,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
-#ifdef TENSORFLOW_USE_SYCL
-#include "tensorflow/core/util/sycl_util.h"
-#endif  // TENSORFLOW_USE_SYCL
-
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -1245,14 +1241,15 @@ struct LaunchMaxPoolingGradGradWithArgmax<Eigen::GpuDevice, T> {
 
 #ifdef TENSORFLOW_USE_SYCL
 // MaxPoolGrad SYCL kernel. Expects the number of threads to be equal to the
-// number of elements in the pooled output tensor (i.e. the number of elements
-// in the backprop input tensor).
+// number of elements in the output backprop tenor (i.e. the number of elements
+// in the input data tensor).
 //
-// For each gradient in the input backprop tensor we compare the input data to
-// the output data to find the max value in the input window. This gradient is
-// then added to the corresponding output gradient. We need to perform the
-// addition atomically as a single value may be the maximum of a number of
-// input windows.
+// For each output backprop element we compute the possible window of values in
+// the input backprop tensor which might contribute to this element. Then for
+// each error in this window, compute the corresponding input window which was
+// pooled into that element in the output. Walk through this input window to
+// determine whether the input value is the first maximum value, and so the
+// error should be propagated back to the corresponding backprop element.
 template <typename T>
 class MaxPoolGradSYCL {
   using write_accessor =
@@ -1284,39 +1281,63 @@ class MaxPoolGradSYCL {
     T* input_backprop = ConvertToActualTypeSycl(T, input_backprop_accessor_);
     T* output_backprop = ConvertToActualTypeSycl(T, output_backprop_accessor_);
 
-    int index = item.get_linear_id();
+    const int index = item.get_linear_id();
+    T output_value = 0;
     int n = index;
-    int d = n % p_.depth_;
+    const int d = n % p_.depth_;
     n /= p_.depth_;
-    int cstart = (n % p_.out_cols_) * p_.stride_cols_ - p_.pad_cols_;
-    int cend = std::min(cstart + p_.window_cols_, p_.in_cols_);
-    cstart = std::max(cstart, 0);
-    n /= p_.out_cols_;
-    int rstart = (n % p_.out_rows_) * p_.stride_rows_ - p_.pad_rows_;
-    int rend = std::min(rstart + p_.window_rows_, p_.in_rows_);
-    rstart = std::max(rstart, 0);
-    n /= p_.out_rows_;
-    int maxidx = -1;
-    bool should_stop = false;
+    const int c = (n % p_.in_cols_) + p_.pad_cols_;
+    const int poolcstart =
+        (c < p_.window_cols_) ? 0 : (c - p_.window_cols_) / p_.stride_cols_ + 1;
+    const int poolcend = std::min(c / p_.stride_cols_ + 1, p_.out_cols_);
+    n /= p_.in_cols_;
+    const int r = (n % p_.in_rows_) + p_.pad_rows_;
+    const int poolrstart =
+        (r < p_.window_rows_) ? 0 : (r - p_.window_rows_) / p_.stride_rows_ + 1;
+    const int poolrend = std::min(r / p_.stride_rows_ + 1, p_.out_rows_);
+    n /= p_.in_rows_;
+    const int index_no_n = index - n * p_.in_cols_ * p_.in_rows_ * p_.depth_;
+
     const T* input_data_n =
         input_data + n * p_.in_cols_ * p_.in_rows_ * p_.depth_;
-    for (int r = rstart; r < rend && !should_stop; ++r) {
-      for (int c = cstart; c < cend && !should_stop; ++c) {
-        int idx = (r * p_.in_cols_ + c) * p_.depth_ + d;
-        if (output_data[index] == input_data_n[idx]) {
-          maxidx = idx;
-          should_stop = true;
+    const T* output_data_n =
+        output_data + n * p_.out_cols_ * p_.out_rows_ * p_.depth_;
+    const T* input_backprop_n =
+        input_backprop + n * p_.out_cols_ * p_.out_rows_ * p_.depth_;
+
+    for (int poolr = poolrstart; poolr < poolrend; ++poolr) {
+      int rstart = poolr * p_.stride_rows_ - p_.pad_rows_;
+      const int rend = std::min(rstart + p_.window_rows_, p_.in_rows_);
+      rstart = std::max(rstart, 0);
+
+      for (int poolc = poolcstart; poolc < poolcend; ++poolc) {
+        int cstart = poolc * p_.stride_cols_ - p_.pad_cols_;
+        const int cend = std::min(cstart + p_.window_cols_, p_.in_cols_);
+        cstart = std::max(cstart, 0);
+
+        const int output_data_idx =
+            (poolr * p_.out_cols_ + poolc) * p_.depth_ + d;
+        bool should_continue = true;
+        bool is_max = (input_data[index] == output_data_n[output_data_idx]);
+        for (int win_r = rstart; win_r < rend && should_continue; ++win_r) {
+          for (int win_c = cstart; win_c < cend && should_continue; ++win_c) {
+            const int input_data_idx =
+                (win_r * p_.in_cols_ + win_c) * p_.depth_ + d;
+            if (input_data_idx == index_no_n) {
+              should_continue = false;
+            } else if (input_data_n[input_data_idx] ==
+                       output_data_n[output_data_idx]) {
+              should_continue = false;
+              is_max = false;
+            }
+          }
+        }
+        if (is_max) {
+          output_value += input_backprop_n[output_data_idx];
         }
       }
     }
-    if (maxidx != -1) {
-      SyclAtomicAdd(
-          output_backprop + n * p_.in_rows_ * p_.in_cols_ * p_.depth_ + maxidx,
-          input_backprop[index]);
-    } else {
-      output_backprop[index / p_.out_rows_ * p_.in_rows_ +
-                      index % p_.out_rows_] = input_backprop[index];
-    }
+    output_backprop[index] = output_value;
   }
 
  private:
@@ -1337,13 +1358,12 @@ struct LaunchMaxPoolingGradOpSYCL {
                      const std::array<int64, 2>& padding,
                      TensorFormat data_format, Tensor* output) {
     const SYCLDevice& device = context->eigen_device<SYCLDevice>();
-    output->template flat<T>().setZero().device(device);
     const int batch = GetTensorDim(tensor_in, data_format, 'N');
     const int in_rows = GetTensorDim(tensor_in, data_format, '0');
     const int in_cols = GetTensorDim(tensor_in, data_format, '1');
     const int depth = GetTensorDim(tensor_in, data_format, 'C');
 
-    const int output_size = out_backprop.NumElements();
+    const int output_size = output->NumElements();
 
     auto input_data_buffer =
         device.get_sycl_buffer(tensor_in.template flat<T>().data());

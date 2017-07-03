@@ -1106,16 +1106,13 @@ class PoolingTest(test.TestCase):
     if not test.is_gpu_available():
       return
 
-    if "sycl" in test_util.gpu_device_name().lower():
-      #SYCL does propagation is consistent with CPU
-      expected_input_backprop_gpu = expected_input_backprop_tf_cpu
-    else:
-      # Test the GPU implementation that uses cudnn for now.
-      # It does not propagate the diff in cases of NaNs
-      expected_input_backprop_gpu = [
-          0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-          0.0, 0.0
-      ]
+    # Test the GPU implementation.
+    # The cuDNN, SYCL and custom CUDA kernels do not propagate errors when the input
+    # tensor is all NaNs
+    expected_input_backprop_gpu = [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0
+    ]
 
     self._testMaxPoolGradDirect(
         input_data,
@@ -1157,16 +1154,13 @@ class PoolingTest(test.TestCase):
     if not test.is_gpu_available():
       return
 
-    if "sycl" in test_util.gpu_device_name().lower():
-      #SYCL does propagation is consistent with CPU
-      expected_input_backprop_gpu = expected_input_backprop_tf_cpu
-    else:
-      # Test the GPU implementation that uses cudnn for now.
-      # It does not propagate the diff in cases of NaNs
-      expected_input_backprop_gpu = [
-          0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-          0.0, 0.0
-      ]
+    # Test the GPU implementation.
+    # The cuDNN, SYCL and custom CUDA kernels do not propagate errors when the input
+    # tensor is all NaNs
+    expected_input_backprop_gpu = [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0
+    ]
 
     self._testMaxPoolGradDirect(
         input_data,
