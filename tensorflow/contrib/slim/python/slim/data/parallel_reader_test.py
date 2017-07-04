@@ -57,8 +57,7 @@ class ParallelReaderTest(test.TestCase):
     num_reads = 50
 
     sv = supervisor.Supervisor(logdir=self.get_temp_dir())
-    with sv.prepare_or_wait_for_session() as sess:
-      sv.start_queue_runners(sess)
+    with sv.managed_session() as sess:
 
       for _ in range(num_reads):
         current_key, _ = sess.run([key, value])
@@ -101,8 +100,7 @@ class ParallelReadTest(test.TestCase):
         self._tfrecord_paths, reader_class=io_ops.TFRecordReader, num_readers=3)
 
     sv = supervisor.Supervisor(logdir=self.get_temp_dir())
-    with sv.prepare_or_wait_for_session() as sess:
-      sv.start_queue_runners(sess)
+    with sv.managed_session() as sess:
 
       flowers = 0
       num_reads = 100
