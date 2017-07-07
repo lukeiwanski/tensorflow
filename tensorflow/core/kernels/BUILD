@@ -32,6 +32,7 @@ load(
     "tf_kernel_library",
     "tf_mkl_kernel_library",
     "cc_header_only_library",
+    "if_not_windows",
 )
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
@@ -231,7 +232,7 @@ cc_library(
     name = "ops_util",
     srcs = ["ops_util.cc"],
     hdrs = ["ops_util.h"],
-    copts = ["-Wno-sign-compare"],
+    copts = if_not_windows(["-Wno-sign-compare"]),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -300,6 +301,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -322,6 +324,7 @@ cc_library(
         ":typed_queue",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -342,7 +345,7 @@ cc_library(
     name = "save_restore_tensor",
     srcs = ["save_restore_tensor.cc"],
     hdrs = ["save_restore_tensor.h"],
-    copts = ["-Wno-sign-compare"],
+    copts = if_not_windows(["-Wno-sign-compare"]),
     deps = [
         ":bounds_check",
         "//tensorflow/core:framework",
@@ -413,6 +416,7 @@ cc_library(
     hdrs = ["warn_about_ints.h"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -722,6 +726,12 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "tile_ops",
+    srcs = ["tile_functor_cpu.cc"],
+    hdrs = ["tile_functor.h"],
+    gpu_srcs = [
+        "tile_functor.h",
+        "tile_functor_gpu.cu.cc",
+    ],
     prefix = "tile_ops",
     deps = ARRAY_DEPS,
 )
@@ -754,7 +764,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "where_op",
     prefix = "where_op",
-    deps = ARRAY_DEPS,
+    deps = if_cuda([
+        ":cuda_solvers",
+        "@cub_archive//:cub",
+    ]) + ARRAY_DEPS,
 )
 
 tf_cc_test(
@@ -1415,7 +1428,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "random_shuffle_queue_op",
     prefix = "random_shuffle_queue_op",
-    deps = DATA_FLOW_DEPS,
+    deps = DATA_FLOW_DEPS + ["//tensorflow/core:protos_all_cc"],
 )
 
 tf_kernel_library(
@@ -1516,6 +1529,7 @@ cc_library(
         ":typed_queue",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -1530,6 +1544,7 @@ cc_library(
         ":typed_queue",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -2461,7 +2476,7 @@ tf_cc_tests(
         ":ops_util",
         ":sparse_add_op",
         ":sparse_dense_binary_op_shared",
-        ":sparse_reduce_sum_op",
+        ":sparse_reduce_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2793,7 +2808,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "topk_op",
     prefix = "topk_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + if_cuda(["@cub_archive//:cub"]),
 )
 
 tf_kernel_library(
@@ -3204,9 +3219,10 @@ cc_library(
         ":sparse_cross_op",
         ":sparse_dense_binary_op_shared",
         ":sparse_fill_empty_rows_op",
-        ":sparse_reduce_sum_op",
+        ":sparse_reduce_op",
         ":sparse_reorder_op",
         ":sparse_reshape_op",
+        ":sparse_slice_op",
         ":sparse_softmax",
         ":sparse_sparse_binary_op_shared",
         ":sparse_split_op",
@@ -3260,8 +3276,8 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "sparse_reduce_sum_op",
-    prefix = "sparse_reduce_sum_op",
+    name = "sparse_reduce_op",
+    prefix = "sparse_reduce_op",
     deps = SPARSE_DEPS,
 )
 
@@ -3286,6 +3302,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_reshape_op",
     prefix = "sparse_reshape_op",
+    deps = SPARSE_DEPS,
+)
+
+tf_kernel_library(
+    name = "sparse_slice_op",
+    prefix = "sparse_slice_op",
     deps = SPARSE_DEPS,
 )
 
@@ -3328,7 +3350,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "serialize_sparse_op",
     prefix = "serialize_sparse_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + ["//tensorflow/core:protos_all_cc"],
 )
 
 tf_kernel_library(
@@ -3472,8 +3494,26 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "scatter_nd_op",
-    prefix = "scatter_nd_op",
-    deps = STATE_DEPS,
+    srcs = [
+        "scatter_nd_op.cc",
+        "scatter_nd_op_cpu_impl_0.cc",
+        "scatter_nd_op_cpu_impl_1.cc",
+        "scatter_nd_op_cpu_impl_2.cc",
+        "scatter_nd_op_cpu_impl_3.cc",
+        "scatter_nd_op_cpu_impl_4.cc",
+        "scatter_nd_op_cpu_impl_5.cc",
+    ],
+    hdrs = [
+        "dense_update_ops.h",
+        "scatter_nd_op.h",
+        "scatter_nd_op_cpu_impl.h",
+    ],
+    gpu_srcs = [
+        "dense_update_ops.h",
+        "scatter_nd_op.h",
+        "scatter_nd_op_gpu.cu.cc",
+    ],
+    deps = STATE_DEPS + [":dense_update_ops"],
 )
 
 tf_kernel_library(
@@ -4103,6 +4143,7 @@ filegroup(
     srcs = [
         "argmax_op.h",
         "avgpooling_op.h",
+        "batch_matmul_op_impl.h",
         "batch_norm_op.h",
         "control_flow_ops.h",
         "conv_2d.h",
@@ -4130,8 +4171,10 @@ filegroup(
         "spacetobatch_functor.h",
         "spacetodepth_op.h",
         "tensor_array.h",
+        "tile_functor.h",
         "tile_ops_cpu_impl.h",
         "tile_ops_impl.h",
+        "topk_op.h",
         "training_op_helpers.h",
         "training_ops.h",
         "transpose_functor.h",
@@ -4147,6 +4190,7 @@ filegroup(
     srcs = [
         "argmax_op.cc",
         "avgpooling_op.cc",
+        "batch_matmul_op_real.cc",
         "batch_norm_op.cc",
         "bcast_ops.cc",
         "check_numerics_op.cc",
@@ -4267,6 +4311,7 @@ filegroup(
         "summary_op.cc",
         "tensor_array.cc",
         "tensor_array_ops.cc",
+        "tile_functor_cpu.cc",
         "tile_ops.cc",
         "tile_ops_cpu_impl_1.cc",
         "tile_ops_cpu_impl_2.cc",
@@ -5402,6 +5447,18 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "ignore_errors_dataset_op",
+    srcs = ["ignore_errors_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "range_dataset_op",
     srcs = ["range_dataset_op.cc"],
     deps = [
@@ -5521,6 +5578,7 @@ tf_kernel_library(
         ":filter_dataset_op",
         ":flat_map_dataset_op",
         ":group_by_window_dataset_op",
+        ":ignore_errors_dataset_op",
         ":iterator_ops",
         ":map_dataset_op",
         ":padded_batch_dataset_op",
