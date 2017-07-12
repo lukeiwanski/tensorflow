@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/dense_update_ops.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
@@ -463,6 +464,9 @@ TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_CPU);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_ADD_SUB_GPU);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_GPU);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_GPU);
+#undef REGISTER_SCATTER_ND_UPDATE_GPU
+#undef REGISTER_SCATTER_ND_ADD_SUB_GPU
+#endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SCATTER_ND_ADD_SUB_SYCL(type) \
@@ -480,13 +484,12 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_SYCL);
 #undef REGISTER_SCATTER_ND_ADD
 #undef REGISTER_SCATTER_ND_ADD_SUB
 #undef REGISTER_SCATTER_ND_ADD_SUB_CPU
-#undef REGISTER_SCATTER_ND_ADD_SUB_GPU
 #undef REGISTER_SCATTER_ND_UPDATE
 #undef REGISTER_SCATTER_ND_UPDATE_CPU
-#undef REGISTER_SCATTER_ND_UPDATE_GPU
 #undef REGISTER_SCATTER_ND_KERNEL
 #undef REGISTER_SCATTER_ND_KERNEL_INDEX
 
+#if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, IXDIM)           \

@@ -521,7 +521,7 @@ class PoolingTest(test.TestCase):
               padding="SAME").eval()
 
   # The following are tests that verify that the CPU and GPU implementations
-  # produce the same resuts.
+  # produce the same results.
   def _CompareMaxPoolingFwd(self, input_shape, ksize, strides, padding):
     for dtype in np.float64, np.float32, np.float16:
       tensor_input = np.random.rand(*input_shape).astype(dtype)
@@ -1106,16 +1106,13 @@ class PoolingTest(test.TestCase):
     if not test.is_gpu_available():
       return
 
-    if "sycl" in test_util.gpu_device_name().lower():
-      #SYCL does propagation is consistent with CPU
-      expected_input_backprop_gpu = expected_input_backprop_tf_cpu
-    else:
-      # Test the GPU implementation that uses cudnn for now.
-      # It does not propagate the diff in cases of NaNs
-      expected_input_backprop_gpu = [
-          0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-          0.0, 0.0
-      ]
+    # Test the GPU implementation.
+    # The cuDNN, SYCL and custom CUDA kernels do not propagate errors when the input
+    # tensor is all NaNs
+    expected_input_backprop_gpu = [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0
+    ]
 
     self._testMaxPoolGradDirect(
         input_data,
@@ -1157,16 +1154,13 @@ class PoolingTest(test.TestCase):
     if not test.is_gpu_available():
       return
 
-    if "sycl" in test_util.gpu_device_name().lower():
-      #SYCL does propagation is consistent with CPU
-      expected_input_backprop_gpu = expected_input_backprop_tf_cpu
-    else:
-      # Test the GPU implementation that uses cudnn for now.
-      # It does not propagate the diff in cases of NaNs
-      expected_input_backprop_gpu = [
-          0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-          0.0, 0.0
-      ]
+    # Test the GPU implementation.
+    # The cuDNN, SYCL and custom CUDA kernels do not propagate errors when the input
+    # tensor is all NaNs
+    expected_input_backprop_gpu = [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0
+    ]
 
     self._testMaxPoolGradDirect(
         input_data,

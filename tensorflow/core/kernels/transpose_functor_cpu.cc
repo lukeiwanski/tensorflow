@@ -215,8 +215,6 @@ Status DoTranspose<SYCLDevice>(const SYCLDevice& d, const Tensor& in,
       TransposeSYCL<SYCLDevice, uint8>(d, in, perm, out);
       break;
 
-    case DT_BFLOAT16:
-    case DT_HALF:
     case DT_INT16:
     case DT_QINT16:
     case DT_QUINT16:
@@ -229,14 +227,9 @@ Status DoTranspose<SYCLDevice>(const SYCLDevice& d, const Tensor& in,
       TransposeSYCL<SYCLDevice, uint32>(d, in, perm, out);
       break;
 
-    case DT_COMPLEX64:
     case DT_DOUBLE:
     case DT_INT64:
       TransposeSYCL<SYCLDevice, uint64>(d, in, perm, out);
-      break;
-
-    case DT_COMPLEX128:
-      TransposeSYCL<SYCLDevice, complex128>(d, in, perm, out);
       break;
 
     default:

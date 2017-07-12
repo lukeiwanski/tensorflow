@@ -336,8 +336,10 @@ TF_CALL_POD_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
 
 #ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL(bool, SYCL);
 REGISTER_KERNEL(float, SYCL);
 REGISTER_KERNEL(bool, SYCL);
+REGISTER_KERNEL(int64, SYCL);
 REGISTER_KERNEL_BUILDER(Name("OnesLike")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
