@@ -42,6 +42,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 // TODO(mjanusz): Get rid of the macro and return shapes directly.
 #define EXTRACT_AND_VERIFY_DIMENSIONS(label)                                   \
@@ -1119,5 +1122,24 @@ REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropFilterV2")
                             .HostMemory("filter_sizes"),
                         Conv3DBackpropFilterOp<GPUDevice, float>);
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("Conv3DBackpropInput").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
+    Conv3DBackpropInputOp<SYCLDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropInputV2")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<float>("T")
+                            .HostMemory("input_sizes"),
+                        Conv3DBackpropInputOp<SYCLDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conv3DBackpropFilter").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
+    Conv3DBackpropFilterOp<SYCLDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropFilterV2")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<float>("T")
+                            .HostMemory("filter_sizes"),
+                        Conv3DBackpropFilterOp<SYCLDevice, float>);
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
