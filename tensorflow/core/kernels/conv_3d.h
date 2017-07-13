@@ -42,6 +42,21 @@ struct CuboidConvolution<CPUDevice, T> {
   }
 };
 
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+template <typename T>
+struct CuboidConvolution<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T, 5>::Tensor output,
+                  typename TTypes<T, 5>::ConstTensor input,
+                  typename TTypes<T, 5>::ConstTensor filter, int stride_planes,
+                  int stride_rows, int stride_cols,
+                  const Eigen::PaddingType& padding) {
+    output.device(d) = Eigen::CuboidConvolution(
+        input, filter, stride_planes, stride_rows, stride_cols, padding);
+  }
+};
+#endif  // TENSORFLOW_USE_SYCL
+
 }  // namespace functor
 }  // namespace tensorflow
 

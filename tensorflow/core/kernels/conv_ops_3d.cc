@@ -41,6 +41,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif
 
 template <typename Device, typename T>
 struct LaunchConvOp;
@@ -61,6 +64,25 @@ struct LaunchConvOp<CPUDevice, T> {
         strides[0], BrainPadding2EigenPadding(padding));
   }
 };
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct LaunchConvOp<SYCLDevice, T> {
+  static void launch(OpKernelContext* context, bool cudnn_use_autotune,
+                     const Tensor& input, const Tensor& filter,
+                     const std::array<int64, 3>& strides, const Padding padding,
+                     TensorFormat data_format, Tensor* output) {
+    OP_REQUIRES(context, data_format == FORMAT_NHWC,
+                errors::InvalidArgument("SYCL implementation of Conv3D "
+                                        "currently only supports the NHWC "
+                                        "tensor format."));
+    functor::CuboidConvolution<CPUDevice, T>()(
+        context->eigen_device<CPUDevice>(), output->tensor<T, 5>(),
+        input.tensor<T, 5>(), filter.tensor<T, 5>(), strides[2], strides[1],
+        strides[0], BrainPadding2EigenPadding(padding));
+  }
+};
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class Conv3DOp : public BinaryOp<T> {
@@ -494,5 +516,11 @@ REGISTER_KERNEL_BUILDER(
     Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     Conv3DOp<GPUDevice, float>);
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("Conv3D").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
+    Conv3DOp<SYCLDevice, float>);
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
