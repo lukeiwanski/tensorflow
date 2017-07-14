@@ -76,7 +76,14 @@ class GSYCLInterface
 
         for (auto p : m_sycl_allocator_) {
           p->Synchronize();
-          delete p;
+          p->ClearSYCLDevice();
+          // Cannot delete the Allocator instances, as the Allocator lifetime
+          // needs to exceed any Tensor created by it. There is no way of
+          // knowing when all Tensors have been deallocated, as they are
+          // RefCounted and wait until all instances of a Tensor have been
+          // destroyed before calling Allocator.Deallocate. This could happen at
+          // program exit, which can set up a race condition between destroying
+          // Tensors and Allocators when the program is cleaning up.
         }
         m_sycl_allocator_.clear();
 

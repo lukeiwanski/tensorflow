@@ -46,6 +46,12 @@ class SYCLAllocator : public Allocator {
   // AllocatedSize(void* ptr) by default.
   size_t RequestedSize(void* ptr) override;
   Eigen::SyclDevice* getSyclDevice() { return sycl_device_; }
+  // Clear the SYCL device used by the Allocator
+  void ClearSYCLDevice() {
+    delete sycl_device_;
+    sycl_device_ = nullptr;
+  }
+
  private:
   Eigen::SyclDevice *sycl_device_;  // owned
 

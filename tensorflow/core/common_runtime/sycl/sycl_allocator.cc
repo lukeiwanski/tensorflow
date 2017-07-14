@@ -57,11 +57,11 @@ void *SYCLAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
 }
 
 void SYCLAllocator::DeallocateRaw(void *ptr) {
-  const auto& buffer_to_delete = sycl_device_->get_sycl_buffer(ptr);
-  const std::size_t dealloc_size = buffer_to_delete.get_range().size();
-  mutex_lock lock(mu_);
-  stats_.bytes_in_use -= dealloc_size;
   if (sycl_device_) {
+    const auto& buffer_to_delete = sycl_device_->get_sycl_buffer(ptr);
+    const std::size_t dealloc_size = buffer_to_delete.get_range().size();
+    mutex_lock lock(mu_);
+    stats_.bytes_in_use -= dealloc_size;
     sycl_device_->deallocate(ptr);
   }
 }
