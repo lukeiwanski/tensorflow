@@ -36,8 +36,12 @@ class SYCLAllocator : public Allocator {
   void DeallocateRaw(void* ptr) override;
 
   virtual bool ShouldAllocateEmptyTensors() override final { return true; }
-  void Synchronize() { sycl_device_->synchronize(); }
-  bool Ok() { return sycl_device_->ok(); }
+  void Synchronize() {
+    if (sycl_device_) {
+      sycl_device_->synchronize();
+    }
+  }
+  bool Ok() { return sycl_device_ && sycl_device_->ok(); }
   void GetStats(AllocatorStats* stats) override;
   // The SYCL buffers keep track of their size, so we already have tracking.
   bool TracksAllocationSizes() override { return true; }

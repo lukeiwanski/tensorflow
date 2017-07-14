@@ -72,6 +72,9 @@ void SYCLAllocator::GetStats(AllocatorStats* stats) {
 }
 
 size_t SYCLAllocator::RequestedSize(void* ptr) {
+  if(!sycl_device_) {
+    return 0;
+  }
   const auto& buffer = sycl_device_->get_sycl_buffer(ptr);
   return buffer.get_size();
 }
