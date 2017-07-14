@@ -101,14 +101,14 @@ class GSYCLInterface
     }
 
   public:
-    static GSYCLInterface *instance()
+    static const GSYCLInterface *instance()
     {
       // c++11 guarantees that this will be constructed in a thread safe way
       static GSYCLInterface instance;
       return &instance;
     }
 
-    Eigen::QueueInterface * GetQueueInterface(size_t i = 0) {
+    Eigen::QueueInterface * GetQueueInterface(size_t i = 0) const {
       if(!m_queue_interface_.empty()) {
         return m_queue_interface_[i];
       } else {
@@ -117,7 +117,7 @@ class GSYCLInterface
       }
     }
 
-    SYCLAllocator * GetSYCLAllocator(size_t i = 0) {
+    SYCLAllocator * GetSYCLAllocator(size_t i = 0) const {
       if(!m_sycl_allocator_.empty()) {
         return m_sycl_allocator_[i];
       } else {
@@ -126,7 +126,7 @@ class GSYCLInterface
       }
     }
 
-    Allocator * GetCPUAllocator(size_t i = 0) {
+    Allocator * GetCPUAllocator(size_t i = 0) const {
       if(!m_cpu_allocator_.empty()) {
         return m_cpu_allocator_[i];
       } else {
@@ -135,7 +135,7 @@ class GSYCLInterface
       }
     }
 
-    SYCLDeviceContext * GetSYCLContext(size_t i = 0) {
+    SYCLDeviceContext * GetSYCLContext(size_t i = 0) const {
       if(!m_sycl_context_.empty()) {
         return m_sycl_context_[i];
       } else {
@@ -144,7 +144,7 @@ class GSYCLInterface
       }
     }
 
-    string GetShortDeviceDescription(int device_id = 0) {
+    string GetShortDeviceDescription(int device_id = 0) const {
       auto _device = GetSYCLAllocator(device_id)
                          ->getSyclDevice()
                          ->sycl_queue()
