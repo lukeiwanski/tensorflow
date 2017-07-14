@@ -33,6 +33,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class ResizeNearestNeighborOp : public OpKernel {
@@ -266,5 +269,170 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T, bool align_corners>
+class ResizeNearestNeighborSYCL {
+  using write_accessor =
+      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::write,
+                         cl::sycl::access::target::global_buffer>;
+  using read_accessor =
+      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::read,
+                         cl::sycl::access::target::global_buffer>;
+
+public:
+  ResizeNearestNeighborSYCL(const float height_scale, const float width_scale,
+                      const int batch, const int in_height,
+                      const int in_width, const int channels,
+                      const int out_height, const int out_width,
+                      const read_accessor input_accessor,
+                      write_accessor output_accessor)
+      : height_scale_(height_scale),
+        width_scale_(width_scale),
+        batch_(batch),
+        in_height_(in_height),
+        in_width_(in_width),
+        channels_(channels),
+        out_height_(out_height),
+        out_width_(out_width),
+        input_accessor_(input_accessor),
+        output_accessor_(output_accessor) {}
+
+  void operator()(cl::sycl::item<1> item){
+    T* input_data = ConvertToActualTypeSycl(T, input_accessor_);
+    T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
+
+    const int index = item.get_linear_id();
+    int n = index;
+    int c = n % channels_;
+    n /= channels_;
+    int out_x = n % out_width_;
+    n /= out_width_;
+    int out_y = n % out_height_;
+    n /= out_height_;
+
+    const int in_y = std::min((align_corners)
+        ? static_cast<int>(cl::sycl::round(out_y * height_scale_))
+        : static_cast<int>(cl::sycl::floor(out_y * height_scale_)),
+        in_height_ - 1);
+    const int in_x = std::min((align_corners)
+        ? static_cast<int>(cl::sycl::round(out_x * width_scale_))
+        : static_cast<int>(cl::sycl::floor(out_x * width_scale_)),
+        in_width_ - 1);
+    const int idx = n * channels_ * in_height_ * in_width_ +
+                    (in_y * in_width_ + in_x) * channels_ + c;
+    output_data[index] = input_data[idx];
+  }
+private:
+  const float height_scale_;
+  const float width_scale_;
+  const int batch_;
+  const int in_height_;
+  const int in_width_;
+  const int channels_;
+  const int out_height_;
+  const int out_width_;
+  const read_accessor input_accessor_;
+  write_accessor output_accessor_;
+};
+
+namespace functor {
+template <typename T, bool align_corners>
+struct ResizeNearestNeighbor<SYCLDevice, T, align_corners> {
+  bool operator()(const SYCLDevice& device, const Tensor& input,
+                  const float height_scale, const float width_scale,
+                  Tensor* output) {
+    typename TTypes<T, 4>::ConstTensor input_tensor = input.tensor<T, 4>();
+    typename TTypes<T, 4>::Tensor output_tensor = output->template tensor<T, 4>();
+
+    const int batch_size = input_tensor.dimension(0);
+    const int64 in_height = input_tensor.dimension(1);
+    const int64 in_width = input_tensor.dimension(2);
+    const int channels = input_tensor.dimension(3);
+
+    const int64 out_height = output_tensor.dimension(1);
+    const int64 out_width = output_tensor.dimension(2);
+
+    const int num_threads = output->NumElements();
+    if (num_threads == 0) return true;
+
+    auto input_data_buffer =
+        device.get_sycl_buffer(input.template flat<T>().data());
+
+    auto output_data_buffer =
+        device.get_sycl_buffer(output->template flat<T>().data());
+
+    device.sycl_queue().submit([&](cl::sycl::handler& cgh) {
+      auto input_data_access =
+          input_data_buffer.template get_access<cl::sycl::access::mode::read>(
+              cgh);
+      auto output_data_access =
+          output_data_buffer.template get_access<cl::sycl::access::mode::write>(
+              cgh);
+      ResizeNearestNeighborSYCL<T, align_corners> functor(
+          height_scale, width_scale, batch_size, in_height, in_width, channels,
+          out_height, out_width, input_data_access, output_data_access);
+
+      cgh.parallel_for(cl::sycl::range<1>(num_threads), functor);
+    });
+    return device.ok();
+  }
+};
+}  // namespace functor
+template <typename T>
+class ResizeNearestNeighborOp<SYCLDevice, T> : public OpKernel {
+ public:
+  explicit ResizeNearestNeighborOp(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& input = context->input(0);
+    ImageResizerState st(align_corners_);
+    st.ValidateAndCreateOutput(context, input);
+
+    if (!context->status().ok()) return;
+
+    OP_REQUIRES(context, st.in_height < (1 << 24) && st.in_width < (1 << 24),
+                errors::InvalidArgument("nearest neighbor requires max height "
+                                        "& width of 2^24"));
+
+    // Return if the output is empty.
+    if (st.output->NumElements() == 0) return;
+
+    bool status;
+    if (align_corners_) {
+      status =
+          functor::ResizeNearestNeighbor<SYCLDevice, T, /*align_corners=*/true>()(
+              context->eigen_device<SYCLDevice>(), input, st.height_scale,
+              st.width_scale, st.output);
+    } else {
+      status =
+          functor::ResizeNearestNeighbor<SYCLDevice, T, /*align_corners=*/false>()(
+              context->eigen_device<SYCLDevice>(), input, st.height_scale,
+              st.width_scale, st.output);
+    }
+    if (!status) {
+      context->SetStatus(
+          errors::Internal("Failed launching ResizeNearestNeighbor"));
+    }
+  }
+
+ private:
+  bool align_corners_;
+};
+
+#define REGISTER_KERNEL(T)                                        \
+  REGISTER_KERNEL_BUILDER(Name("ResizeNearestNeighbor")           \
+                              .Device(DEVICE_SYCL)                 \
+                              .TypeConstraint<T>("T")             \
+                              .HostMemory("size"),                \
+                          ResizeNearestNeighborOp<SYCLDevice, T>); \
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
+
+#undef REGISTER_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
