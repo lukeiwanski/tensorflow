@@ -433,20 +433,16 @@ public:
 
     const float top_left(
         input_data[((b * in_height_ + top_y_index) * in_width_ + left_x_index) *
-                   channels_ +
-               c]);
+                   channels_ + c]);
     const float top_right(
         input_data[((b * in_height_ + top_y_index) * in_width_ + right_x_index) *
-                   channels_ +
-               c]);
+                   channels_ + c]);
     const float bottom_left(
         input_data[((b * in_height_ + bottom_y_index) * in_width_ + left_x_index) *
-                   channels_ +
-               c]);
+                   channels_ + c]);
     const float bottom_right(
         input_data[((b * in_height_ + bottom_y_index) * in_width_ + right_x_index) *
-                   channels_ +
-               c]);
+                   channels_ + c]);
 
     const float top = top_left + (top_right - top_left) * x_lerp;
     const float bottom = bottom_left + (bottom_right - bottom_left) * x_lerp;
