@@ -108,7 +108,7 @@ class GSYCLInterface {
  public:
   static const GSYCLInterface* instance() {
     // c++11 guarantees that this will be constructed in a thread safe way
-    static GSYCLInterface instance;
+    static const GSYCLInterface instance;
     return &instance;
   }
 
