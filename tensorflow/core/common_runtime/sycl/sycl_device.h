@@ -149,28 +149,33 @@ class GSYCLInterface {
   }
 
   string GetShortDeviceDescription(int device_id = 0) const {
-    auto _device =
-        GetSYCLAllocator(device_id)->getSyclDevice()->sycl_queue().get_device();
-    auto _name = _device.get_info<cl::sycl::info::device::name>();
-    auto _vendor = _device.get_info<cl::sycl::info::device::vendor>();
-    auto _profile = _device.get_info<cl::sycl::info::device::profile>();
+    Eigen::QueueInterface* queue_ptr = GetQueueInterface(device_id);
+    if (!queue_ptr) {
+      LOG(ERROR)
+          << "Device name cannot be given after Eigen QueueInterface destroyed";
+      return "";
+    }
+    auto device = queue_ptr->sycl_queue().get_device();
+    auto name = device.get_info<cl::sycl::info::device::name>();
+    auto vendor = device.get_info<cl::sycl::info::device::vendor>();
+    auto profile = device.get_info<cl::sycl::info::device::profile>();
 
-    std::string _type;
-    if (_device.is_host()) {
-      _type = "Host";
-    } else if (_device.is_cpu()) {
-      _type = "CPU";
-    } else if (_device.is_gpu()) {
-      _type = "GPU";
-    } else if (_device.is_accelerator()) {
-      _type = "Accelerator";
+    std::string type;
+    if (device.is_host()) {
+      type = "Host";
+    } else if (device.is_cpu()) {
+      type = "CPU";
+    } else if (device.is_gpu()) {
+      type = "GPU";
+    } else if (device.is_accelerator()) {
+      type = "Accelerator";
     } else {
-      _type = "Unknown";
+      type = "Unknown";
     }
 
-    return strings::StrCat("id: ", device_id, " ,type: ", _type, " ,name: ",
-                           _name.c_str(), " ,vendor: ", _vendor.c_str(),
-                           " ,profile: ", _profile.c_str());
+    return strings::StrCat("id: ", device_id, ", type: ", type, ", name: ",
+                           name.c_str(), ", vendor: ", vendor.c_str(),
+                           ", profile: ", profile.c_str());
   }
 };
 
