@@ -76,8 +76,8 @@ struct LaunchConvOp<SYCLDevice, T> {
                 errors::InvalidArgument("SYCL implementation of Conv3D "
                                         "currently only supports the NHWC "
                                         "tensor format."));
-    functor::CuboidConvolution<CPUDevice, T>()(
-        context->eigen_device<CPUDevice>(), output->tensor<T, 5>(),
+    functor::CuboidConvolution<SYCLDevice, T>()(
+        context->eigen_device<SYCLDevice>(), output->tensor<T, 5>(),
         input.tensor<T, 5>(), filter.tensor<T, 5>(), strides[2], strides[1],
         strides[0], BrainPadding2EigenPadding(padding));
   }
