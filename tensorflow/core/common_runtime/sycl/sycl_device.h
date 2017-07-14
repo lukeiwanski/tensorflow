@@ -31,8 +31,7 @@ class GSYCLInterface {
   std::vector<Eigen::QueueInterface*> m_queue_interface_;  // owned
   std::vector<Allocator*> m_cpu_allocator_;                // not owned
   std::vector<SYCLAllocator*> m_sycl_allocator_;           // owned
-  std::vector<SYCLDeviceContext*> m_sycl_context_;         // owned
-
+  std::vector<SYCLDeviceContext*> m_sycl_context_;         // ref counted
   GSYCLInterface() {
     bool found_device = false;
     auto device_list = Eigen::get_sycl_supported_devices();
@@ -204,9 +203,9 @@ class SYCLDevice : public LocalDevice {
   Status Sync() override;
 
  private:
-  Allocator* cpu_allocator_;       // not owned
-  SYCLAllocator* sycl_allocator_;  // not owned
-  SYCLDeviceContext* device_context_;
+  Allocator* cpu_allocator_;           // not owned
+  SYCLAllocator* sycl_allocator_;      // not owned
+  SYCLDeviceContext* device_context_;  // not owned
 };
 
 }  // namespace tensorflow
