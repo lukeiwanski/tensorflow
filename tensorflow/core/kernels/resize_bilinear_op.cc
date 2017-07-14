@@ -33,6 +33,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class ResizeBilinearOp : public OpKernel {
@@ -373,5 +376,178 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_GRAD_KERNEL);
 #undef REGISTER_GRAD_KERNEL
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+
+template <typename T>
+class ResizeBiliinearSYCL {
+  using write_accessor =
+      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::write,
+                         cl::sycl::access::target::global_buffer>;
+  using read_accessor =
+      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::read,
+                         cl::sycl::access::target::global_buffer>;
+
+public:
+  ResizeBiliinearSYCL(const float height_scale, const float width_scale,
+                      const int batch, const int in_height,
+                      const int in_width, const int channels,
+                      const int out_height, const int out_width,
+                      const read_accessor input_accessor,
+                      write_accessor output_accessor)
+      : height_scale_(height_scale),
+        width_scale_(width_scale),
+        batch_(batch),
+        in_height_(in_height),
+        in_width_(in_width),
+        channels_(channels),
+        out_height_(out_height),
+        out_width_(out_width),
+        input_accessor_(input_accessor),
+        output_accessor_(output_accessor) {}
+
+  void operator()(cl::sycl::item<1> item){
+    T* input_data = ConvertToActualTypeSycl(T, input_accessor_);
+    T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
+
+    const int index = item.get_linear_id();
+    int idx = index;
+    const int c = idx % channels_;
+    idx /= channels_;
+    const int x = idx % out_width_;
+    idx /= out_width_;
+    const int y = idx % out_height_;
+    const int b = idx / out_height_;
+
+    const float in_y = y * height_scale_;
+    const int top_y_index = cl::sycl::floor(in_y);
+    const int bottom_y_index =
+        (in_y < in_height_ - 1) ? cl::sycl::ceil(in_y) : in_height_ - 1;
+    const float y_lerp = in_y - top_y_index;
+
+    const float in_x = x * width_scale_;
+    const int left_x_index = cl::sycl::floor(in_x);
+    const int right_x_index =
+        (in_x < in_width_ - 1) ? cl::sycl::ceil(in_x) : in_width_ - 1;
+    const float x_lerp = in_x - left_x_index;
+
+    const float top_left(
+        input_data[((b * in_height_ + top_y_index) * in_width_ + left_x_index) *
+                   channels_ +
+               c]);
+    const float top_right(
+        input_data[((b * in_height_ + top_y_index) * in_width_ + right_x_index) *
+                   channels_ +
+               c]);
+    const float bottom_left(
+        input_data[((b * in_height_ + bottom_y_index) * in_width_ + left_x_index) *
+                   channels_ +
+               c]);
+    const float bottom_right(
+        input_data[((b * in_height_ + bottom_y_index) * in_width_ + right_x_index) *
+                   channels_ +
+               c]);
+
+    const float top = top_left + (top_right - top_left) * x_lerp;
+    const float bottom = bottom_left + (bottom_right - bottom_left) * x_lerp;
+    output_data[index] = top + (bottom - top) * y_lerp;
+  }
+private:
+  const float height_scale_;
+  const float width_scale_;
+  const int batch_;
+  const int in_height_;
+  const int in_width_;
+  const int channels_;
+  const int out_height_;
+  const int out_width_;
+  const read_accessor input_accessor_;
+  write_accessor output_accessor_;
+};
+
+namespace functor {
+template <typename T>
+struct ResizeBilinear<SYCLDevice, T> {
+  void operator()(const SYCLDevice& device, const Tensor& images,
+                  const float height_scale, const float width_scale,
+                  Tensor* output) {
+
+    typename TTypes<T, 4>::ConstTensor image_tensor =
+        images.tensor<T, 4>();
+    typename TTypes<T, 4>::Tensor output_tensor =
+        output->tensor<T, 4>();
+
+    const int batch = image_tensor.dimension(0);
+    const int in_height = image_tensor.dimension(1);
+    const int in_width = image_tensor.dimension(2);
+    const int channels = image_tensor.dimension(3);
+
+    const int out_height = output_tensor.dimension(1);
+    const int out_width = output_tensor.dimension(2);
+
+    const int num_threads = output->NumElements();
+    if (num_threads == 0) return;
+
+    auto input_data_buffer =
+        device.get_sycl_buffer(images.template flat<T>().data());
+
+    auto output_data_buffer =
+        device.get_sycl_buffer(output->template flat<T>().data());
+
+    device.sycl_queue().submit([&](cl::sycl::handler& cgh) {
+      auto input_data_access =
+          input_data_buffer.template get_access<cl::sycl::access::mode::read>(
+              cgh);
+      auto output_data_access =
+          output_data_buffer.template get_access<cl::sycl::access::mode::write>(
+              cgh);
+      ResizeBiliinearSYCL<T> functor(
+          height_scale, width_scale, batch, in_height, in_width, channels,
+          out_height, out_width, input_data_access, output_data_access);
+
+      cgh.parallel_for(cl::sycl::range<1>(num_threads), functor);
+    });
+  }
+};
+}  // namespace functor
+
+template <typename T>
+class ResizeBilinearOp <SYCLDevice, T> : public OpKernel {
+ public:
+  explicit ResizeBilinearOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& input = context->input(0);
+    ImageResizerState st(align_corners_);
+    st.ValidateAndCreateOutput(context, input);
+
+    if (!context->status().ok()) return;
+
+    // Return if the output is empty.
+    if (st.output->NumElements() == 0) return;
+
+    functor::ResizeBilinear<SYCLDevice, T>()(context->eigen_device<SYCLDevice>(),
+                                         input, st.height_scale,
+                                         st.width_scale, st.output);
+  }
+
+ private:
+  bool align_corners_;
+};
+
+#define REGISTER_KERNEL(T)                            \
+  REGISTER_KERNEL_BUILDER(Name("ResizeBilinear")      \
+                              .Device(DEVICE_SYCL)     \
+                              .TypeConstraint<T>("T") \
+                              .HostMemory("size"),    \
+                          ResizeBilinearOp<SYCLDevice, T>);
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_KERNEL);
+
+#undef REGISTER_KERNEL
+
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
