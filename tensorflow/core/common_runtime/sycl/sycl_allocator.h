@@ -29,11 +29,11 @@ namespace tensorflow {
 
 class SYCLAllocator : public Allocator {
  public:
-  SYCLAllocator(Eigen::QueueInterface *queue);
+  SYCLAllocator(Eigen::QueueInterface* queue);
   virtual ~SYCLAllocator() override;
   string Name() override;
-  void *AllocateRaw(size_t alignment, size_t num_bytes) override;
-  void DeallocateRaw(void *ptr) override;
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override;
+  void DeallocateRaw(void* ptr) override;
 
   virtual bool ShouldAllocateEmptyTensors() override final { return true; }
   void Synchronize() { sycl_device_->synchronize(); }
@@ -53,7 +53,7 @@ class SYCLAllocator : public Allocator {
   }
 
  private:
-  Eigen::SyclDevice *sycl_device_;  // owned
+  Eigen::SyclDevice* sycl_device_;  // owned
 
   mutable mutex mu_;
   AllocatorStats stats_ GUARDED_BY(mu_);

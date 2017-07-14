@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-SYCLAllocator::SYCLAllocator(Eigen::QueueInterface *queue)
+SYCLAllocator::SYCLAllocator(Eigen::QueueInterface* queue)
     : sycl_device_(new Eigen::SyclDevice(queue)) {
   cl::sycl::queue& sycl_queue = sycl_device_->sycl_queue();
   const cl::sycl::device& device = sycl_queue.get_device();
@@ -28,14 +28,14 @@ SYCLAllocator::SYCLAllocator(Eigen::QueueInterface *queue)
 }
 
 SYCLAllocator::~SYCLAllocator() {
-  if(sycl_device_) {
+  if (sycl_device_) {
     delete sycl_device_;
   }
 }
 
 string SYCLAllocator::Name() { return "device:SYCL"; }
 
-void *SYCLAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
+void* SYCLAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   assert(sycl_device_);
   if (num_bytes == 0) {
     // Cannot allocate no bytes in SYCL, so instead allocate a single byte
@@ -56,7 +56,7 @@ void *SYCLAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   return p;
 }
 
-void SYCLAllocator::DeallocateRaw(void *ptr) {
+void SYCLAllocator::DeallocateRaw(void* ptr) {
   if (sycl_device_) {
     const auto& buffer_to_delete = sycl_device_->get_sycl_buffer(ptr);
     const std::size_t dealloc_size = buffer_to_delete.get_range().size();
