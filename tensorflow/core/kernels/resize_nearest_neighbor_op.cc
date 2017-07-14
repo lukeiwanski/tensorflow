@@ -425,10 +425,10 @@ class ResizeNearestNeighborOp<SYCLDevice, T> : public OpKernel {
 
 #define REGISTER_KERNEL(T)                                        \
   REGISTER_KERNEL_BUILDER(Name("ResizeNearestNeighbor")           \
-                              .Device(DEVICE_SYCL)                 \
+                              .Device(DEVICE_SYCL)                \
                               .TypeConstraint<T>("T")             \
                               .HostMemory("size"),                \
-                          ResizeNearestNeighborOp<SYCLDevice, T>); \
+                          ResizeNearestNeighborOp<SYCLDevice, T>);\
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
 
