@@ -535,7 +535,7 @@ class ResizeBilinearOp <SYCLDevice, T> : public OpKernel {
 
 #define REGISTER_KERNEL(T)                            \
   REGISTER_KERNEL_BUILDER(Name("ResizeBilinear")      \
-                              .Device(DEVICE_SYCL)     \
+                              .Device(DEVICE_SYCL)    \
                               .TypeConstraint<T>("T") \
                               .HostMemory("size"),    \
                           ResizeBilinearOp<SYCLDevice, T>);
