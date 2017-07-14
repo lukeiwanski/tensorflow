@@ -22,16 +22,6 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 
 namespace tensorflow {
-std::mutex GSYCLInterface::mutex_;
-GSYCLInterface *GSYCLInterface::s_instance = 0;
-
-void ShutdownSycl() {
-  GSYCLInterface::Reset();
-}
-
-void SYCLDevice::RegisterDevice() {
-    atexit(ShutdownSycl);
-}
 
 SYCLDevice::~SYCLDevice() {}
 

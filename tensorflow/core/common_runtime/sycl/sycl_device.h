@@ -35,8 +35,6 @@ class GSYCLInterface
     std::vector<SYCLAllocator*>             m_sycl_allocator_;     // owned
     std::vector<SYCLDeviceContext*>         m_sycl_context_;       // owned
 
-    static std::mutex mutex_;
-    static GSYCLInterface* s_instance;
     GSYCLInterface() {
       bool found_device =false;
       auto device_list = Eigen::get_sycl_supported_devices();
@@ -105,20 +103,9 @@ class GSYCLInterface
   public:
     static GSYCLInterface *instance()
     {
-      std::lock_guard<std::mutex> lock(mutex_);
-      if (!s_instance) {
-        s_instance = new GSYCLInterface();
-      }
-      return s_instance;
-    }
-
-    static void Reset()
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      if(s_instance) {
-        delete s_instance;
-        s_instance = NULL;
-      }
+      // c++11 guarantees that this will be constructed in a thread safe way
+      static GSYCLInterface instance;
+      return &instance;
     }
 
     Eigen::QueueInterface * GetQueueInterface(size_t i = 0) {
@@ -199,7 +186,6 @@ class SYCLDevice : public LocalDevice {
         cpu_allocator_(cpu_allocator),
         sycl_allocator_(sycl_allocator),
         device_context_(ctx) {
-    RegisterDevice();
     set_eigen_sycl_device(sycl_allocator->getSyclDevice());
   }
 
@@ -217,8 +203,6 @@ class SYCLDevice : public LocalDevice {
   Status Sync() override;
 
  private:
-  void RegisterDevice();
-
   Allocator         *cpu_allocator_;           // not owned
   SYCLAllocator     *sycl_allocator_;          // not owned
   SYCLDeviceContext *device_context_;
