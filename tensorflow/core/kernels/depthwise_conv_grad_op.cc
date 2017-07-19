@@ -696,90 +696,6 @@ private:
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
-class DepthwiseConv2dBackpropInputSYCLKernelNCHW{
-public:
-  using write_accessor =
-      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::write,
-                         cl::sycl::access::target::global_buffer>;
-  using read_accessor =
-      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::read,
-                         cl::sycl::access::target::global_buffer>;
-public:
-  DepthwiseConv2dBackpropInputSYCLKernelNCHW(const DepthwiseArgs args,
-                                read_accessor out_backprop_accessor,
-                                read_accessor filter_accessor,
-                                write_accessor in_backprop_accessor)
-                                : args_(args),
-                                out_backprop_accessor_(out_backprop_accessor),
-                                filter_accessor_(filter_accessor),
-                                in_backprop_accessor_(in_backprop_accessor){}
-  void operator()(cl::sycl::item<1> item){
-    T* out_backprop_data = ConvertToActualTypeSycl(T, out_backprop_accessor_);
-    T* filter_data = ConvertToActualTypeSycl(T, filter_accessor_);
-    T* in_backprop_data = ConvertToActualTypeSycl(T, in_backprop_accessor_);
-
-    const int thread_id = item.get_linear_id();
-
-    const int filter_rows =
-        kKnownFilterHeight < 0 ? args_.filter_rows : kKnownFilterHeight;
-    const int filter_cols =
-        kKnownFilterWidth < 0 ? args_.filter_cols : kKnownFilterWidth;
-    const int depth_multiplier =
-        kKnownDepthMultiplier < 0 ? args_.depth_multiplier : kKnownDepthMultiplier;
-
-    // Compute the indexes of this thread in the input.
-    const int in_c = thread_id % args_.in_cols;
-    const int in_r = (thread_id / args_.in_cols) % args_.in_rows;
-    const int in_d = (thread_id / args_.in_cols / args_.in_rows) % args_.in_depth;
-    const int b = thread_id / args_.in_depth / args_.in_cols / args_.in_rows;
-
-    T sum = T(0);
-    const int out_d_start = in_d * depth_multiplier;
-    const int out_d_end = out_d_start + depth_multiplier;
-
-    const int out_r_start =
-        std::max<int>(0, (in_r - filter_rows + args_.pad_rows +args_. stride) / args_.stride);
-    const int out_r_end = std::min(args_.out_rows - 1, (in_r + args_.pad_rows) / args_.stride);
-    const int out_c_start =
-        std::max(0, (in_c - filter_cols + args_.pad_cols + args_.stride) / args_.stride);
-    const int out_c_end = std::min(args_.out_cols - 1, (in_c + args_.pad_cols) / args_.stride);
-
-    for (int out_d = out_d_start; out_d < out_d_end; ++out_d) {
-      for (int out_r = out_r_start; out_r <= out_r_end; ++out_r) {
-        const int f_r = in_r + args_.pad_rows - out_r * args_.stride;
-        const int filter_dm = out_d - out_d_start;
-
-        const int temp_filter_offset = filter_cols * f_r;
-        for (int out_c = out_c_start; out_c <= out_c_end; ++out_c) {
-          const int f_c = in_c + args_.pad_cols - out_c * args_.stride;
-          const int filter_offset =
-              filter_dm + args_.depth_multiplier *
-                              (in_d + args_.in_depth * (f_c + temp_filter_offset));
-
-          const int out_backprop_offset =
-              (b * args_.out_depth * args_.out_rows * args_.out_cols) +
-              (out_d * args_.out_rows * args_.out_cols) + (out_r * args_.out_cols) + (out_c);
-
-          sum += out_backprop_data[out_backprop_offset]
-                 * filter_data[filter_offset];
-        }
-      }
-    }
-    const int in_backprop_offset = (b * args_.in_rows * args_.in_cols * args_.in_depth) +
-                                   (in_d * args_.in_rows * args_.in_cols) +
-                                   (in_r * args_.in_cols) + (in_c);
-    in_backprop_data[in_backprop_offset] = sum;
-
-  }
-private:
-  const DepthwiseArgs args_;
-  const read_accessor out_backprop_accessor_;
-  const read_accessor filter_accessor_;
-  write_accessor in_backprop_accessor_;
-};
-
-template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
-          int kKnownDepthMultiplier>
 void LaunchDepthwiseConv2dBackpropInputSYCL(const SYCLDevice& d,
                                            const DepthwiseArgs args,
                                            const Tensor& out_backprop,
@@ -807,11 +723,6 @@ void LaunchDepthwiseConv2dBackpropInputSYCL(const SYCLDevice& d,
 
     if(data_format == FORMAT_NHWC){
       DepthwiseConv2dBackpropInputSYCLKernelNHWC<T, kKnownFilterWidth,
-          kKnownFilterHeight, kKnownDepthMultiplier> functor(
-          args, out_backprop_access, filter_access, in_backprop_access);
-      cgh.parallel_for(cl::sycl::range<1>(num_threads), functor);
-    } else if (data_format == FORMAT_NCHW) {
-      DepthwiseConv2dBackpropInputSYCLKernelNCHW<T, kKnownFilterWidth,
           kKnownFilterHeight, kKnownDepthMultiplier> functor(
           args, out_backprop_access, filter_access, in_backprop_access);
       cgh.parallel_for(cl::sycl::range<1>(num_threads), functor);
