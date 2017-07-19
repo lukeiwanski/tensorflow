@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
+#include <iostream>
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
@@ -58,14 +59,122 @@ struct LaunchConvOp<CPUDevice, T> {
                 errors::InvalidArgument("CPU implementation of Conv3D "
                                         "currently only supports the NHWC "
                                         "tensor format."));
+    std::cout << "CPU input: " << input.SummarizeValue(100) << std::endl;
+    std::cout << "xCPU filter: " << filter.SummarizeValue(100) << std::endl;
     functor::CuboidConvolution<CPUDevice, T>()(
         context->eigen_device<CPUDevice>(), output->tensor<T, 5>(),
         input.tensor<T, 5>(), filter.tensor<T, 5>(), strides[2], strides[1],
         strides[0], BrainPadding2EigenPadding(padding));
+    std::cout << "CPU output: " << output->SummarizeValue(100) << std::endl;
   }
 };
 
 #ifdef TENSORFLOW_USE_SYCL
+// template <typename T>
+// class Conv3DSYCL {
+//   using write_accessor =
+//       cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::write,
+//                          cl::sycl::access::target::global_buffer>;
+//   using read_accessor =
+//       cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::read,
+//                          cl::sycl::access::target::global_buffer>;
+//
+//  public:
+//   Conv3DSYCL(const int64 batch, const int64 in_planes, const int64 in_rows,
+//                 const int64 in_cols,  const int64 in_depth,
+//                 const int64 filter_planes, const int64 filter_rows,
+//                 const int64 filter_cols, const int64 out_depth,
+//                 const int64 pad_planes, const int64 pad_rows,
+//                 const int64 pad_cols, const int64 out_planes,
+//                 const int64 out_rows, const int64 out_cols,
+//                 read_accessor input_accessor, read_accessor filter_accessor,
+//                 write_accessor output_accessor)
+//       : batch_(batch),
+//         in_planes_(in_planes),
+//         in_rows_(in_rows),
+//         in_cols_(in_cols),
+//         in_depth_(in_depth),
+//         filter_planes_(filter_planes),
+//         filter_rows_(filter_rows),
+//         filter_cols_(filter_cols),
+//         out_depth_(out_depth),
+//         pad_planes_(pad_planes),
+//         pad_rows_(pad_rows),
+//         pad_cols_(pad_cols),
+//         out_planes_(out_planes),
+//         out_rows_(out_rows),
+//         out_cols_(out_cols),
+//         input_accessor_(input_accessor),
+//         filter_accessor_(filter_accessor),
+//         output_accessor_(output_accessor) {}
+//   void operator()(cl::sycl::item<1> item) {
+//     //stride = 1
+//     T* input_data = ConvertToActualTypeSycl(T, input_accessor_);
+//     T* filter_data = ConvertToActualTypeSycl(T, filter_accessor_);
+//     T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
+//
+//     int index = item.get_linear_id();
+//     int n = index;
+//     int d = n % out_depth_;
+//     n /= out_depth_;
+//     int cstart = (n % out_cols_) - pad_cols_;
+//     int cend = std::min(cstart + filter_cols_, in_cols_);
+//     cstart = std::max(cstart, 0);
+//     n /= out_cols_;
+//     int rstart = (n % out_rows_) - pad_rows_;
+//     int rend = std::min(rstart + filter_rows_, in_rows_);
+//     rstart = std::max(rstart, 0);
+//     n /= out_rows_;
+//     int pstart = (n % out_planes_) - pad_planes_;
+//     int pend = std::min(pstart + filter_planes_, in_planes_);
+//     pstart = std::max(pstart, 0);
+//     n /= out_planes_;
+//
+//     T sum = T(0);
+//     const T* input_data_n =
+//         input_data + n * in_planes_ * in_cols_ * in_rows_ * in_depth_;
+//     const T* filter_data_n =
+//         filter_data + n * filter_planes_ * filter_cols_ * filter_rows_ * out_depth_;
+//     for (int p = pstart; p < pend; ++p) {
+//       for (int r = rstart; r < rend; ++r) {
+//         for (int c = cstart; c < cend; ++c) {
+//           int idx = ((p * in_rows_ + r) * in_cols_ + c) * in_depth_ + d;
+//           int filter_offset
+//               = ((p * filter_rows_ + r) * filter_cols_ + c) * out_depth_ + d;
+//           sum += input_data_n[idx] * filter_data_n[filter_offset];
+//         }
+//       }
+//     }
+//     T* output_data_n =
+//         output_data + n * out_planes_ * out_cols_ * out_rows_ * out_depth_;
+//     int pval = (pstart+pend-1)/2;
+//     int rval = (rstart+rend-1)/2;
+//     int cval = (cstart+cend-1)/2;
+//     int out_idx = ((pval * out_rows_ + rval) * out_cols_ + cval) * out_depth_ + d;
+//     output_data_n[out_idx] = sum;
+//   }
+//
+//  private:
+//   const int64 batch_;
+//   const int64 in_planes_;
+//   const int64 in_rows_;
+//   const int64 in_cols_;
+//   const int64 in_depth_;
+//   const int64 filter_planes_;
+//   const int64 filter_rows_;
+//   const int64 filter_cols_;
+//   const int64 out_depth_;
+//   const int64 pad_planes_;
+//   const int64 pad_rows_;
+//   const int64 pad_cols_;
+//   const int64 out_planes_;
+//   const int64 out_rows_;
+//   const int64 out_cols_;
+//   const read_accessor input_accessor_;
+//   const read_accessor filter_accessor_;
+//   write_accessor output_accessor_;
+// };
+
 template <typename T>
 struct LaunchConvOp<SYCLDevice, T> {
   static void launch(OpKernelContext* context, bool cudnn_use_autotune,
@@ -76,10 +185,162 @@ struct LaunchConvOp<SYCLDevice, T> {
                 errors::InvalidArgument("SYCL implementation of Conv3D "
                                         "currently only supports the NHWC "
                                         "tensor format."));
-    functor::CuboidConvolution<SYCLDevice, T>()(
-        context->eigen_device<SYCLDevice>(), output->tensor<T, 5>(),
-        input.tensor<T, 5>(), filter.tensor<T, 5>(), strides[2], strides[1],
-        strides[0], BrainPadding2EigenPadding(padding));
+    const SYCLDevice& device = context->eigen_device<SYCLDevice>();
+    Tensor input_tensor = input;
+    Tensor filter_tensor = filter;
+
+    const int64 batch_ = GetTensorDim(input_tensor, data_format, 'N');
+    int64 in_planes_ = GetTensorDim(input_tensor, data_format, '0');
+    int64 in_rows_ = GetTensorDim(input_tensor, data_format, '1');
+    int64 in_cols_ = GetTensorDim(input_tensor, data_format, '2');
+    const int64 in_depth_ = GetTensorDim(input_tensor, data_format, 'C');
+
+    // int64 filter_planes_ = GetTensorDim(filter_tensor, data_format, '0');
+    // int64 filter_rows_ = GetTensorDim(filter_tensor, data_format, '1');
+    // int64 filter_cols_ = GetTensorDim(filter_tensor, data_format, '2');
+    const int64 filter_depth_ = GetTensorDim(filter_tensor, data_format, 'C');
+
+    const int64 filter_planes_ = filter.dim_size(0);
+    const int64 filter_rows_ = filter.dim_size(1);
+    const int64 filter_cols_ = filter.dim_size(2);
+    const int64 out_depth_ = filter.dim_size(4);
+
+    int64 pad_planes_ = 0, pad_rows_ = 0, pad_cols_ = 0;
+    int64 out_planes_ = GetTensorDim(*output, data_format, '0');
+    int64 out_rows_ = GetTensorDim(*output, data_format, '1');
+    int64 out_cols_ = GetTensorDim(*output, data_format, '2');
+
+    if (padding == Padding::SAME) {
+      pad_planes_ = std::max<int64>(
+          0, (out_planes_ - 1) * strides[0] + filter.dim_size(0) - in_planes_);
+      pad_rows_ = std::max<int64>(
+          0, (out_rows_ - 1) * strides[1] + filter.dim_size(1) - in_rows_);
+      pad_cols_ = std::max<int64>(
+          0, (out_cols_ - 1) * strides[2] + filter.dim_size(2) - in_cols_);
+    }
+
+    // std::cout << "batch: " << batch << std::endl
+    //           << "in_planes: " << in_planes << std::endl
+    //           << "in_rows: " << in_rows << std::endl
+    //           << "in_cols: " << in_cols << std::endl
+    //           << "in_depth: " << in_depth << std::endl
+    //           << "filter_planes: " << filter_planes << std::endl
+    //           << "filter_rows: " << filter_rows << std::endl
+    //           << "filter_cols: " << filter_cols << std::endl
+    //           << "out_depth: " << out_depth << std::endl
+    //           << "pad_planes: " << pad_planes << std::endl
+    //           << "pad_rows: " << pad_rows << std::endl
+    //           << "pad_cols: " << pad_cols << std::endl
+    //           << "out_planes: " << out_planes << std::endl
+    //           << "out_rows: " << out_rows << std::endl
+    //           << "out_cols: " << out_cols << std::endl;
+
+    std::cout << "batch: " << batch_ << std::endl
+              << "in_planes: " << in_planes_ << std::endl
+              << "in_rows: " << in_rows_ << std::endl
+              << "in_cols: " << in_cols_ << std::endl
+              << "in_depth: " << in_depth_ << std::endl
+              << "filter_planes: " << filter_planes_ << std::endl
+              << "filter_rows: " << filter_rows_ << std::endl
+              << "filter_cols: " << filter_cols_ << std::endl
+              << "filter_depth: " << filter_depth_ << std::endl
+              << "out_depth: " << out_depth_ << std::endl
+              << "pad_planes: " << pad_planes_ << std::endl
+              << "pad_rows: " << pad_rows_ << std::endl
+              << "pad_cols: " << pad_cols_ << std::endl
+              << "out_planes: " << out_planes_ << std::endl
+              << "out_rows: " << out_rows_ << std::endl
+              << "out_cols: " << out_cols_ << std::endl;
+
+    int num_threads = output->NumElements();
+    std::cout << "num_threads: " << num_threads << std::endl;
+
+    // auto input_buffer =
+    //     device.get_sycl_buffer(input.template flat<T>().data());
+    // auto filter_buffer =
+    //     device.get_sycl_buffer(filter.template flat<T>().data());
+    // auto output_buffer =
+    //     device.get_sycl_buffer(output->template flat<T>().data());
+    //
+    // device.sycl_queue().submit([&](cl::sycl::handler& cgh) {
+    //   auto input_access =
+    //       input_buffer.template get_access<cl::sycl::access::mode::read>(cgh);
+    //   auto filter_access =
+    //       filter_buffer.template get_access<cl::sycl::access::mode::read>(cgh);
+    //   auto output_access =
+    //       output_buffer.template get_access<cl::sycl::access::mode::write>(cgh);
+    //   Conv3DSYCL<T> functor(batch, in_planes, in_rows, in_cols,  in_depth,
+    //                         filter_planes, filter_rows, filter_cols, out_depth,
+    //                         pad_planes, pad_rows, pad_cols, out_planes, out_rows,
+    //                         out_cols,input_access, filter_access, output_access);
+    //
+    //   cgh.parallel_for(cl::sycl::range<1>(num_threads), functor);
+    // });
+
+    auto input_data = input.template flat<T>().data();
+    auto filter_data = filter.template flat<T>().data();
+    auto output_data = output->template flat<T>().data();
+    for(int index = 0; index < num_threads; ++index){
+      int n = index;
+      int d = n % out_depth_;
+      n /= out_depth_;
+      int cstart = (n % out_cols_) * strides[0] - pad_cols_;
+      int cend = std::min(cstart + filter_cols_, in_cols_);
+      cstart = std::max(cstart, 0);
+      n /= out_cols_;
+      int rstart = (n % out_rows_) * strides[1] - pad_rows_;
+      int rend = std::min(rstart + filter_rows_, in_rows_);
+      rstart = std::max(rstart, 0);
+      n /= out_rows_;
+      int pstart = (n % out_planes_) * strides[2] - pad_planes_;
+      int pend = std::min(pstart + filter_planes_, in_planes_);
+      pstart = std::max(pstart, 0);
+      n /= out_planes_;
+      std::cout << cstart << "-" << cend << ", "
+                << rstart << "-" << rend << ", "
+                << pstart << "-" << pend << ", "
+                << d << std::endl;
+      const T* input_data_n =
+          input_data + n * in_planes_ * in_cols_ * in_rows_ * in_depth_;
+      const T* filter_data_n =
+          filter_data + n * filter_planes_ * filter_cols_ * filter_rows_ * out_depth_;
+      int pval = (pstart+pend-1)/2;
+      int rval = (rstart+rend-1)/2;
+      int cval = (cstart+cend-1)/2;
+      for (int ptemp = pstart; ptemp < pend; ++ptemp) {
+        T sum = T(0);
+        std::cout << "sum: ";
+        for (int rtemp = rstart; rtemp < rend; ++rtemp) {
+          for (int ctemp = cstart; ctemp < cend; ++ctemp) {
+            for(int dtemp = 0; dtemp < in_depth_; ++dtemp){
+              int idx = ((ptemp * in_rows_ + rtemp) * in_cols_ + ctemp) * in_depth_ + dtemp;
+              int p_off = ptemp % filter_planes_;
+              int c_off = ctemp % filter_cols_;
+              int r_off = rtemp % filter_rows_;
+              int d_off = dtemp % filter_depth_;
+              int filter_offset
+                  = ((p_off * filter_rows_ + d_off) * filter_cols_ + c_off) * filter_depth_ + d;
+              sum += input_data_n[idx] * filter_data[filter_offset];
+              std::cout << input_data_n[idx] << "*" << filter_data[filter_offset]
+                        << "+";
+            }
+          }
+        }
+        std::cout << "=" << sum << std::endl;
+        T* output_data_n =
+            output_data + n * out_planes_ * out_cols_ * out_rows_ * out_depth_;
+        int out_idx = ((pval * out_rows_ + rval) * out_cols_ + cval) * out_depth_ + d;
+        output_data_n[out_idx] = sum;
+      }
+    }
+
+    // std::cout << "SYCL input: " << input.SummarizeValue(10) << std::endl;
+    // std::cout << "SYCL filter: " << filter.SummarizeValue(10) << std::endl;
+    // functor::CuboidConvolution<SYCLDevice, T>()(
+    //     context->eigen_device<SYCLDevice>(), output->tensor<T, 5>(),
+    //     input.tensor<T, 5>(), filter.tensor<T, 5>(), strides[2], strides[1],
+    //     strides[0], BrainPadding2EigenPadding(padding));
+    // std::cout << "SYCL output: " << output->SummarizeValue(10) << std::endl;
   }
 };
 #endif  // TENSORFLOW_USE_SYCL
