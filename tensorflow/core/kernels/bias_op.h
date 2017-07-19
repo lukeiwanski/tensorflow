@@ -24,27 +24,23 @@ namespace tensorflow {
 namespace functor {
 
 // Functor used by BiasOp to do the computations.
-template <typename Device, typename T, int Dims>
+template <typename Device, typename T>
 struct Bias {
   // Add "bias" to "input", broadcasting it on all dimensions but the last one.
-  void operator()(const Device& d, typename TTypes<T, Dims>::ConstTensor input,
+  void operator()(const Device& d, typename TTypes<T>::ConstFlat input,
                   typename TTypes<T>::ConstVec bias,
-                  typename TTypes<T, Dims>::Tensor output) {
+                  typename TTypes<T>::Flat output) {
     if (input.size() >= INT_MAX) {
       const int64_t bias_size = bias.dimension(0);
       const int64_t rest_size = input.size() / bias_size;
-      Eigen::DSizes<int64_t, 1> one_d(input.size());
       Eigen::DSizes<int64_t, 1> bcast(rest_size);
-      output.reshape(one_d).device(d) =
-          input.reshape(one_d) + bias.broadcast(bcast).reshape(one_d);
+      output.device(d) = input + bias.broadcast(bcast);
     } else {
       const int bias_size = bias.dimension(0);
       const int rest_size = input.size() / bias_size;
-      Eigen::DSizes<int, 1> one_d(input.size());
       Eigen::DSizes<int, 1> bcast(rest_size);
-      To32Bit(output).reshape(one_d).device(d) =
-          To32Bit(input).reshape(one_d) +
-          To32Bit(bias).broadcast(bcast).reshape(one_d);
+      To32Bit(output).device(d) =
+          To32Bit(input) + To32Bit(bias).broadcast(bcast);
     }
   }
 };
