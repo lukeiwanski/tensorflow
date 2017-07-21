@@ -22,4 +22,8 @@ REGISTER_KERNEL_BUILDER(Name("LogicalAnd").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("LogicalAnd").Device(DEVICE_GPU),
                         BinaryOp<GPUDevice, functor::logical_and>);
 #endif
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("LogicalAnd").Device(DEVICE_SYCL),
+                        BinaryOp<SYCLDevice, functor::logical_and>);
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
