@@ -205,11 +205,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.new_http_archive(
       name = "farmhash_archive",
       urls = [
-          "http://mirror.bazel.build/github.com/google/farmhash/archive/92e897b282426729f4724d91a637596c7e2fe28f.zip",
-          "https://github.com/google/farmhash/archive/92e897b282426729f4724d91a637596c7e2fe28f.zip",
+          "http://mirror.bazel.build/github.com/google/farmhash/archive/23eecfbe7e84ebf2e229bd02248f431c36e12f1a.zip",
+          "https://github.com/google/farmhash/archive/23eecfbe7e84ebf2e229bd02248f431c36e12f1a.zip",
       ],
-      sha256 = "4c626d1f306bda2c6804ab955892f803f5245f4dcaecb4979dc08b091256da54",
-      strip_prefix = "farmhash-92e897b282426729f4724d91a637596c7e2fe28f",
+      sha256 = "55215f8cd3ddbe9781f6fe5cc228731d6dcc8301b6191c6d420034c3fff1cb8d",
+      strip_prefix = "farmhash-23eecfbe7e84ebf2e229bd02248f431c36e12f1a",
       build_file = str(Label("//third_party:farmhash.BUILD")),
   )
 
@@ -661,4 +661,14 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.bind(
       name = "cub",
       actual = "@cub_archive//:cub",
+  )
+
+  native.http_archive(
+      name = "bazel_toolchains",
+      urls = [
+          "http://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/bccee4855c049d34bac481083b4c68e2fab8cc50.tar.gz",
+          "https://github.com/bazelbuild/bazel-toolchains/archive/bccee4855c049d34bac481083b4c68e2fab8cc50.tar.gz",
+      ],
+      sha256 = "3903fd93b96b42067e00b7973a2c16c34e761ad7a0b55e1557d408f352849e41",
+      strip_prefix = "bazel-toolchains-bccee4855c049d34bac481083b4c68e2fab8cc50",
   )

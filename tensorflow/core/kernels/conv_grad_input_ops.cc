@@ -126,6 +126,24 @@ struct LaunchBackwardInputConvolution<CPUDevice, float> {
   }
 };
 
+#ifdef TENSORFLOW_USE_SYCL
+// Provide SYCL convolution backprop through Eigen.
+template <typename T>
+struct LaunchBackwardInputConvolution<SYCLDevice, T> {
+  bool operator()(OpKernelContext* context, const SYCLDevice& d,
+                  typename TTypes<T, 4>::Tensor input_backward,
+                  typename TTypes<T, 4>::ConstTensor kernel,
+                  typename TTypes<T, 4>::ConstTensor output_backward,
+                  int input_rows, int input_cols, int row_stride,
+                  int col_stride, TensorFormat data_format) const {
+    functor::SpatialConvolutionBackwardInput<SYCLDevice, T>()(
+        d, input_backward, kernel, output_backward, input_rows, input_cols,
+        row_stride, col_stride);
+    return true;
+  }
+};
+#endif  // TENSORFLOW_USE_SYCL
+
 #ifdef TENSORFLOW_USE_LIBXSMM
 template <typename Device, class T>
 struct LaunchXsmmBackwardInputConvolution {
@@ -1020,14 +1038,14 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(T)                                        \
-  REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")                   \
-                              .Device(DEVICE_SYCL)                      \
-                              .Label("eigen_tensor")                    \
-                              .TypeConstraint<T>("T"),                  \
+#define REGISTER_SYCL_KERNELS(T)                          \
+  REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")     \
+                              .Device(DEVICE_SYCL)        \
+                              .TypeConstraint<T>("T")     \
+                              .HostMemory("input_sizes"), \
                           Conv2DFastBackpropInputOp<SYCLDevice, T>);
 
-TF_CALL_float(REGISTER_SYCL_KERNELS);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS);
 #undef REGISTER_SYCL_KERNELS
 #endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

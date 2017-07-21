@@ -168,7 +168,15 @@ TF_CALL_complex128(REGISTER_GATHER_GPU);
                               .HostMemory("indices")                   \
                               .TypeConstraint<type>("Tparams")         \
                               .TypeConstraint<index_type>("Tindices"), \
+                          GatherOp<dev##Device, type, index_type>)     \
+  REGISTER_KERNEL_BUILDER(Name("GatherV2")                             \
+                              .Device(DEVICE_##dev)                    \
+                              .TypeConstraint<type>("Tparams")         \
+                              .TypeConstraint<index_type>("Tindices")  \
+                              .HostMemory("indices")                   \
+                              .HostMemory("axis"),                     \
                           GatherOp<dev##Device, type, index_type>)
+
 #define REGISTER_GATHER_ALL_INDICES_SYCL(dev, type) \
   REGISTER_GATHER_FULL_SYCL(dev, type, int32);      \
   REGISTER_GATHER_FULL_SYCL(dev, type, int64)

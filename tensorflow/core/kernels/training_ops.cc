@@ -352,21 +352,25 @@ struct ApplyMomentum<SYCLDevice, T> {
                   typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstFlat grad,
                   typename TTypes<T>::ConstScalar momentum, bool use_nesterov) {
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::array<int, 1> rank1{1};
-#else
-    Eigen::IndexList<Eigen::type2index<1> > rank1;
-#endif
+    typedef typename Eigen::TensorMap<
+        Eigen::TensorFixedSize<const T, Eigen::Sizes<1>, Eigen::RowMajor,
+                               Eigen::DenseIndex>,
+        Eigen::Aligned>
+        ScalarType;
+
+    const Eigen::IndexList<Eigen::type2index<1> > rank1;
+    ScalarType lr_sc{lr.data(), rank1};
+    ScalarType mom_sc{momentum.data(), rank1};
+
     const int size = grad.dimension(0);
     Eigen::array<int, 1> broadcast_dim{size};
 
-    accum.device(d) = accum * momentum.reshape(rank1).broadcast(broadcast_dim) + grad;
+    accum.device(d) = accum * mom_sc.broadcast(broadcast_dim) + grad;
     if (use_nesterov) {
-      var.device(d) -= grad * lr.reshape(rank1).broadcast(broadcast_dim) +
-                       accum * momentum.reshape(rank1).broadcast(broadcast_dim) *
-                           lr.reshape(rank1).broadcast(broadcast_dim);
+      var.device(d) -= grad * lr_sc.broadcast(broadcast_dim) +
+                       accum * (mom_sc * lr_sc).broadcast(broadcast_dim);
     } else {
-      var.device(d) -= lr.reshape(rank1).broadcast(broadcast_dim) * accum;
+      var.device(d) -= lr_sc.broadcast(broadcast_dim) * accum;
     }
   }
 };

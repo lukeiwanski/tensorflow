@@ -196,7 +196,7 @@ namespace internal {
 
 template <typename T> struct AvgPoolMeanReducer
 {
-#if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__)
+#if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__) && !defined(__SYCL_DEVICE_ONLY__)
   // We only support packet access for floats.
   static const bool PacketAccess = internal::is_same<T, float>::value;
 #else
@@ -225,7 +225,7 @@ template <typename T> struct AvgPoolMeanReducer
     return accum / scalarCount_;
   }
 
-#if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__)
+#if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__) && !defined(__SYCL_DEVICE_ONLY__)
 #ifdef EIGEN_VECTORIZE_AVX
 #define pequal(a,b) _mm256_cmp_ps(a,b,_CMP_EQ_UQ)
 #define psel(a,b,false_mask) _mm256_blendv_ps(a,b,false_mask)

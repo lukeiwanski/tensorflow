@@ -915,13 +915,13 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(T)                                         \
-  REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")                   \
-                              .Device(DEVICE_SYCL)                       \
-                              .Label("eigen_tensor")                     \
-                              .TypeConstraint<T>("T"),                   \
+#define REGISTER_SYCL_KERNELS(T)                           \
+  REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")     \
+                              .Device(DEVICE_SYCL)         \
+                              .TypeConstraint<T>("T")      \
+                              .HostMemory("filter_sizes"), \
                           Conv2DFastBackpropFilterOp<SYCLDevice, T>);
-REGISTER_SYCL_KERNELS(float);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS);
 #undef REGISTER_SYCL_KERNELS
 #endif  // TENSORFLOW_USE_SYCL
 

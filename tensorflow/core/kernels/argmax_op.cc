@@ -259,7 +259,10 @@ REGISTER_KERNEL_BUILDER(Name("ArgMin")                              \
                             .HostMemory("dimension"),               \
                         ArgMinOp<SYCLDevice, type, int32>);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_ARGMAX_SYCL);
+//TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_ARGMAX_SYCL);
+TF_CALL_INTEGRAL_TYPES(REGISTER_ARGMAX_SYCL);
+REGISTER_ARGMAX_SYCL(float);
+REGISTER_ARGMAX_SYCL(double);
 #undef REGISTER_ARGMAX_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

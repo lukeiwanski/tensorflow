@@ -99,7 +99,7 @@ DEFINE_SETONE_CPU(complex128);
 template <typename T>
 void SetOneFunctor<Eigen::SyclDevice, T>::operator()(
     const Eigen::SyclDevice& d, typename TTypes<T>::Flat out) {
-  out.device(d) = out.constant(T(1));
+  To32Bit(out).device(d) = To32Bit(out).constant(T(1));
 }
 
 #define DEFINE_SETONE_SYCL(T) \

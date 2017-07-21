@@ -194,7 +194,7 @@ struct FillFunctor<SYCLDevice, T> {
   const int size  = out.dimension(0);
   Eigen::array<int, 1> broadcast_dims{size};
 
-  To32Bit(out).device(d) = in.reshape(rank1).broadcast(broadcast_dims);
+  To32Bit(out).device(d) = To32Bit(in).reshape(rank1).broadcast(broadcast_dims);
   }
 };
 }

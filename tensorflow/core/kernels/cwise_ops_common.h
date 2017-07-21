@@ -460,6 +460,19 @@ struct ApproximateEqual<CPUDevice, T> {
   }
 };
 
+#ifdef TENSORFLOW_USE_SYCL
+// Partial specialization of ApproximateEqual<Device=SYCLDevice, T>.
+template <typename T>
+struct ApproximateEqual<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::ConstFlat x,
+                  typename TTypes<T>::ConstFlat y, T tolerance,
+                  typename TTypes<bool>::Flat z) {
+    auto diff = x - y;
+    z.device(d) = diff.abs() <= tolerance;
+  }
+};
+#endif  // TENSORFLOW_USE_SYCL
+
 }  // end namespace functor
 
 #define REGISTER(OP, D, N, F, T)                                             \

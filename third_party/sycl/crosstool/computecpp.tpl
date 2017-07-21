@@ -35,7 +35,7 @@ def main():
     compiling_cpp = compiled_file_name.endswith(('.cc', '.c++', '.cpp', '.CPP', '.C', '.cxx'))
 
   # add -D_GLIBCXX_USE_CXX11_ABI=0 to the command line if you have custom installation of GCC/Clang
-  compiler_flags = compiler_flags + ['-DEIGEN_USE_SYCL=1', '-DTENSORFLOW_USE_SYCL', '-DEIGEN_HAS_C99_MATH']
+  compiler_flags = compiler_flags + ['-DEIGEN_HAS_C99_MATH']
 
   if not compiling_cpp:
     # compile for C
@@ -54,7 +54,7 @@ def main():
   del flags_without_output[output_file_index]   # remove output_file_name
   del flags_without_output[output_file_index - 1] # remove '-o'
   # create preprocessed of the file and store it for later use
-  pipe = Popen([CPU_CXX_COMPILER] + flags_without_output + ["-E"], stdout=PIPE)
+  pipe = Popen([CPU_CXX_COMPILER] + flags_without_output + ['-DTENSORFLOW_USE_SYCL=1', '-DEIGEN_USE_SYCL=1', "-E"], stdout=PIPE)
   preprocessed_file_str = pipe.communicate()[0]
   if pipe.returncode != 0:
     return pipe.returncode
@@ -73,7 +73,7 @@ def main():
   bc_out = filename + '.sycl'
 
   # strip asan for the device
-  computecpp_device_compiler_flags = ['-sycl-compress-name', '-Wno-unused-variable', '-Wno-c++11-narrowing',
+  computecpp_device_compiler_flags = ['-DTENSORFLOW_USE_SYCL', '-DEIGEN_USE_SYCL=1', '-sycl-compress-name', '-Wno-unused-variable', '-Wno-c++11-narrowing',
                                       '-I', COMPUTECPP_INCLUDE, '-isystem', COMPUTECPP_INCLUDE,
                                       '-std=c++11', '-sycl', '-emit-llvm', '-no-serial-memop',
                                       '-Xclang', '-cl-denorms-are-zero', '-Xclang', '-cl-fp32-correctly-rounded-divide-sqrt']
@@ -86,7 +86,7 @@ def main():
     # dont want that in case of compiling with computecpp first
     host_compiler_flags = [flag for flag in compiler_flags if (not flag.startswith(('-MF', '-MD',)) and not '.d' in flag)]
     host_compiler_flags[host_compiler_flags.index('-c')] = "--include"
-    host_compiler_flags = ['-xc++', '-Wno-unused-variable', '-I', COMPUTECPP_INCLUDE, '-c', bc_out] + host_compiler_flags
+    host_compiler_flags = ['-DTENSORFLOW_USE_SYCL', '-DEIGEN_USE_SYCL=1', '-xc++', '-Wno-unused-variable', '-I', COMPUTECPP_INCLUDE, '-c', bc_out] + host_compiler_flags
     x = call([CPU_CXX_COMPILER] + host_compiler_flags)
   return x
 
