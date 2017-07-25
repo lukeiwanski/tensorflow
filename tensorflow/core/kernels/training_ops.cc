@@ -54,10 +54,19 @@ struct ApplyGradientDescent<CPUDevice, T> {
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
-struct ApplyGradientDescentSYCL {
-  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var, T lr,
+struct ApplyGradientDescent<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstFlat grad) {
-    var.device(d) -= grad * lr;
+    typedef typename Eigen::TensorMap<
+        Eigen::TensorFixedSize<const T, Eigen::Sizes<1>, Eigen::RowMajor,
+                               Eigen::DenseIndex>,
+        Eigen::Aligned>
+        ScalarType;
+    const Eigen::IndexList<Eigen::type2index<1> > rank1;
+    ScalarType lr_sc{lr.data(), rank1};
+    Eigen::array<Eigen::DenseIndex, 1> bcast{grad.dimension(0)};
+    var.device(d) -= grad * lr_sc.broadcast(bcast);
   }
 };
 #endif
@@ -598,53 +607,6 @@ class ApplyGradientDescentOp : public OpKernel {
  private:
   bool use_exclusive_lock_;
 };
-
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-class ApplyGradientDescentOp<SYCLDevice, T> : public OpKernel {
- public:
-  explicit ApplyGradientDescentOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0});
-    Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
-
-    OP_REQUIRES(
-        ctx, var.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", requested_input(0)));
-    const Tensor& alpha_dev = ctx->input(1);
-    OP_REQUIRES(ctx, IsLegacyScalar(alpha_dev.shape()),
-                errors::InvalidArgument("alpha is not a scalar: ",
-                                        alpha_dev.shape().DebugString()));
-    const Tensor& delta = ctx->input(2);
-    OP_REQUIRES(
-        ctx, var.shape().IsSameSize(delta.shape()),
-        errors::InvalidArgument("var and delta do not have the same shape",
-                                var.shape().DebugString(), " ",
-                                delta.shape().DebugString()));
-
-    auto device = ctx->eigen_sycl_device();
-    auto size = sizeof(T);
-    T alpha = T(0);
-    auto src_ptr = GetBase(&alpha_dev);
-    device.memcpyDeviceToHost(&alpha, static_cast<const T*>(src_ptr), size);
-
-    functor::ApplyGradientDescentSYCL<T>()(device, var.flat<T>(), alpha,
-                                           delta.flat<T>());
-
-    MaybeForwardRefInputToRefOutput(ctx, 0, 0);
-  }
-
- private:
-  bool use_exclusive_lock_;
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_KERNELS(D, T)                                                \
   REGISTER_KERNEL_BUILDER(                                                    \
