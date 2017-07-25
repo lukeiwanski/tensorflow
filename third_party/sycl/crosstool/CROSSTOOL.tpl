@@ -8,8 +8,8 @@ default_toolchain {
 }
 
 default_toolchain {
-cpu: "aarch64" 
-toolchain_identifier: "local_arm" 
+  cpu: "aarch64" 
+  toolchain_identifier: "local_arm" 
 }
 
 default_toolchain {
