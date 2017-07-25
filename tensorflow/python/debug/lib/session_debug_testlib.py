@@ -709,9 +709,10 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     u_read_name = u_name + "/read"
 
     # Test node name list lookup of the DebugDumpDir object.
-    if test_util.gpu_device_name():
-      node_names = dump.nodes(
-          device_name="/job:localhost/replica:0/task:0/gpu:0")
+    dev_name = test_util.gpu_device_name()
+    if dev_name:
+      dev_name = "/job:localhost/replica:0/task:0" + dev_name
+      node_names = dump.nodes(device_name=dev_name)
     else:
       node_names = dump.nodes()
     self.assertTrue(u_name in node_names)
