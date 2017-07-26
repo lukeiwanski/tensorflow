@@ -683,3 +683,13 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "3903fd93b96b42067e00b7973a2c16c34e761ad7a0b55e1557d408f352849e41",
       strip_prefix = "bazel-toolchains-bccee4855c049d34bac481083b4c68e2fab8cc50",
   )
+
+  native.new_http_archive(
+      name = "arm_compute",
+      urls = [
+          "https://github.com/ARM-software/ComputeLibrary/archive/v17.06.tar.gz",
+      ],
+      sha256 = "9262dcdfe41a3ae781727b6814075192bc11327f7447b16189093aa5bb263592",
+      strip_prefix = "ComputeLibrary-17.06",
+      build_file = str(Label("//third_party:acl.BUILD"),
+  )
