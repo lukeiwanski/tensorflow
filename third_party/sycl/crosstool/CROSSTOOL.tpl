@@ -89,7 +89,17 @@ toolchain {
   # Anticipated future default.
   linker_flag: "-no-canonical-prefixes"
   unfiltered_cxx_flag: "-fno-canonical-system-headers"
-
+  
+  # Have gcc return the exit code from ld.
+  linker_flag: "-pass-exit-codes"
+  
+  compiler_flag: "-fPIE"
+  
+  # Keep stack frames for debugging, even in opt mode.
+  compiler_flag: "-fno-omit-frame-pointer"
+  
+  # Anticipated future default.
+  
   # Have gcc return the exit code from ld.
   linker_flag: "-pass-exit-codes"
 
@@ -97,8 +107,12 @@ toolchain {
   compiler_flag: "-Wall"
 
   # Enable SSE instructions by default
-  compiler_flag: "-msse3"
 
+  compiler_flag: "-msse3"
+  compiler_flag: "-ffunction-sections"
+  compiler_flag: "-fdata-sections"
+  linker_flag: "-Wl,--gc-sections"
+ 
   # Anticipated future default.
   linker_flag: "-Wl,-no-as-needed"
   # Stamp the binary with a unique identifier.
