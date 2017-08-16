@@ -240,7 +240,7 @@ void UnsortedSegmentSumFunctor<Device, T, Index>::operator()(
     const TensorShape& segment_ids_shape,
     typename TTypes<Index>::ConstFlat segment_ids, const Index data_size,
     const T* data, typename TTypes<T, 2>::Tensor output) {
-  output.setZero();
+  output.device(d) = output.constant(T(0));
   if (data_size == 0) {
     return;
   }
