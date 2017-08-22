@@ -110,7 +110,6 @@ TF_CALL_INTEGRAL_TYPES(REGISTER_KERNEL);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 #endif  // TENSORFLOW_USE_SYCL
-
 namespace {
 
 void GetBiasValueDims(const Tensor& value_tensor, TensorFormat data_format,

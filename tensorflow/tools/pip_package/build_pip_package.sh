@@ -17,6 +17,10 @@
 
 set -e
 
+function real_path() {
+  [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
+}
+
 function cp_external() {
   local src_dir=$1
   local dest_dir=$2
@@ -41,13 +45,15 @@ function main() {
     exit 1
   fi
 
-  DEST=$1
+  DEST=$(real_path $1)
   TMPDIR=$(mktemp -d -t tmp.XXXXXXXXXX)
 
   GPU_FLAG=""
   while true; do
     if [[ "$1" == "--gpu" ]]; then
       GPU_FLAG="--project_name tensorflow_gpu"
+    elif [[ "$1" == "--gpudirect" ]]; then
+      GPU_FLAG="--project_name tensorflow_gpudirect"
     fi
     shift
 
@@ -126,7 +132,7 @@ function main() {
   mkdir -p ${TMPDIR}/google
   mkdir -p ${TMPDIR}/third_party
   pushd ${RUNFILES%org_tensorflow}
-  for header in $(find protobuf -name \*.h); do
+  for header in $(find protobuf_archive -name \*.h); do
     mkdir -p "${TMPDIR}/google/$(dirname ${header})"
     cp "$header" "${TMPDIR}/google/$(dirname ${header})/"
   done

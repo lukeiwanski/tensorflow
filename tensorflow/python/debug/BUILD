@@ -10,10 +10,6 @@
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    features = [
-        "-layering_check",
-        "-parse_headers",
-    ],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -23,7 +19,6 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 py_library(
     name = "debug_py",
@@ -64,18 +59,13 @@ py_library(
     ],
 )
 
-tf_gen_op_wrapper_py(
-    name = "debug_ops",
-    deps = ["//tensorflow/core:debug_ops_op_lib"],
-)
-
 py_library(
     name = "debug_gradients",
     srcs = ["lib/debug_gradients.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":debug_data",
-        ":debug_ops",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
         "@six_archive//:six",
@@ -166,6 +156,16 @@ py_library(
 )
 
 py_library(
+    name = "evaluator",
+    srcs = ["cli/evaluator.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_data",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
     name = "analyzer_cli",
     srcs = ["cli/analyzer_cli.py"],
     srcs_version = "PY2AND3",
@@ -174,6 +174,7 @@ py_library(
         ":command_parser",
         ":debug_data",
         ":debugger_cli_common",
+        ":evaluator",
         ":source_utils",
         ":ui_factory",
         "@six_archive//:six",
@@ -714,6 +715,22 @@ py_test(
     ],
 )
 
+py_test(
+    name = "evaluator_test",
+    size = "small",
+    srcs = [
+        "cli/evaluator_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_data",
+        ":evaluator",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//third_party/py/numpy",
+    ],
+)
+
 cuda_py_test(
     name = "analyzer_cli_test",
     size = "small",
@@ -804,9 +821,10 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = [
-        "no_oss",  # b/62956105: port conflicts.
+        "no_windows",
         "nomac",  # TODO(cais): Install of futures and grpcio on all macs.
         "notsan",
+        "oss_serial",
     ],
 )
 
@@ -831,7 +849,8 @@ cuda_py_test(
     ],
     data = ["//tensorflow/tools/dist_test/server:grpc_tensorflow_server"],
     tags = [
-        "no_oss",  # b/62956105: port conflicts + Incompatible with bazel_pip.
+        "no_oss",  # Incompatible with bazel_pip.
+        "no_windows",
         "nomac",  # TODO(cais): Install of futures and grpcio on all macs.
         "notsan",
     ],

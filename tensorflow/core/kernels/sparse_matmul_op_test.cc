@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifdef EIGEN_USE_SYCL
+#define EIGEN_DONT_VECTORIZE_SYCL
+#endif  // EIGEN_USE_SYCL
+
 #include "tensorflow/core/kernels/sparse_matmul_op.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/bfloat16.h"
@@ -285,12 +289,12 @@ class SparseMatmulOpTest : public ::testing::Test {
       uint16_t* data3_bfloat16_p =
           reinterpret_cast<uint16_t*>(data3_bfloat16) + i;
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-            data3_p[1] = 0;  
-            data3_bfloat16_p[0] = data3_p[0];  
+            data3_p[1] = 0;
+            data3_bfloat16_p[0] = data3_p[0];
 #else
-            data3_p[0] = 0;  
-            data3_bfloat16_p[0] = data3_p[1];  
-#endif  
+            data3_p[0] = 0;
+            data3_bfloat16_p[0] = data3_p[1];
+#endif
     }
   }
 

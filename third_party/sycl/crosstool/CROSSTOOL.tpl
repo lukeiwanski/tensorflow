@@ -8,6 +8,11 @@ default_toolchain {
 }
 
 default_toolchain {
+  cpu: "aarch64" 
+  toolchain_identifier: "local_arm" 
+}
+
+default_toolchain {
   cpu: "arm"
   toolchain_identifier: "local_arm"
 }
@@ -76,6 +81,18 @@ toolchain {
   unfiltered_cxx_flag: "-D__TIMESTAMP__=\"redacted\""
   unfiltered_cxx_flag: "-D__TIME__=\"redacted\""
 
+  compiler_flag: "-fPIE"
+
+  # Keep stack frames for debugging, even in opt mode.
+  compiler_flag: "-fno-omit-frame-pointer"
+
+  # Anticipated future default.
+  linker_flag: "-no-canonical-prefixes"
+  unfiltered_cxx_flag: "-fno-canonical-system-headers"
+
+  # Have gcc return the exit code from ld.
+  linker_flag: "-pass-exit-codes"
+
   # All warnings are enabled. Maybe enable -Werror as well?
   compiler_flag: "-Wall"
 
@@ -105,6 +122,9 @@ toolchain {
     compiler_flag: "-g0"
     compiler_flag: "-O2"
     compiler_flag: "-DNDEBUG"
+    compiler_flag: "-ffunction-sections"
+    compiler_flag: "-fdata-sections"
+    linker_flag: "-Wl,--gc-sections"
   }
 }
 
@@ -172,6 +192,18 @@ toolchain {
   unfiltered_cxx_flag: "-D__TIMESTAMP__=\"redacted\""
   unfiltered_cxx_flag: "-D__TIME__=\"redacted\""
 
+  compiler_flag: "-fPIE"
+  
+  # Keep stack frames for debugging, even in opt mode.
+  compiler_flag: "-fno-omit-frame-pointer"
+
+  # Anticipated future default.
+  linker_flag: "-no-canonical-prefixes"
+  unfiltered_cxx_flag: "-fno-canonical-system-headers"
+
+  # Have gcc return the exit code from ld.
+  linker_flag: "-pass-exit-codes"
+ 
   # All warnings are enabled. Maybe enable -Werror as well?
   compiler_flag: "-Wall"
 
@@ -198,5 +230,8 @@ toolchain {
     compiler_flag: "-g0"
     compiler_flag: "-O2"
     compiler_flag: "-DNDEBUG"
+    compiler_flag: "-ffunction-sections"
+    compiler_flag: "-fdata-sections"
+    linker_flag: "-Wl,--gc-sections"
   }
 }

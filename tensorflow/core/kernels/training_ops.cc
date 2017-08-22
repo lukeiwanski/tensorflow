@@ -54,25 +54,22 @@ struct ApplyGradientDescent<CPUDevice, T> {
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
-struct ApplyGradientDescentSYCL {
-  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var, T lr,
+struct ApplyGradientDescent<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstFlat grad) {
-    var.device(d) -= grad * lr;
+    typedef typename Eigen::TensorMap<
+        Eigen::TensorFixedSize<const T, Eigen::Sizes<1>, Eigen::RowMajor,
+                               Eigen::DenseIndex>,
+        Eigen::Aligned>
+        ScalarType;
+    const Eigen::IndexList<Eigen::type2index<1> > rank1;
+    ScalarType lr_sc{lr.data(), rank1};
+    Eigen::array<Eigen::DenseIndex, 1> bcast{grad.dimension(0)};
+    var.device(d) -= grad * lr_sc.broadcast(bcast);
   }
 };
 #endif
-
-template <typename T>
-struct ApplyDelayCompensatedGradientDescent<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
-                  typename TTypes<T>::ConstScalar lr,
-                  typename TTypes<T>::ConstFlat grad,
-                  typename TTypes<T>::ConstScalar variance,
-                  typename TTypes<T>::Flat shadow) {
-    var.device(d) -= lr() * (grad + variance() * grad * (var - shadow));
-    shadow.device(d) = var;
-  }
-};
 
 template <typename T>
 struct ApplyAdadelta<CPUDevice, T> {
@@ -599,53 +596,6 @@ class ApplyGradientDescentOp : public OpKernel {
   bool use_exclusive_lock_;
 };
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-class ApplyGradientDescentOp<SYCLDevice, T> : public OpKernel {
- public:
-  explicit ApplyGradientDescentOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0});
-    Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
-
-    OP_REQUIRES(
-        ctx, var.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", requested_input(0)));
-    const Tensor& alpha_dev = ctx->input(1);
-    OP_REQUIRES(ctx, IsLegacyScalar(alpha_dev.shape()),
-                errors::InvalidArgument("alpha is not a scalar: ",
-                                        alpha_dev.shape().DebugString()));
-    const Tensor& delta = ctx->input(2);
-    OP_REQUIRES(
-        ctx, var.shape().IsSameSize(delta.shape()),
-        errors::InvalidArgument("var and delta do not have the same shape",
-                                var.shape().DebugString(), " ",
-                                delta.shape().DebugString()));
-
-    auto device = ctx->eigen_sycl_device();
-    auto size = sizeof(T);
-    T alpha = T(0);
-    auto src_ptr = GetBase(&alpha_dev);
-    device.memcpyDeviceToHost(&alpha, static_cast<const T*>(src_ptr), size);
-
-    functor::ApplyGradientDescentSYCL<T>()(device, var.flat<T>(), alpha,
-                                           delta.flat<T>());
-
-    MaybeForwardRefInputToRefOutput(ctx, 0, 0);
-  }
-
- private:
-  bool use_exclusive_lock_;
-};
-#endif  // TENSORFLOW_USE_SYCL
-
 #define REGISTER_KERNELS(D, T)                                                \
   REGISTER_KERNEL_BUILDER(                                                    \
       Name("ApplyGradientDescent").Device(DEVICE_##D).TypeConstraint<T>("T"), \
@@ -688,76 +638,6 @@ TF_CALL_float(REGISTER_SYCL_KERNELS);
 TF_CALL_double(REGISTER_SYCL_KERNELS);
 #undef REGISTER_SYCL_KERNELS
 #endif  // TENSORFLOW_USE_SYCL
-
-#undef REGISTER_CPU_KERNELS
-#undef REGISTER_KERNELS
-
-template <typename Device, typename T>
-class ApplyDelayCompensatedGradientDescentOp : public OpKernel {
- public:
-  explicit ApplyDelayCompensatedGradientDescentOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 4});
-    Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
-    OP_REQUIRES(
-        ctx, var.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", requested_input(0)));
-    const Tensor& alpha = ctx->input(1);
-    OP_REQUIRES(ctx, IsLegacyScalar(alpha.shape()),
-                errors::InvalidArgument("alpha is not a scalar: ",
-                                        alpha.shape().DebugString()));
-    const Tensor& delta = ctx->input(2);
-    OP_REQUIRES(
-        ctx, var.shape().IsSameSize(delta.shape()),
-        errors::InvalidArgument("var and delta do not have the same shape",
-                                var.shape().DebugString(), " ",
-                                delta.shape().DebugString()));
-    const Tensor& lambda = ctx->input(3);
-    OP_REQUIRES(ctx, IsLegacyScalar(lambda.shape()),
-                errors::InvalidArgument("lambda is not a scalar: ",
-                                        lambda.shape().DebugString()));
-    Tensor shadow;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 4, use_exclusive_lock_, &shadow));
-    OP_REQUIRES(
-        ctx, shadow.shape().IsSameSize(var.shape()),
-        errors::InvalidArgument("shadow and var do not have the same shape",
-                                shadow.shape().DebugString(), " ",
-                                var.shape().DebugString()));
-
-    const Device& device = ctx->template eigen_device<Device>();
-    functor::ApplyDelayCompensatedGradientDescent<Device, T>()(
-        device, var.flat<T>(), alpha.scalar<T>(), delta.flat<T>(),
-        lambda.scalar<T>(), shadow.flat<T>());
-
-    MaybeForwardRefInputToRefOutput(ctx, 0, 0);
-  }
-
- private:
-  bool use_exclusive_lock_;
-};
-
-#define REGISTER_KERNELS(D, T)                     \
-  REGISTER_KERNEL_BUILDER(                         \
-      Name("ApplyDelayCompensatedGradientDescent") \
-          .Device(DEVICE_##D)                      \
-          .HostMemory("var")                       \
-          .HostMemory("shadow")                    \
-          .TypeConstraint<T>("T"),                 \
-      ApplyDelayCompensatedGradientDescentOp<D##Device, T>);
-#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
-
-TF_CALL_half(REGISTER_CPU_KERNELS);
-TF_CALL_float(REGISTER_CPU_KERNELS);
-TF_CALL_double(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -2393,7 +2273,8 @@ class SparseApplyFtrlOp : public OpKernel {
                              accum.pow(-lr_power_scalar)) /                    \
                                 lr_scalar * var;                               \
   }                                                                            \
-  auto x = (linear.constant(l1_scalar) * linear.sign() - linear);              \
+  auto l1_reg_adjust = linear.cwiseMin(l1_scalar).cwiseMax(-l1_scalar);        \
+  auto x = l1_reg_adjust - linear;                                             \
   if (lr_power_scalar == static_cast<T>(-0.5)) {                               \
     auto y = new_accum.sqrt() / new_accum.constant(lr_scalar) +                \
              linear.constant(static_cast<T>(2) * l2_scalar);                   \
@@ -2403,8 +2284,6 @@ class SparseApplyFtrlOp : public OpKernel {
              linear.constant(static_cast<T>(2) * l2_scalar);                   \
     var = x / y;                                                               \
   }                                                                            \
-  var = (linear.abs() > linear.constant(l1_scalar))                            \
-            .select(var, var.constant(static_cast<T>(0)));                     \
   accum += grad_to_use.square();
 
           if (has_l2_shrinkage) {

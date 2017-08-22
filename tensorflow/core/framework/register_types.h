@@ -95,7 +95,7 @@ limitations under the License.
 #define TF_CALL_resource(m)
 #define TF_CALL_complex64(m)
 #define TF_CALL_int64(m) m(::tensorflow::int64)
-#define TF_CALL_bool(m)
+#define TF_CALL_bool(m) m(bool)
 
 #define TF_CALL_qint8(m) m(::tensorflow::qint8)
 #define TF_CALL_quint8(m) m(::tensorflow::quint8)
@@ -122,7 +122,7 @@ limitations under the License.
 #define TF_CALL_resource(m)
 #define TF_CALL_complex64(m)
 #define TF_CALL_int64(m)
-#define TF_CALL_bool(m)
+#define TF_CALL_bool(m) m(bool)
 
 #define TF_CALL_qint8(m)
 #define TF_CALL_quint8(m)
@@ -187,14 +187,21 @@ limitations under the License.
 #define TF_CALL_SYCL_double(m)
 #else  // TENSORFLOW_SYCL_NO_DOUBLE
 #define TF_CALL_SYCL_double(m) TF_CALL_double(m)
-#endif // TENSORFLOW_SYCL_NO_DOUBLE
+#endif  // TENSORFLOW_SYCL_NO_DOUBLE
+
+#ifdef TENSORFLOW_SYCL_NO_HALF
+#define TF_CALL_SYCL_half(m)
+#else  // TENSORFLOW_SYCL_NO_HALF
+#define TF_CALL_SYCL_half(m) TF_CALL_half(m)
+#endif  // TENSORFLOW_SYCL_NO_HALF
 
 #ifdef __ANDROID_TYPES_SLIM__
 #define TF_CALL_SYCL_NUMBER_TYPES(m)  TF_CALL_float(m)
 #else  // __ANDROID_TYPES_SLIM__
 #define TF_CALL_SYCL_NUMBER_TYPES(m)    \
+    TF_CALL_half(m)                     \
     TF_CALL_float(m)                    \
     TF_CALL_SYCL_double(m)
-#endif // __ANDROID_TYPES_SLIM__
+#endif  // __ANDROID_TYPES_SLIM__
 
 #endif  // TENSORFLOW_FRAMEWORK_REGISTER_TYPES_H_

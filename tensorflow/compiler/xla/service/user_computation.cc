@@ -64,6 +64,8 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
       return HloOpcode::kNegate;
     case UNOP_SIGN:
       return HloOpcode::kSign;
+    case UNOP_SIN:
+      return HloOpcode::kSin;
     case UNOP_SORT:
       return HloOpcode::kSort;
     case UNOP_TANH:
@@ -789,7 +791,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddSliceInstruction(
       ShapeInference::InferSliceShape(
           operand->output_shape(), AsInt64Slice(slice_request.start_indices()),
           AsInt64Slice(slice_request.limit_indices()),
-          AsInt64Slice(slice_request.stride())));
+          AsInt64Slice(slice_request.strides())));
 
   ComputationDataHandle handle = CreateComputationDataHandle();
 
@@ -2468,7 +2470,7 @@ void ComputationLowerer::Visit(
           request.output_shape(), operand,
           AsInt64Slice(slice_request.start_indices()),
           AsInt64Slice(slice_request.limit_indices()),
-          AsInt64Slice(slice_request.stride())));
+          AsInt64Slice(slice_request.strides())));
       break;
     }
 
@@ -2879,7 +2881,8 @@ void ComputationLowerer::Visit(
         lhs = (lhs == operand_to_broadcast) ? broadcasted_operand : lhs;
         rhs = (rhs == operand_to_broadcast) ? broadcasted_operand : rhs;
       }
-      if (debug_options_.xla_eliminate_hlo_implicit_broadcast()) {
+      if (debug_options_.xla_eliminate_hlo_implicit_broadcast() &&
+          binary_op_request.binop() != BINOP_DOT) {
         if (!ShapeUtil::SameDimensions(request.output_shape(), lhs->shape())) {
           // lhs side is being implicitly broadcast. Change to explicit.
           lhs =
@@ -2953,7 +2956,6 @@ StatusOr<std::unique_ptr<HloComputation>> UserComputation::BuildHloComputation(
           session_computation_, version, std::move(hlo_resolver), debug_options,
           include_unreachable_instructions));
 
-  XLA_VLOG_LINES(2, hlo_computation->ToString());
   return std::move(hlo_computation);
 }
 

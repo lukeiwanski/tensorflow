@@ -37,6 +37,7 @@ class SYCLAllocator : public Allocator {
 
   virtual bool ShouldAllocateEmptyTensors() override final { return true; }
   void Synchronize() {
+    mutex_lock lock(mu_);
     if (sycl_device_) {
       sycl_device_->synchronize();
     }
@@ -52,14 +53,17 @@ class SYCLAllocator : public Allocator {
   Eigen::SyclDevice* getSyclDevice() { return sycl_device_; }
   // Clear the SYCL device used by the Allocator
   void ClearSYCLDevice() {
-    delete sycl_device_;
-    sycl_device_ = nullptr;
+    mutex_lock lock(mu_);
+    if(sycl_device_) {
+      delete sycl_device_;
+      sycl_device_ = nullptr;
+    }
   }
 
  private:
-  Eigen::SyclDevice* sycl_device_;  // owned
 
   mutable mutex mu_;
+  Eigen::SyclDevice* sycl_device_ GUARDED_BY(mu_);  // owned
   AllocatorStats stats_ GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(SYCLAllocator);

@@ -73,8 +73,6 @@ SingleMachine::~SingleMachine() {
   // when we delete the session.
   thread_pool_.reset();
 
-  Reset(options_, {}).IgnoreError();
-
   CHECK(already_created);
   already_created = false;
 }
@@ -91,7 +89,7 @@ Status SingleMachine::Provision() {
   VLOG(1) << "Number of GPUs: " << num_gpus_;
   for (int i = 0; i < num_gpus_; ++i) {
     string device_name =
-        strings::StrCat("/job:localhost/replica:0/task:0/gpu:", i);
+        strings::StrCat("/job:localhost/replica:0/task:0/device:GPU:", i);
     VLOG(1) << "Adding GPU device " << device_name;
     devices_[device_name] = GetLocalGPUInfo(i);
   }
@@ -277,11 +275,9 @@ Status SingleMachine::ResetSession() {
     // Make sure the session is properly closed
     TF_RETURN_IF_ERROR(Shutdown());
 
-    // We need to Reset the session to ensure that all the variables are
-    // deleted. But first we need to delete the session since Reset()
-    // deletes some of the containers referenced by the session.
+    // Destroying the object deletes all its varibles as well. This is only true
+    // for DirectSession.
     session_.reset();
-    TF_RETURN_IF_ERROR(Reset(options_, {}));
   }
 
   LOG(INFO) << "Starting new session";
