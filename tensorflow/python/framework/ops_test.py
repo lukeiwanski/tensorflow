@@ -25,6 +25,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
@@ -289,6 +290,17 @@ class OperationTest(test_util.TensorFlowTestCase):
       tensor = ops.convert_to_tensor(values)
       self.assertAllEqual((4, 1), tensor.get_shape().as_list())
       self.assertAllEqual(values, tensor.eval())
+
+  def testShapeTuple(self):
+    with self.test_session():
+      c = constant_op.constant(1)
+      self.assertEqual(c._shape_tuple(), ())  # pylint: disable=protected-access
+
+  def testConvertToTensorEager(self):
+    with context.eager_mode():
+      t = ops.EagerTensor(1)
+      converted = ops.convert_to_tensor(t)
+      self.assertTrue(isinstance(converted, ops.EagerTensor))
 
   def testConvertToTensorNestedTuple(self):
     with self.test_session():
@@ -1241,6 +1253,13 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
 
 
 class OpScopeTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testEagerDefaultScopeName(self):
+    with ops.name_scope(None, "default") as scope:
+      self.assertEqual(scope, "default/")
+      with ops.name_scope(None, "default2") as scope2:
+        self.assertEqual(scope2, "default/default2/")
 
   def testNoScopeName(self):
     g0 = ops.Graph()
