@@ -193,8 +193,9 @@ class BiasGradOp : public OpKernel {
     if (channel == 0) {
       return;  // Nothing to do
     } else if (output_backprop.NumElements() == 0) {
-      // Eigen often crashes by design on empty tensors, but setZero is safe
-      output->template flat<T>().setZero();
+      // Eigen often crashes by design on empty tensors, but this is safe
+      output->template flat<T>().device(context->eigen_device<Device>()) =
+        output->template flat<T>().constant(T(0));
     } else {
       Eigen::DSizes<int, 2> two_dims(batch * height * width, channel);
 #ifdef EIGEN_HAS_INDEX_LIST

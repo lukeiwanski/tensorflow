@@ -33,18 +33,15 @@ limitations under the License.
 namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
+#ifdef TENSORFLOW_USE_SYCL
+using SYCLDevice = Eigen::SyclDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace functor {
 
 // Functor used by FusedBatchNormOp to do the computations.
 template <typename Device, typename T>
-struct FusedBatchNorm;
-// Functor used by FusedBatchNormGradOp to do the computations.
-template <typename Device, typename T>
-struct FusedBatchNormGrad;
-
-template <typename T>
-struct FusedBatchNorm<CPUDevice, T> {
+struct FusedBatchNorm {
   void operator()(OpKernelContext* context, const Tensor& x_input,
                   const Tensor& scale_input, const Tensor& offset_input,
                   const Tensor& estimated_mean_input,
@@ -54,7 +51,7 @@ struct FusedBatchNorm<CPUDevice, T> {
                   Tensor* saved_var_output, TensorFormat tensor_format,
                   bool is_training) {
     CHECK(tensor_format == FORMAT_NHWC)
-        << "The CPU implementation of FusedBatchNorm only supports "
+        << "The CPU / SYCL implementation of FusedBatchNorm only supports "
         << "NHWC tensor format for now.";
     typename TTypes<T, 4>::ConstTensor x(x_input.tensor<T, 4>());
     typename TTypes<T>::ConstVec scale(scale_input.vec<T>());
@@ -68,7 +65,7 @@ struct FusedBatchNorm<CPUDevice, T> {
     typename TTypes<T>::Vec saved_mean(saved_mean_output->vec<T>());
     typename TTypes<T>::Vec saved_var(saved_var_output->vec<T>());
 
-    const CPUDevice& d = context->eigen_device<CPUDevice>();
+    const Device& d = context->eigen_device<Device>();
 
     const int depth = x.dimension(3);
     const int size = x.size();
@@ -94,8 +91,25 @@ struct FusedBatchNorm<CPUDevice, T> {
     T rest_size_adjust =
         static_cast<T>(rest_size) / static_cast<T>(rest_size_minus_one);
 
+#ifdef TENSORFLOW_USE_SYCL
+    Tensor mean_tmp;
+    Tensor variance_tmp;
+    OP_REQUIRES_OK(context, context->allocate_temp(
+                                DataTypeToEnum<T>::value,
+                                TensorShape({depth}),
+                                &mean_tmp));
+    OP_REQUIRES_OK(context, context->allocate_temp(
+                                DataTypeToEnum<T>::value,
+                                TensorShape({depth}),
+                                &variance_tmp));
+
+    auto mean = mean_tmp.flat<T>();
+    auto variance = variance_tmp.flat<T>();
+#else
     Eigen::Tensor<T, 1, Eigen::RowMajor> mean(depth);
     Eigen::Tensor<T, 1, Eigen::RowMajor> variance(depth);
+#endif  // TENSORFLOW_USE_SYCL
+
     if (is_training) {
       mean.device(d) = (x_rest_by_depth.sum(reduce_dims) * rest_size_inv);
       batch_mean.device(d) = mean;
@@ -127,8 +141,9 @@ struct FusedBatchNorm<CPUDevice, T> {
   }
 };
 
-template <typename T>
-struct FusedBatchNormGrad<CPUDevice, T> {
+// Functor used by FusedBatchNormGradOp to do the computations.
+template <typename Device, typename T>
+struct FusedBatchNormGrad {
   void operator()(OpKernelContext* context, const Tensor& y_backprop_input,
                   const Tensor& x_input, const Tensor& scale_input,
                   const Tensor& mean_input, const Tensor& variance_input,
@@ -136,7 +151,7 @@ struct FusedBatchNormGrad<CPUDevice, T> {
                   Tensor* scale_backprop_output, Tensor* offset_backprop_output,
                   TensorFormat tensor_format) {
     CHECK(tensor_format == FORMAT_NHWC)
-        << "The CPU implementation of FusedBatchNorm only support "
+        << "The CPU / SYCL implementation of FusedBatchNorm only support "
         << "NHWC tensor format for now.";
     typename TTypes<T, 4>::ConstTensor y_backprop(
         y_backprop_input.tensor<T, 4>());
@@ -157,7 +172,7 @@ struct FusedBatchNormGrad<CPUDevice, T> {
     //                  (x - mean(x)) * rsqrt(variance + epsilon))
     // offset_backprop = sum(y_backprop)
 
-    const CPUDevice& d = context->eigen_device<CPUDevice>();
+    const Device& d = context->eigen_device<Device>();
     const int depth = x.dimension(3);
     const int size = x.size();
     const int rest_size = size / depth;
@@ -628,6 +643,14 @@ REGISTER_KERNEL_BUILDER(Name("FusedBatchNorm").Device(DEVICE_GPU),
 
 REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGrad").Device(DEVICE_GPU),
                         FusedBatchNormGradOp<GPUDevice, float>);
-#endif
+#endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("FusedBatchNorm").Device(DEVICE_SYCL),
+                        FusedBatchNormOp<SYCLDevice, float>);
+
+REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGrad").Device(DEVICE_SYCL),
+                        FusedBatchNormGradOp<SYCLDevice, float>);
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
