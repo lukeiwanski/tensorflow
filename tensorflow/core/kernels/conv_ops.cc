@@ -61,7 +61,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 template <typename Device, typename T>
@@ -133,25 +133,6 @@ struct LaunchConv2DOp<CPUDevice, T> {
                                   padding, output, data_format);
   }
 };
-
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-struct LaunchConv2DOp<SYCLDevice, T> {
-  void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
-                  const Tensor& input, const Tensor& filter, int row_stride,
-                  int col_stride, const Padding& padding, Tensor* output,
-                  TensorFormat data_format) {
-    if (data_format != FORMAT_NHWC) {
-      ctx->SetStatus(
-          errors::Unimplemented("Generic conv implementation only supports "
-                                "NHWC tensor format for now."));
-      return;
-    }
-    LaunchGeneric<SYCLDevice, T>()(ctx, input, filter, row_stride, col_stride,
-                                  padding, output, data_format);
-  }
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class LaunchDeepConvOp {
@@ -811,9 +792,12 @@ template class LaunchConv2DOp<GPUDevice, float>;
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("Conv2D").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
-    Conv2DOp<SYCLDevice, float>);
-#endif // TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T)                                     \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("Conv2D").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+      Conv2DOp<SYCLDevice, T>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS)
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

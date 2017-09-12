@@ -48,6 +48,10 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#include "tensorflow/core/kernels/conv_ops_sycl.h"
+#endif  // TENSORFLOW_USE_SYCL
+
 namespace {
 
 // Returns in 'im_data' (assumes to be zero-initialized) image patch in storage
@@ -113,22 +117,6 @@ struct LaunchConv2DBackpropInputOp<CPUDevice, T> {
         in_backprop->dim_size(2), row_stride, col_stride);
   }
 };
-
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-struct LaunchConv2DBackpropInputOp<SYCLDevice, T> {
-  void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
-                  const Tensor& out_backprop, const Tensor& filter,
-                  int row_stride, int col_stride, const Padding& padding,
-                  Tensor* in_backprop, TensorFormat data_format) {
-    const SYCLDevice& d = ctx->eigen_device<SYCLDevice>();
-    functor::SpatialConvolutionBackwardInput<SYCLDevice, T>()(
-        d, in_backprop->tensor<T, 4>(), filter.tensor<T, 4>(),
-        out_backprop.tensor<T, 4>(), in_backprop->dim_size(1),
-        in_backprop->dim_size(2), row_stride, col_stride);
-  }
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 #ifdef TENSORFLOW_USE_LIBXSMM
 template <typename Device, class T>
@@ -1046,7 +1034,7 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
                               .HostMemory("input_sizes"), \
                           Conv2DFastBackpropInputOp<SYCLDevice, T>);
 
-REGISTER_SYCL_KERNELS(float);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS);
 #undef REGISTER_SYCL_KERNELS
 #endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

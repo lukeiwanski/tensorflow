@@ -48,6 +48,10 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#include "tensorflow/core/kernels/conv_ops_sycl.h"
+#endif  // TENSORFLOW_USE_SYCL
+
 namespace {
 
 // Returns in 'col_data', image patches in storage order (height, width, depth)
@@ -951,8 +955,7 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
                               .TypeConstraint<T>("T")      \
                               .HostMemory("filter_sizes"), \
                           Conv2DFastBackpropFilterOp<SYCLDevice, T>);
-
-REGISTER_SYCL_KERNELS(float);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS);
 #undef REGISTER_SYCL_KERNELS
 #endif  // TENSORFLOW_USE_SYCL
 
