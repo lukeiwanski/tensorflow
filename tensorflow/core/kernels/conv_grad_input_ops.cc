@@ -48,6 +48,10 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#include "tensorflow/core/kernels/conv_ops_sycl.h"
+#endif  // TENSORFLOW_USE_SYCL
+
 namespace {
 
 // Returns in 'im_data' (assumes to be zero-initialized) image patch in storage
@@ -113,24 +117,6 @@ struct LaunchConv2DBackpropInputOp<CPUDevice, T> {
         in_backprop->dim_size(2), row_stride, col_stride);
   }
 };
-
-#ifdef TENSORFLOW_USE_SYCL
-// Provide SYCL convolution backprop through Eigen.
-template <typename T>
-struct LaunchBackwardInputConvolution<SYCLDevice, T> {
-  bool operator()(OpKernelContext* context, const SYCLDevice& d,
-                  typename TTypes<T, 4>::Tensor input_backward,
-                  typename TTypes<T, 4>::ConstTensor kernel,
-                  typename TTypes<T, 4>::ConstTensor output_backward,
-                  int input_rows, int input_cols, int row_stride,
-                  int col_stride, TensorFormat data_format) const {
-    functor::SpatialConvolutionBackwardInput<SYCLDevice, T>()(
-        d, input_backward, kernel, output_backward, input_rows, input_cols,
-        row_stride, col_stride);
-    return true;
-  }
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 #ifdef TENSORFLOW_USE_LIBXSMM
 template <typename Device, class T>
@@ -241,6 +227,10 @@ class Conv2DFastBackpropInputOp : public OpKernel {
                        "Conv2DFastBackpropInput", /*num_spatial_dims=*/2,
                        input_shape, filter.shape(), out_backprop.shape(),
                        strides_, padding_, data_format_, &dims));
+    LOG(INFO) << "Input: \nInput:"<< input_shape.DebugString().c_str() <<
+      "\nOutput:"<<out_backprop.shape().DebugString().c_str() <<
+      "\nFilter:"<<filter.shape().DebugString().c_str()<<
+      "\nStrides:"<<strides_[0] << " " << strides_[1];
 
     Tensor* in_backprop = nullptr;
     OP_REQUIRES_OK(context,
@@ -1048,7 +1038,7 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
                               .HostMemory("input_sizes"), \
                           Conv2DFastBackpropInputOp<SYCLDevice, T>);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS);
 #undef REGISTER_SYCL_KERNELS
 #endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
