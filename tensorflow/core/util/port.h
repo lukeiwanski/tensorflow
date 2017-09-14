@@ -21,6 +21,9 @@ namespace tensorflow {
 // Returns true if GOOGLE_CUDA is defined.
 bool IsGoogleCudaEnabled();
 
+// Returns true if TENSORFLOW_USE_SYCL is defined.
+bool IsSYCLEnabled();
+
 // Returns true if GOOGLE_CUDA is defined, and the given CUDA version supports
 // half-precision matrix multiplications and convolution operations.
 bool CudaSupportsHalfMatMulAndConv();

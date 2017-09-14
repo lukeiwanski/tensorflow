@@ -29,6 +29,14 @@ bool IsGoogleCudaEnabled() {
 #endif
 }
 
+bool IsSYCLEnabled() {
+#if TENSORFLOW_USE_SYCL
+  return true;
+#else
+  return false;
+#endif
+}
+
 bool CudaSupportsHalfMatMulAndConv() {
 #if GOOGLE_CUDA
   // NOTE: We check compile-time and not runtime, since the check for
