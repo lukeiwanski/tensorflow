@@ -29,6 +29,7 @@ from tensorflow.python.framework import function as tf_function
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 
 
 class FunctionTest(test.TestCase):
@@ -51,6 +52,19 @@ class FunctionTest(test.TestCase):
     t = tensor.Tensor([[1.0, 2.0], [3.0, 4.0]])
     out = sq(t)
     self.assertAllEqual(out.numpy(), math_ops.matmul(t, t).numpy())
+
+  def testGraphModeWithGradients(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.defun
+    def step():
+      def inner():
+        tape.watch_variable(v)
+        return v * v
+
+      return backprop.implicit_grad(inner)()[0][0]
+
+    self.assertAllEqual(step().numpy(), 2.0)
 
   def testTensorConversionWithDefun(self):
 
@@ -99,17 +113,17 @@ class FunctionTest(test.TestCase):
     g(tensor.Tensor(1.0))
 
   def testGradientTensorConversionWithDefun(self):
-    three = tensor.Tensor(3.0)
+    three = resource_variable_ops.ResourceVariable(3.0)
 
     @function.defun
     def f(x):
       return math_ops.add(x, three)
 
     def g(x):
-      tape.watch(three)
+      tape.watch_variable(three)
       return f(x)
 
-    g = backprop.implicit_grad(g)(tensor.Tensor(1.0))[0][1]
+    g = backprop.implicit_grad(g)(tensor.Tensor(1.0))[0][0]
     self.assertEqual(g.numpy(), 1.0)
 
   def testGradient(self):

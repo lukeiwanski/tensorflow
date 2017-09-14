@@ -215,9 +215,9 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
     ],
 )
 
@@ -370,6 +370,7 @@ xla_test(
 xla_test(
     name = "params_test",
     srcs = ["params_test.cc"],
+    shard_count = 30,
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal_util",

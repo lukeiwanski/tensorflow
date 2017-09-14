@@ -23,10 +23,10 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.eager import tensor
-from tensorflow.python.eager import tensor_node
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
@@ -58,6 +58,7 @@ class BackpropTest(test.TestCase):
     var_np = np.random.rand(4, 2).astype(np.float32)
     var = tensor.Tensor(var_np)
     grad = backprop.gradients_function(fn, [0])(var)[0]
+    grad = ops.convert_to_tensor(grad).numpy()
 
     with context.graph_mode(), self.test_session():
       tf_var = array_ops.constant(var_np, dtypes.float32)
@@ -74,24 +75,31 @@ class BackpropTest(test.TestCase):
       tf_dense_grad = math_ops.unsorted_segment_sum(
           tf_grad.values, tf_grad.indices, tf_grad.dense_shape[0])
 
-      self.assertAllClose(grad.numpy(), tf_dense_grad.eval())
-
-  def testTensoVspaceNoneMutAdd(self):
-    t = tensor.Tensor(1.0)
-    self.assertEqual(tensor_node.TensorVSpace(t).mut_add(t, None).numpy(), 1.0)
+      self.assertAllClose(grad, tf_dense_grad.eval())
 
   def testImplicitGradWithResourceVariable(self):
     x = resource_variable_ops.ResourceVariable(
         initial_value=tensor.Tensor(1.0), name='x')
 
     def fn():
-      tape.watch(x.handle)
+      tape.watch_variable(x)
       b = tensor.Tensor(2.0)
       c = math_ops.add(x.value(), b)
       return math_ops.add(c, tensor.Tensor(3.0))
 
-    grad = backprop.implicit_grad(fn)()[0][1]
-    self.assertEqual(grad.numpy(), 1.0)
+    grads_and_vars = backprop.implicit_grad(fn)()
+    self.assertEqual(grads_and_vars[0][0].numpy(), 1.0)
+    self.assertEqual(id(grads_and_vars[0][1]), id(x))
+
+  def testDy(self):
+
+    def f(x):
+      return x
+
+    grad_fn = backprop.gradients_function(f)
+    self.assertAllEqual(grad_fn(constant_op.constant(1.0),
+                                dy=constant_op.constant(2.0))[0].numpy(),
+                        2.0)
 
   def testImplicitGradOverEmbeddingLookup(self):
     batch_size = 8
@@ -105,11 +113,11 @@ class BackpropTest(test.TestCase):
         initial_value=random_init, dtype=dtypes.float32, name='embedding')
 
     def f():
-      tape.watch(embedding.handle)
+      tape.watch_variable(embedding)
       embedded_x = embedding_ops.embedding_lookup(embedding, x)
       return tensor.Tensor(1.0, dtypes.float32) - embedded_x
 
-    grad = backprop.implicit_grad(f)()[0][1]
+    grad = backprop.implicit_grad(f)()[0][0]
     opt = training.GradientDescentOptimizer(lrn_rate)
 
     with context.graph_mode(), self.test_session():
@@ -207,11 +215,11 @@ class BackpropTest(test.TestCase):
 
     def f():
       with context.device('gpu:0'):
-        tape.watch(v.handle)
+        tape.watch_variable(v)
         return v.read_value()
 
     self.assertEqual(
-        backprop.implicit_grad(f)()[0][1].as_cpu_tensor().numpy(), 1.0)
+        backprop.implicit_grad(f)()[0][0].as_cpu_tensor().numpy(), 1.0)
 
   def testCPU(self):
 
@@ -306,6 +314,20 @@ class BackpropTest(test.TestCase):
     self.assertEqual(
         [tensor_shape.TensorShape(s).as_proto() for s in shape_list],
         backprop.make_attr([pywrap_tensorflow.TF_ATTR_SHAPE], shape_list))
+
+  def testMultiValueConvertToTensor(self):
+    x = resource_variable_ops.ResourceVariable(
+        initial_value=array_ops.constant([1.0]), name='x')
+
+    def fn():
+      tape.watch_variable(x)
+      a = math_ops.add(x.value(), 1.0)
+      # Make sure convert_to_tensor works correctly with list of TensorNodes.
+      b = array_ops.stack([a, a], axis=0)
+      return math_ops.reduce_mean(b)
+
+    grad = backprop.implicit_grad(fn)()[0][0]
+    self.assertAllEqual([1.0], grad.numpy())
 
 
 if __name__ == '__main__':
