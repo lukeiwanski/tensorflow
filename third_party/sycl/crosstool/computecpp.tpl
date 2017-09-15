@@ -73,7 +73,7 @@ def main():
   bc_out = filename + '.sycl'
 
   # strip asan for the device
-  computecpp_device_compiler_flags = ['-DTENSORFLOW_USE_SYCL', '-DEIGEN_USE_SYCL=1', '-sycl-compress-name', '-Wno-unused-variable', '-Wno-c++11-narrowing',
+  computecpp_device_compiler_flags = ['-DTENSORFLOW_USE_SYCL', '-DEIGEN_DONT_VECTORIZE=1', '-DEIGEN_USE_SYCL=1', '-sycl-compress-name', '-Wno-unused-variable', '-Wno-c++11-narrowing',
                                       '-I', COMPUTECPP_INCLUDE, '-isystem', COMPUTECPP_INCLUDE,
                                       '-std=c++11', '-sycl', '-emit-llvm', '-no-serial-memop',
                                       '-Xclang', '-cl-denorms-are-zero', '-Xclang', '-cl-fp32-correctly-rounded-divide-sqrt']
