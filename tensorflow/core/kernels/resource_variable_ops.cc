@@ -134,26 +134,18 @@ TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(type)                            \
-  REGISTER_KERNEL_BUILDER(Name("VarHandleOp")                  \
-                              .Device(DEVICE_SYCL)             \
-                              .HostMemory("resource")          \
-                              .TypeConstraint<type>("dtype"),  \
-                          ResourceHandleOp<Var>)               \
-  REGISTER_KERNEL_BUILDER(Name("ReadVariableOp")               \
-                              .Device(DEVICE_SYCL)             \
-                              .TypeConstraint<type>("dtype")   \
-                              .HostMemory("resource"),         \
-                          ReadVariableOp<SYCLDevice, type>);
+#define REGISTER_SYCL_KERNELS(type)                                      \
+  REGISTER_KERNEL_BUILDER(Name("VarHandleOp")                            \
+                              .Device(DEVICE_SYCL)                       \
+                              .HostMemory("resource")                    \
+                              .TypeConstraint<type>("dtype"),            \
+                          ResourceHandleOp<Var>)                         \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("ReadVariableOp").Device(DEVICE_SYCL).HostMemory("resource"), \
+      ReadVariableOp);
 
-TF_CALL_float(REGISTER_SYCL_KERNELS) TF_CALL_double(REGISTER_SYCL_KERNELS)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS)
 #undef REGISTER_SYCL_KERNELS
-#endif  // TENSORFLOW_USE_SYCL
-
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("_UnsafeReadVariable").Device(DEVICE_SYCL).HostMemory("resource"),
-    UnsafeReadVariableOp);
 #endif  // TENSORFLOW_USE_SYCL
 
 template <typename T>
@@ -402,19 +394,19 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(type)                                      \
-  REGISTER_KERNEL_BUILDER(Name("AssignAddVariableOp")                    \
-                              .Device(DEVICE_SYCL)                       \
-                              .HostMemory("resource")                    \
-                              .TypeConstraint<type>("dtype"),            \
-                          AssignUpdateVariableOp<SYCLDevice, type, ADD>);\
-  REGISTER_KERNEL_BUILDER(Name("AssignSubVariableOp")                    \
-                              .Device(DEVICE_SYCL)                       \
-                              .HostMemory("resource")                    \
-                              .TypeConstraint<type>("dtype"),            \
+#define REGISTER_SYCL_KERNELS(type)                                       \
+  REGISTER_KERNEL_BUILDER(Name("AssignAddVariableOp")                     \
+                              .Device(DEVICE_SYCL)                        \
+                              .HostMemory("resource")                     \
+                              .TypeConstraint<type>("dtype"),             \
+                          AssignUpdateVariableOp<SYCLDevice, type, ADD>); \
+  REGISTER_KERNEL_BUILDER(Name("AssignSubVariableOp")                     \
+                              .Device(DEVICE_SYCL)                        \
+                              .HostMemory("resource")                     \
+                              .TypeConstraint<type>("dtype"),             \
                           AssignUpdateVariableOp<SYCLDevice, type, SUB>);
 
-TF_CALL_float(REGISTER_SYCL_KERNELS) TF_CALL_double(REGISTER_SYCL_KERNELS)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS);
 #undef REGISTER_SYCL_KERNELS
 #endif  // TENSORFLOW_USE_SYCL
 
