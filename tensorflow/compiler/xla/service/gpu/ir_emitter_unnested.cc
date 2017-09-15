@@ -201,6 +201,9 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
   }
   kernel->addAttribute(temp_buffer_arg_no + 1, llvm::Attribute::NoAlias);
 
+  // TODO(b/65380986): Investigate if adding fast math flags for generated
+  // kernels makes sense.
+
   // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX
   // treats it as a CUDA kernel.
   llvm::NamedMDNode* nvvm_annotations_node =
@@ -996,7 +999,7 @@ Status IrEmitterUnnested::EmitRowReduction(
   //   for (shuffle_distance = 16; shuffle_distance > 0; shuffle_distance /= 2)
   //     partial_result = Reducer(
   //         partial_result,
-  //         __shfl_down(partial_result, shuffle_distance));
+  //         __shfl_down_sync(CUDA_WARP_ALL, partial_result, shuffle_distance));
   //   if (lane_id == 0)
   //     AtomicReducer(&output[y], partial_result);
   // }

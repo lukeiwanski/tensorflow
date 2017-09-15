@@ -310,6 +310,11 @@ StatusOr<ComputationDataHandle> UserComputation::AddGetTupleElementInstruction(
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
                       LookUpRequest(get_tuple_element_request.operand()));
+  if (!ShapeUtil::IsTuple(operand->output_shape())) {
+    return InvalidArgument(
+        "Operand to GetTupleElement() is not a tuple; got %s",
+        ShapeUtil::HumanString(operand->output_shape()).c_str());
+  }
   Shape element_shape = ShapeUtil::GetTupleElementShape(
       operand->output_shape(), get_tuple_element_request.index());
 
@@ -2471,8 +2476,8 @@ HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
       operand->shape().element_type(), AsInt64Slice(output_shape.dimensions()));
   // Do explicit broadcast for scalar.
   if (ShapeUtil::IsScalar(operand->shape())) {
-    return hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
-        broadcast_shape, operand, AsInt64Slice(broadcast_shape.dimensions())));
+    return hlo_builder_.AddInstruction(
+        HloInstruction::CreateBroadcast(broadcast_shape, operand, {}));
   }
   // Do explicit broadcast for degenerate broadcast.
   std::vector<int64> broadcast_dimensions;

@@ -33,7 +33,7 @@ from tensorflow.python.framework import test_util
 
 def truncated_normal(shape):
   return execute.execute(
-      'TruncatedNormal',
+      b'TruncatedNormal',
       1,
       inputs=[shape],
       attrs=('dtype', dtypes.float32.as_datatype_enum, 'T',
@@ -54,10 +54,6 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertIsNone(ctx.summary_writer_resource)
     ctx.summary_writer_resource = 'mock'
     self.assertEqual('mock', ctx.summary_writer_resource)
-
-    self.assertFalse(ctx.recording_summaries)
-    ctx.recording_summaries = True
-    self.assertTrue(ctx.recording_summaries)
 
     self.assertEqual('', ctx.device_name)
     self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
@@ -95,8 +91,7 @@ class TFETest(test_util.TensorFlowTestCase):
       return [
           ctx.in_graph_mode(),
           ctx.in_eager_mode(), ctx.scope_name, ctx.summary_writer_resource,
-          ctx.recording_summaries, ctx.device_name,
-          ctx.num_gpus()
+          ctx.device_name, ctx.num_gpus()
       ]
 
     def get_values(ctx, values):
@@ -123,7 +118,7 @@ class TFETest(test_util.TensorFlowTestCase):
       y = tensor.Tensor(2.)
     # Add would fail if t2 were not on GPU
     result = execute.execute(
-        'Add', 1, inputs=[x, y],
+        b'Add', 1, inputs=[x, y],
         attrs=('T', x.dtype.as_datatype_enum))[0].as_cpu_tensor().numpy()
     self.assertEqual(3, result)
 
@@ -166,7 +161,7 @@ class TFETest(test_util.TensorFlowTestCase):
     three = tensor.Tensor(3)
     five = tensor.Tensor(5)
     product = execute.execute(
-        'Mul',
+        b'Mul',
         num_outputs=1,
         inputs=[three, five],
         attrs=('T', three.dtype.as_datatype_enum))[0]
@@ -176,7 +171,7 @@ class TFETest(test_util.TensorFlowTestCase):
     # num_outputs provided is 50, but only one output is produced.
     # That should be okay.
     product = execute.execute(
-        'Mul',
+        b'Mul',
         num_outputs=50,
         inputs=[tensor.Tensor(3), tensor.Tensor(5)],
         attrs=('T', dtypes.int32.as_datatype_enum))[0]
@@ -188,7 +183,7 @@ class TFETest(test_util.TensorFlowTestCase):
     three = tensor.Tensor([[3.]]).as_gpu_tensor()
     five = tensor.Tensor([[5.]]).as_gpu_tensor()
     product = execute.execute(
-        'MatMul',
+        b'MatMul',
         num_outputs=1,
         inputs=[three, five],
         attrs=('transpose_a', False, 'transpose_b', False, 'T',
@@ -197,7 +192,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def testExecuteStringAttr(self):
     checked_three = execute.execute(
-        'CheckNumerics',
+        b'CheckNumerics',
         num_outputs=1,
         inputs=[tensor.Tensor(3.)],
         attrs=('message', 'just checking', 'T',
@@ -207,14 +202,14 @@ class TFETest(test_util.TensorFlowTestCase):
   def testExecuteStringAttrBadValue(self):
     with self.assertRaises(errors.InvalidArgumentError):
       _ = execute.execute(
-          'CheckNumerics',
+          b'CheckNumerics',
           num_outputs=1,
           inputs=[tensor.Tensor(3.)],
           attrs=('message', 1, 'T', dtypes.float32.as_datatype_enum))
 
   def testExecuteFloatAttr(self):
     almost_equal = execute.execute(
-        'ApproximateEqual',
+        b'ApproximateEqual',
         num_outputs=1,
         inputs=[tensor.Tensor(3.0), tensor.Tensor(2.9)],
         attrs=('tolerance', 0.3, 'T', dtypes.float32.as_datatype_enum))[0]
@@ -223,14 +218,14 @@ class TFETest(test_util.TensorFlowTestCase):
   def testExecuteFloatAttrBadValue(self):
     with self.assertRaises(errors.InvalidArgumentError):
       _ = execute.execute(
-          'ApproximateEqual',
+          b'ApproximateEqual',
           num_outputs=1,
           inputs=[tensor.Tensor(3.0), tensor.Tensor(2.9)],
           attrs=('tolerance', '0.3', 'T', dtypes.float32.as_datatype_enum))
 
   def testExecuteIntAttr(self):
     total = execute.execute(
-        'AddN',
+        b'AddN',
         num_outputs=1,
         inputs=[tensor.Tensor(3), tensor.Tensor(4)],
         attrs=('T', dtypes.int32.as_datatype_enum, 'N', 2))[0]
@@ -239,7 +234,7 @@ class TFETest(test_util.TensorFlowTestCase):
   def testExecuteIntAttrBadValue(self):
     with self.assertRaises(errors.InvalidArgumentError):
       _ = execute.execute(
-          'AddN',
+          b'AddN',
           num_outputs=1,
           inputs=[tensor.Tensor(3), tensor.Tensor(4)],
           attrs=('T', dtypes.int32.as_datatype_enum, 'N', '2'))
@@ -247,7 +242,7 @@ class TFETest(test_util.TensorFlowTestCase):
   # Looks like we don't have an existing op with list(bool) attrs.
   def testExecuteBoolAttr(self):
     product = execute.execute(
-        'MatMul',
+        b'MatMul',
         num_outputs=1,
         inputs=[tensor.Tensor([[3]]),
                 tensor.Tensor([[5]])],
@@ -257,7 +252,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def testExecuteShapeAttr(self):
     execute.execute(
-        'VarHandleOp',
+        b'VarHandleOp',
         num_outputs=1,
         inputs=[],
         attrs=('shape', [1, 2], 'dtype', dtypes.int32.as_datatype_enum,
@@ -266,7 +261,7 @@ class TFETest(test_util.TensorFlowTestCase):
   def testExecuteShapeAttrBadValue(self):
     with self.assertRaises(errors.InvalidArgumentError):
       execute.execute(
-          'VarHandleOp',
+          b'VarHandleOp',
           num_outputs=1,
           inputs=[],
           attrs=('shape', 1, 'dtype', dtypes.int32.as_datatype_enum,
@@ -274,7 +269,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def testExecuteListStringAttr(self):
     execute.execute(
-        'TensorSummary',
+        b'TensorSummary',
         num_outputs=1,
         inputs=[tensor.Tensor(3.0)],
         attrs=('T', dtypes.float32.as_datatype_enum, 'description',
@@ -284,7 +279,7 @@ class TFETest(test_util.TensorFlowTestCase):
   def testExecuteListStringAttrBadValue(self):
     with self.assertRaises(errors.InvalidArgumentError):
       execute.execute(
-          'TensorSummary',
+          b'TensorSummary',
           num_outputs=1,
           inputs=[tensor.Tensor(3.0)],
           attrs=('T', dtypes.float32.as_datatype_enum, 'description', '',
@@ -293,7 +288,7 @@ class TFETest(test_util.TensorFlowTestCase):
   def testExecuteListStringAttrBadListValue(self):
     with self.assertRaises(errors.InvalidArgumentError):
       execute.execute(
-          'TensorSummary',
+          b'TensorSummary',
           num_outputs=1,
           inputs=[tensor.Tensor(3.0)],
           attrs=('T', dtypes.float32.as_datatype_enum, 'description', '',
@@ -301,7 +296,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def testExecuteListFloatAttr(self):
     b = execute.execute(
-        'Bucketize',
+        b'Bucketize',
         num_outputs=1,
         inputs=[tensor.Tensor([3.0, 5.0, 7.0])],
         attrs=('T', dtypes.float32.as_datatype_enum, 'boundaries', [4.0,
@@ -311,7 +306,7 @@ class TFETest(test_util.TensorFlowTestCase):
   def testExecuteListFloatAttrBadValue(self):
     with self.assertRaises(errors.InvalidArgumentError):
       execute.execute(
-          'Bucketize',
+          b'Bucketize',
           num_outputs=1,
           inputs=[tensor.Tensor([3.0, 5.0, 7.0])],
           attrs=('T', dtypes.float32.as_datatype_enum, 'boundaries', 4.0))
@@ -319,7 +314,7 @@ class TFETest(test_util.TensorFlowTestCase):
   def testExecuteListFloatAttrBadListValue(self):
     with self.assertRaises(errors.InvalidArgumentError):
       execute.execute(
-          'Bucketize',
+          b'Bucketize',
           num_outputs=1,
           inputs=[tensor.Tensor([3.0, 5.0, 7.0])],
           attrs=('T', dtypes.float32.as_datatype_enum, 'boundaries',
@@ -327,7 +322,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def testExecuteListIntAttr(self):
     b = execute.execute(
-        'Squeeze',
+        b'Squeeze',
         num_outputs=1,
         inputs=[tensor.Tensor([[[3.0]]])],
         attrs=('T', dtypes.float32.as_datatype_enum, 'squeeze_dims', [0, 2]))[0]
@@ -336,7 +331,7 @@ class TFETest(test_util.TensorFlowTestCase):
   def testExecuteListIntAttrBadValue(self):
     with self.assertRaises(errors.InvalidArgumentError):
       execute.execute(
-          'Squeeze',
+          b'Squeeze',
           num_outputs=1,
           inputs=[tensor.Tensor([[[3.0]]])],
           attrs=('T', dtypes.float32.as_datatype_enum, 'squeeze_dims', 0))
@@ -344,7 +339,7 @@ class TFETest(test_util.TensorFlowTestCase):
   def testExecuteListIntAttrBadListValue(self):
     with self.assertRaises(errors.InvalidArgumentError):
       execute.execute(
-          'Squeeze',
+          b'Squeeze',
           num_outputs=1,
           inputs=[tensor.Tensor([[[3.0]]])],
           attrs=('T', dtypes.float32.as_datatype_enum, 'squeeze_dims',
@@ -352,7 +347,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def testExecuteListTypeListShapeAttr(self):
     execute.execute(
-        'Barrier',
+        b'Barrier',
         num_outputs=1,
         inputs=[],
         attrs=('component_types', [dtypes.float64.as_datatype_enum], 'shapes',
@@ -361,7 +356,7 @@ class TFETest(test_util.TensorFlowTestCase):
   def testExecuteListTypeAttrBadValue(self):
     with self.assertRaises(errors.InvalidArgumentError):
       execute.execute(
-          'Barrier',
+          b'Barrier',
           num_outputs=1,
           inputs=[],
           attrs=('component_types', dtypes.float64.as_datatype_enum, 'shapes',
@@ -370,7 +365,7 @@ class TFETest(test_util.TensorFlowTestCase):
   def testExecuteListTypeAttrBadListValue(self):
     with self.assertRaises(errors.InvalidArgumentError):
       execute.execute(
-          'Barrier',
+          b'Barrier',
           num_outputs=1,
           inputs=[],
           attrs=('component_types', '1', 'shapes', [[1, 2]], 'capacity', -1,
@@ -379,7 +374,7 @@ class TFETest(test_util.TensorFlowTestCase):
   def testExecuteListShapeAttrBadValue(self):
     with self.assertRaises(errors.InvalidArgumentError):
       execute.execute(
-          'Barrier',
+          b'Barrier',
           num_outputs=1,
           inputs=[],
           attrs=('component_types', [dtypes.float64.as_datatype_enum], 'shapes',
@@ -388,7 +383,7 @@ class TFETest(test_util.TensorFlowTestCase):
   def testExecuteListShapeAttrBadListValue(self):
     with self.assertRaises(errors.InvalidArgumentError):
       execute.execute(
-          'Barrier',
+          b'Barrier',
           num_outputs=1,
           inputs=[],
           attrs=('component_types', [dtypes.float64.as_datatype_enum], 'shapes',
@@ -398,7 +393,7 @@ class TFETest(test_util.TensorFlowTestCase):
     split_dim = 1
     value = [[0, 1, 2], [3, 4, 5]]
     x1, x2, x3 = execute.execute(
-        'Split',
+        b'Split',
         num_outputs=3,
         inputs=[tensor.Tensor(split_dim),
                 tensor.Tensor(value)],
@@ -410,18 +405,18 @@ class TFETest(test_util.TensorFlowTestCase):
   def testExecuteBadNumOutputsArgument(self):
     with self.assertRaises(TypeError):
       execute.execute(
-          'Relu', [],
+          b'Relu', [],
           inputs=[tensor.Tensor(3.0)],
           attrs=('T', dtypes.float32.as_datatype_enum))
 
   def testExecuteUnknownOp(self):
     with self.assertRaises(errors.NotFoundError):
-      execute.execute('BlahBlahBlah', num_outputs=1, inputs=[], attrs=None)
+      execute.execute(b'BlahBlahBlah', num_outputs=1, inputs=[], attrs=None)
 
   def testExecuteUnknownAttr(self):
     with self.assertRaises(errors.InvalidArgumentError):
       execute.execute(
-          'Identity',
+          b'Identity',
           num_outputs=1,
           inputs=[tensor.Tensor(3)],
           attrs=('T', dtypes.int32.as_datatype_enum, 'unknown_attr', 'blah'))
@@ -430,7 +425,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
     def add(x, y):
       return execute.execute(
-          'Add',
+          b'Add',
           num_outputs=1,
           inputs=[x, y],
           attrs=('T', dtypes.int32.as_datatype_enum))[0]
@@ -452,7 +447,7 @@ class TFETest(test_util.TensorFlowTestCase):
       y = truncated_normal(shape)
     # Add would fail if x and y were not on the same device.
     execute.execute(
-        'Add', 1, inputs=[x, y], attrs=('T', x.dtype.as_datatype_enum))
+        b'Add', 1, inputs=[x, y], attrs=('T', x.dtype.as_datatype_enum))
 
   def testInvalidDevice(self):
     with self.assertRaises(ValueError):

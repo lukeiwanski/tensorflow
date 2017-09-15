@@ -25,7 +25,6 @@ import re
 import sys
 import threading
 
-from autograd import core as ag_core
 import numpy as np
 
 import six
@@ -36,8 +35,10 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.client import device_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
+from tensorflow.python.eager import tape
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -49,6 +50,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
+from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 
 # Temporary global switch determining if we should enable the work-in-progress
@@ -69,14 +71,13 @@ from tensorflow.python.util import tf_contextlib
 _USE_C_API = False
 
 
-def tensor_id(t):
+def tensor_id(tensor):
   """Returns a unique identifier for this Tensor."""
-  t = ag_core.getval(t)
-  return t._id  # pylint: disable=protected-access
+  return tensor._id  # pylint: disable=protected-access
 
 
 def _in_gpu_device():
-  return "GPU" == context.context().device_spec.device_type
+  return device_lib.gpu_device_type() == context.context().device_spec.device_type
 
 
 @tf_contextlib.contextmanager
@@ -604,6 +605,13 @@ def _maybe_modify_numpy_dtype_determination(np_array):
   return np_array
 
 
+def _has_string(value):
+  if isinstance(value, compat.bytes_or_text_types): return True
+  if isinstance(value, collections.Sequence) and value:
+    return _has_string(value[0])
+  return False
+
+
 # TODO(agarwal): rename to TensorHandle.
 class EagerTensor(Tensor):
   """A TensorFlow Eager Tensor."""
@@ -625,6 +633,8 @@ class EagerTensor(Tensor):
     # https://www.tensorflow.org/code/tensorflow/python/framework/constant_op.py
     self._id = uid()
     if not isinstance(value, np.ndarray):
+      if dtype is None and _has_string(value):
+        dtype = dtypes.string
       npt = None if dtype is None else dtype.as_numpy_dtype
       try:
         value = np.array(value, dtype=npt)
@@ -693,6 +703,7 @@ class EagerTensor(Tensor):
 
   def __del__(self):
     try:
+      tape.delete_trace(self)
       if c_api is not None and c_api.TFE_DeleteTensorHandle is not None:
         c_api.TFE_DeleteTensorHandle(self._handle)
       if core.active_trace() is not None:
@@ -712,12 +723,12 @@ class EagerTensor(Tensor):
     return numpy_text
 
   def __str__(self):
-    return "tfe.Tensor(shape=%s, dtype=%s, numpy=%s)" % (self.shape,
-                                                         self.dtype.name,
-                                                         self._numpy_text())
+    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (self._numpy_text(),
+                                                  self.shape,
+                                                  self.dtype.name)
 
   def __repr__(self):
-    return "<tfe.Tensor: id=%s, shape=%s, dtype=%s, numpy=%s)>" % (
+    return "<tf.Tensor: id=%s, shape=%s, dtype=%s, numpy=%s>" % (
         self._id, self.shape, self.dtype.name, self._numpy_text(is_repr=True))
 
   @staticmethod
@@ -760,6 +771,16 @@ class EagerTensor(Tensor):
                                         tensor_id(new_tensor),
                                         new_tensor.device,
                                         new_tensor.shape.num_elements())
+
+    # Record the copy on tape and define backprop copy as well.
+    if not context.in_graph_mode():
+      self_device = self.device
+      def grad_fun(dresult):
+        with errors.raise_exception_on_not_ok_status() as status:
+          grad_h = c_api.TFE_TensorHandleCopyToDevice(
+              dresult._handle, ctx._handle, self_device, status)
+        return _tensor_from_handle(grad_h)
+      tape.record_operation([new_tensor], [self], [], grad_fun)
     return new_tensor
     # pylint: enable=protected-access
 
@@ -831,7 +852,8 @@ class EagerTensor(Tensor):
       A GPU-memory backed Tensor object initialized with the same contents
       as this Tensor.
     """
-    return self._copy(context.context(), "GPU:" + str(gpu_index))
+    return self._copy(
+        context.context(), str(device_lib.gpu_device_type() + ":" + str(gpu_index)))
 
   def __bool__(self):
     if self._shape_tuple() != ():  # pylint: disable=g-explicit-bool-comparison
@@ -1023,19 +1045,21 @@ def internal_convert_to_tensor(value,
     RuntimeError: If a registered conversion function returns an invalid value.
 
   """
-  # Note we check the type of the object unwrapped from an autograd node, if
-  # tracing gradients, to ensure the same behavior happens with and without
-  # tracing.
-  unwrapped = ag_core.getval(value)
-  # Fast path for EagerTensors that don't need any conversion.
-  if isinstance(unwrapped, EagerTensor) and context.in_eager_mode():
-    # Note that we don't check that value's dtype matches the dtype
-    # argument.  We exepct that the C runtime will do that checking
-    # when we execute the kernel.
-    return value
+  if context.in_eager_mode():
+    # Fast path for EagerTensors that don't need any conversion.
+    if isinstance(value, EagerTensor):
+      # Note that we don't check that value's dtype matches the dtype
+      # argument.  We exepct that the C runtime will do that checking
+      # when we execute the kernel.
+      return value
+    values = nest.flatten(value)
+    if (len(values) > 1 and
+        any(isinstance(v, EagerTensor) for v in values)):
+      raise TypeError("Cannot convert to a eager tensor.")
+
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
-  unwrapped_type = type(unwrapped)
+  unwrapped_type = type(value)
   conversion_func_list = _tensor_conversion_func_cache.get(unwrapped_type, None)
   if conversion_func_list is None:
     with _tensor_conversion_func_lock:
@@ -1043,7 +1067,7 @@ def internal_convert_to_tensor(value,
       for _, funcs_at_priority in sorted(
           _tensor_conversion_func_registry.items()):
         for base_type, conversion_func in funcs_at_priority:
-          if isinstance(unwrapped, base_type):
+          if isinstance(value, base_type):
             conversion_func_list.append((base_type, conversion_func))
       _tensor_conversion_func_cache[unwrapped_type] = conversion_func_list
 
@@ -1073,7 +1097,7 @@ def internal_convert_to_tensor(value,
     if ret is NotImplemented:
       continue
 
-    if not isinstance(ag_core.getval(ret), Tensor):
+    if not isinstance(ret, Tensor):
       raise RuntimeError(
           "%sConversion function %r for type %s returned non-Tensor: %r" %
           (_error_prefix(name), conversion_func, base_type, ret))
@@ -2939,6 +2963,14 @@ class Graph(object):
     if self._graph_def_versions.min_consumer < 12:
       self._graph_def_versions.min_consumer = 12
     self._functions[name] = function
+    if self._c_graph:
+      # pylint: disable=protected-access
+      assert function._c_func, (
+          "Cannot add function created without C API support to graph "
+          "created with C API support")
+      with errors.raise_exception_on_not_ok_status() as status:
+        c_api.TF_GraphAddFunction(self._c_graph, function._c_func, status)
+      # pylint: enable=protected-access
 
   @property
   def building_function(self):
