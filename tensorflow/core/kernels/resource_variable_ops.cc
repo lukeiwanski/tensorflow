@@ -134,15 +134,15 @@ TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(type)                                      \
-  REGISTER_KERNEL_BUILDER(Name("VarHandleOp")                            \
-                              .Device(DEVICE_SYCL)                       \
-                              .HostMemory("resource")                    \
-                              .TypeConstraint<type>("dtype"),            \
-                          ResourceHandleOp<Var>)                         \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("ReadVariableOp").Device(DEVICE_SYCL).HostMemory("resource"), \
-      ReadVariableOp);
+#define REGISTER_SYCL_KERNELS(type)                           \
+  REGISTER_KERNEL_BUILDER(Name("VarHandleOp")                 \
+                              .Device(DEVICE_SYCL)            \
+                              .HostMemory("resource")         \
+                              .TypeConstraint<type>("dtype"), \
+                          ResourceHandleOp<Var>);
+REGISTER_KERNEL_BUILDER(
+    Name("ReadVariableOp").Device(DEVICE_SYCL).HostMemory("resource"),
+    ReadVariableOp);
 
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS)
 #undef REGISTER_SYCL_KERNELS
