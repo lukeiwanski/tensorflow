@@ -173,11 +173,9 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.new_http_archive(
       name = "eigen_archive",
       urls = [
-          #"http://mirror.bazel.build/bitbucket.org/eigen/eigen/get/2b5586d1d4f3.tar.gz",
-          "https://bitbucket.org/mehdi_goli/opencl/get/3dd50a0bc816.tar.gz",
+          "https://bitbucket.org/jwlawson/eigen-opencl/get/bae1490c484e.tar.gz",
       ],
-      #sha256 = "ca7beac153d4059c02c8fc59816c82d54ea47fe58365e8aded4082ded0b820c4",
-      strip_prefix = "mehdi_goli-opencl-3dd50a0bc816",
+      strip_prefix = "jwlawson-eigen-opencl-bae1490c484e",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
