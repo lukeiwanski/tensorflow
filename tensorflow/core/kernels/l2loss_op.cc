@@ -31,8 +31,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::SyclDevice SYCLDevice;
 #endif  // TENSORFLOW_USE_SYCL
 
-template <typename T>
-class L2LossOp<CPUDevice, T> : public OpKernel {
+template <typename Device, typename T>
+class L2LossOp : public OpKernel {
  public:
   explicit L2LossOp(OpKernelConstruction* context) : OpKernel(context) {}
 
@@ -44,7 +44,7 @@ class L2LossOp<CPUDevice, T> : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({}), &output));
-    const CPUDevice& d = context->eigen_device<CPUDevice>();
+    const Device& d = context->eigen_device<Device>();
     output->scalar<T>().device(d) =
         (input.flat<T>().square() * static_cast<T>(0.5)).sum();
   }

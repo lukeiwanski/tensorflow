@@ -134,17 +134,18 @@ TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(type)                           \
-  REGISTER_KERNEL_BUILDER(Name("VarHandleOp")                 \
-                              .Device(DEVICE_SYCL)            \
-                              .HostMemory("resource")         \
-                              .TypeConstraint<type>("dtype"), \
-                          ResourceHandleOp<Var>);
 REGISTER_KERNEL_BUILDER(
     Name("ReadVariableOp").Device(DEVICE_SYCL).HostMemory("resource"),
     ReadVariableOp);
 
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS)
+#define REGISTER_SYCL_KERNELS(type)                            \
+  REGISTER_KERNEL_BUILDER(Name("VarHandleOp")                  \
+                              .Device(DEVICE_SYCL)             \
+                              .HostMemory("resource")          \
+                              .TypeConstraint<type>("dtype"),  \
+                          ResourceHandleOp<Var>)
+
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_SYCL_KERNELS
 #endif  // TENSORFLOW_USE_SYCL
 
@@ -332,7 +333,7 @@ TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
                               .HostMemory("resource"),       \
                           AssignVariableOp<SYCLDevice, type>);
 
-TF_CALL_GPU_ALL_TYPES(REGISTER_SYCL_KERNELS);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS);
 #undef REGISTER_SYCL_KERNELS
 #endif  // TENSORFLOW_USE_SYCL
 
@@ -515,6 +516,13 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_GATHER_GPU);
 
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_GATHER_SYCL(type) REGISTER_GATHER_ALL_INDICES(SYCL, type)
+
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_GATHER_SYCL);
+#undef REGISTER_GATHER_SYCL
+#endif  // TENSORFLOW_USE_SYCL
+
 #undef REGISTER_GATHER_CPU
 #undef REGISTER_GATHER_GPU
 #undef REGISTER_GATHER_ALL_INDICES
@@ -609,7 +617,8 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ARITHEMTIC_GPU);
 
 #define REGISTER_SCATTER_UPDATE_SYCL(type) REGISTER_SCATTER_UPDATE(type, SYCL);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ARITHEMTIC_SYCL);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SCATTER_ARITHEMTIC_SYCL);
+#undef REGISTER_SCATTER_UPDATE_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_SCATTER_ARITHEMTIC
