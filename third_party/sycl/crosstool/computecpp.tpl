@@ -53,6 +53,12 @@ def add_sycl_env_vars_to_flags(flags):
   # vectorisation
   if int(os.getenv('TF_VECTORIZE_SYCL', -1)) <= 0:
     extra_env_vars += ['-DEIGEN_DONT_VECTORIZE_SYCL=1']
+
+  # Check whether we should disable double or half support
+  if int(os.getenv('TF_USE_DOUBLE_SYCL', -1)) <= 0:
+    extra_env_vars += ['-DTENSORFLOW_SYCL_NO_DOUBLE=1']
+  if int(os.getenv('TF_USE_HALF_SYCL', -1)) <= 0:
+    extra_env_vars += ['-DTENSORFLOW_SYCL_NO_HALF=1']
   return flags + extra_env_vars
 
 def is_external(compiled_file_name, output_file_name):
