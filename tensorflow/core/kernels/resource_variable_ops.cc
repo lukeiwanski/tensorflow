@@ -145,7 +145,7 @@ REGISTER_KERNEL_BUILDER(
                               .TypeConstraint<type>("dtype"),  \
                           ResourceHandleOp<Var>)
 
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS);
 #undef REGISTER_SYCL_KERNELS
 #endif  // TENSORFLOW_USE_SYCL
 

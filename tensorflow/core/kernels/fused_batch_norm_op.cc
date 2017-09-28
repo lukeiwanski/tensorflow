@@ -17,12 +17,12 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
-#include "tensorflow/core/kernels/fused_batch_norm_op.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #endif
 
+#include "tensorflow/core/kernels/fused_batch_norm_op.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -41,6 +41,12 @@ namespace functor {
 
 // Functor used by FusedBatchNormOp to do the computations.
 template <typename Device, typename T>
+struct FusedBatchNorm;
+// Functor used by FusedBatchNormGradOp to do the computations when is_training=True.
+template <typename Device, typename T>
+struct FusedBatchNormGrad;
+
+template <typename Device, typename T>
 struct FusedBatchNorm {
   void operator()(OpKernelContext* context, const Tensor& x_input,
                   const Tensor& scale_input, const Tensor& offset_input,
@@ -50,20 +56,19 @@ struct FusedBatchNorm {
                   Tensor* batch_var_output, Tensor* saved_mean_output,
                   Tensor* saved_var_output, TensorFormat tensor_format,
                   bool is_training) {
-    CHECK(tensor_format == FORMAT_NHWC)
-        << "The CPU / SYCL implementation of FusedBatchNorm only supports "
-        << "NHWC tensor format for now.";
+    OP_REQUIRES(context, tensor_format == FORMAT_NHWC,
+                errors::Internal("The CPU implementation of FusedBatchNorm "
+                                 "only supports NHWC tensor format for now."));
     typename TTypes<T, 4>::ConstTensor x(x_input.tensor<T, 4>());
-    typename TTypes<T>::ConstVec scale(scale_input.vec<T>());
-    typename TTypes<T>::ConstVec offset(offset_input.vec<T>());
-    typename TTypes<T>::ConstVec estimated_mean(estimated_mean_input.vec<T>());
-    typename TTypes<T>::ConstVec estimated_variance(
-        estimated_variance_input.vec<T>());
+    auto scale = scale_input.flat<T>();
+    auto offset = offset_input.flat<T>();
+    auto estimated_mean = estimated_mean_input.flat<T>();
+    auto estimated_variance = estimated_variance_input.flat<T>();
     typename TTypes<T, 4>::Tensor y(y_output->tensor<T, 4>());
-    typename TTypes<T>::Vec batch_mean(batch_mean_output->vec<T>());
-    typename TTypes<T>::Vec batch_var(batch_var_output->vec<T>());
-    typename TTypes<T>::Vec saved_mean(saved_mean_output->vec<T>());
-    typename TTypes<T>::Vec saved_var(saved_var_output->vec<T>());
+    auto batch_mean = batch_mean_output->flat<T>();
+    auto batch_var = batch_var_output->flat<T>();
+    auto saved_mean = saved_mean_output->flat<T>();
+    auto saved_var = saved_var_output->flat<T>();
 
     const Device& d = context->eigen_device<Device>();
 
@@ -86,9 +91,8 @@ struct FusedBatchNorm {
 
     auto x_rest_by_depth = x.reshape(rest_by_depth);
     const int rest_size_minus_one = (rest_size > 1) ? (rest_size - 1) : 1;
-    T rest_size_inv = static_cast<T>(1.0f / static_cast<T>(rest_size));
     // This adjustment is for Bessel's correction
-    T rest_size_adjust =
+    const T rest_size_adjust =
         static_cast<T>(rest_size) / static_cast<T>(rest_size_minus_one);
 
 #ifdef TENSORFLOW_USE_SYCL
@@ -111,22 +115,22 @@ struct FusedBatchNorm {
 #endif  // TENSORFLOW_USE_SYCL
 
     if (is_training) {
-      mean.device(d) = (x_rest_by_depth.sum(reduce_dims) * rest_size_inv);
-      batch_mean.device(d) = mean;
-      saved_mean.device(d) = mean;
+      mean.device(d) = x_rest_by_depth.mean(reduce_dims);
+      d.memcpy(batch_mean.data(), mean.data(), mean.size() * sizeof(T));
+      d.memcpy(saved_mean.data(), mean.data(), mean.size() * sizeof(T));
     } else {
-      mean.device(d) = estimated_mean;
+      d.memcpy(mean.data(), estimated_mean.data(), estimated_mean.size() * sizeof(T));
     }
 
     auto x_centered =
-        x_rest_by_depth - mean.reshape(one_by_depth).broadcast(bcast_spec);
+        (x_rest_by_depth - mean.reshape(one_by_depth).broadcast(bcast_spec)).eval();
 
     if (is_training) {
-      variance.device(d) = x_centered.square().sum(reduce_dims) * rest_size_inv;
+      variance.device(d) = x_centered.square().mean(reduce_dims);
       batch_var.device(d) = variance * rest_size_adjust;
-      saved_var.device(d) = variance;
+      d.memcpy(saved_var.data(), variance.data(), variance.size() * sizeof(T));
     } else {
-      variance.device(d) = estimated_variance;
+      d.memcpy(variance.data(), estimated_variance.data(), estimated_variance.size() * sizeof(T));
     }
 
     auto scaling_factor = ((variance + epsilon).rsqrt() * scale)
@@ -141,7 +145,6 @@ struct FusedBatchNorm {
   }
 };
 
-// Functor used by FusedBatchNormGradOp to do the computations.
 template <typename Device, typename T>
 struct FusedBatchNormGrad {
   void operator()(OpKernelContext* context, const Tensor& y_backprop_input,
@@ -150,18 +153,18 @@ struct FusedBatchNormGrad {
                   T epsilon, Tensor* x_backprop_output,
                   Tensor* scale_backprop_output, Tensor* offset_backprop_output,
                   TensorFormat tensor_format) {
-    CHECK(tensor_format == FORMAT_NHWC)
-        << "The CPU / SYCL implementation of FusedBatchNorm only support "
-        << "NHWC tensor format for now.";
+    OP_REQUIRES(context, tensor_format == FORMAT_NHWC,
+                errors::Internal("The CPU implementation of FusedBatchNormGrad "
+                                 "only supports NHWC tensor format for now."));
     typename TTypes<T, 4>::ConstTensor y_backprop(
         y_backprop_input.tensor<T, 4>());
     typename TTypes<T, 4>::ConstTensor x(x_input.tensor<T, 4>());
-    typename TTypes<T>::ConstVec scale(scale_input.vec<T>());
-    typename TTypes<T>::ConstVec mean(mean_input.vec<T>());
-    typename TTypes<T>::ConstVec variance(variance_input.vec<T>());
+    auto scale = scale_input.flat<T>();
+    auto mean = mean_input.flat<T>();
+    auto variance = variance_input.flat<T>();
     typename TTypes<T, 4>::Tensor x_backprop(x_backprop_output->tensor<T, 4>());
-    typename TTypes<T>::Vec scale_backprop(scale_backprop_output->vec<T>());
-    typename TTypes<T>::Vec offset_backprop(offset_backprop_output->vec<T>());
+    auto scale_backprop = scale_backprop_output->flat<T>();
+    auto offset_backprop = offset_backprop_output->flat<T>();
 
     // Note: the following formulas are used to compute the gradients for
     // back propagation.
@@ -191,17 +194,17 @@ struct FusedBatchNormGrad {
 #endif
 
     auto x_rest_by_depth = x.reshape(rest_by_depth);
-    T rest_size_inv = static_cast<T>(1.0f / static_cast<T>(rest_size));
+    const T rest_size_inv = static_cast<T>(1.0f / static_cast<T>(rest_size));
 
-    auto x_mean_rest_by_depth =
-        mean.reshape(one_by_depth).broadcast(bcast_spec);
-    auto x_centered = (x_rest_by_depth - x_mean_rest_by_depth).eval();
+    auto x_centered =
+        (x_rest_by_depth - mean.reshape(one_by_depth).broadcast(bcast_spec)).eval();
+
     auto coef0 = (variance + epsilon).rsqrt();
     auto coef0_rest_by_depth =
-        coef0.eval().reshape(one_by_depth).broadcast(bcast_spec);
-    auto x_scaled = x_centered * coef0_rest_by_depth;
+        coef0.reshape(one_by_depth).broadcast(bcast_spec);
+    auto x_scaled = (x_centered * coef0_rest_by_depth).eval();
 
-    auto y_backprop_rest_by_depth = y_backprop.eval().reshape(rest_by_depth);
+    auto y_backprop_rest_by_depth = y_backprop.reshape(rest_by_depth);
     scale_backprop.device(d) =
         (y_backprop_rest_by_depth * x_scaled).sum(reduce_dims);
     auto y_backprop_sum = y_backprop_rest_by_depth.sum(reduce_dims);
@@ -367,7 +370,7 @@ template <typename T>
 struct FusedBatchNormGrad<GPUDevice, T> {
   void operator()(OpKernelContext* context, const Tensor& y_backprop,
                   const Tensor& x, const Tensor& scale, const Tensor& mean,
-                  const Tensor& variance, T epsilon, Tensor* x_backprop,
+                  const Tensor& inv_variance, T epsilon, Tensor* x_backprop,
                   Tensor* scale_backprop, Tensor* offset_backprop,
                   TensorFormat tensor_format) {
     auto* stream = context->op_device_context()->stream();
@@ -456,16 +459,17 @@ struct FusedBatchNormGrad<GPUDevice, T> {
     auto x_ptr = StreamExecutorUtil::AsDeviceMemory<T>(x_maybe_transformed);
     auto scale_ptr = StreamExecutorUtil::AsDeviceMemory<T>(scale);
     auto mean_ptr = StreamExecutorUtil::AsDeviceMemory<T>(mean);
-    auto variance_ptr = StreamExecutorUtil::AsDeviceMemory<T>(variance);
+    auto inv_variance_ptr = StreamExecutorUtil::AsDeviceMemory<T>(inv_variance);
     auto scale_backprop_ptr =
         StreamExecutorUtil::AsDeviceMemory<T>(*scale_backprop);
     auto offset_backprop_ptr =
         StreamExecutorUtil::AsDeviceMemory<T>(*offset_backprop);
 
+    // the cudnn kernel outputs inverse variance in forward and reuse it in backward
     bool cudnn_launch_status =
         stream
             ->ThenBatchNormalizationBackward(
-                y_backprop_ptr, x_ptr, scale_ptr, mean_ptr, variance_ptr,
+                y_backprop_ptr, x_ptr, scale_ptr, mean_ptr, inv_variance_ptr,
                 x_desc, scale_offset_desc, static_cast<double>(epsilon),
                 &x_backprop_ptr, &scale_backprop_ptr, &offset_backprop_ptr)
             .ok();
@@ -483,6 +487,21 @@ struct FusedBatchNormGrad<GPUDevice, T> {
     }
   }
 };
+
+// Forward declarations of the functor specializations for GPU.
+#define DECLARE_GPU_SPEC(T)                                                \
+  template <>                                                              \
+  void FusedBatchNormFreezeGrad<GPUDevice, T>::operator()(                 \
+                  const GPUDevice& d, const Tensor& y_backprop_input,      \
+                  const Tensor& x_input, const Tensor& scale_input,        \
+                  const Tensor& mean_input, const Tensor& variance_input,  \
+                  T epsilon, Tensor* x_backprop_output,                    \
+                  Tensor* scale_backprop_output, Tensor* offset_backprop_output, \
+                  typename TTypes<T>::Vec scratch1, typename TTypes<T>::Vec scratch2 \
+      ); \
+  extern template struct FusedBatchNormFreezeGrad<GPUDevice, T>;
+DECLARE_GPU_SPEC(float);
+
 #endif  // GOOGLE_CUDA
 }  // namespace functor
 
@@ -526,7 +545,7 @@ class FusedBatchNormOp : public OpKernel {
     if (is_training_) {
       OP_REQUIRES(
           context, estimated_mean.dim_size(0) == 0,
-          errors::InvalidArgument("estimated_mean empty for training",
+          errors::InvalidArgument("estimated_mean must be empty for training",
                                   estimated_mean.shape().DebugString()));
       OP_REQUIRES(context, estimated_variance.dim_size(0) == 0,
                   errors::InvalidArgument(
@@ -546,13 +565,13 @@ class FusedBatchNormOp : public OpKernel {
     Tensor* saved_mean = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(3, scale.shape(), &saved_mean));
-    Tensor* saved_inv_var = nullptr;
+    Tensor* saved_maybe_inv_var = nullptr;
     OP_REQUIRES_OK(context,
-                   context->allocate_output(4, scale.shape(), &saved_inv_var));
+                   context->allocate_output(4, scale.shape(), &saved_maybe_inv_var));
 
     functor::FusedBatchNorm<Device, T>()(
         context, x, scale, offset, estimated_mean, estimated_variance, epsilon_,
-        y, batch_mean, batch_var, saved_mean, saved_inv_var, tensor_format_,
+        y, batch_mean, batch_var, saved_mean, saved_maybe_inv_var, tensor_format_,
         is_training_);
   }
 
@@ -574,16 +593,18 @@ class FusedBatchNormGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &tensor_format));
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
                 errors::InvalidArgument("Invalid data format"));
+    OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& y_backprop = context->input(0);
     const Tensor& x = context->input(1);
     const Tensor& scale = context->input(2);
-    const Tensor& saved_mean = context->input(3);
-    // The Eigen implementation saves variance in the forward pass,  while cuDNN
-    // saves inverted variance.
-    const Tensor& saved_maybe_inv_var = context->input(4);
+    // When is_training=True, batch mean and variance/inverted variance are saved in the forward pass to be reused here.
+    // When is_training=False, population mean and variance need to be forwarded here to compute the gradients.
+    const Tensor& saved_mean_or_pop_mean = context->input(3);
+    // The Eigen implementation saves variance in the forward pass, while cuDNN saves inverted variance.
+    const Tensor& saved_maybe_inv_var_or_pop_var = context->input(4);
 
     OP_REQUIRES(context, y_backprop.dims() == 4,
                 errors::InvalidArgument("input must be 4-dimensional",
@@ -594,13 +615,13 @@ class FusedBatchNormGradOp : public OpKernel {
     OP_REQUIRES(context, scale.dims() == 1,
                 errors::InvalidArgument("scale must be 1-dimensional",
                                         scale.shape().DebugString()));
-    OP_REQUIRES(context, saved_mean.dims() == 1,
+    OP_REQUIRES(context, saved_mean_or_pop_mean.dims() == 1,
                 errors::InvalidArgument("saved mean must be 1-dimensional",
-                                        saved_mean.shape().DebugString()));
+                                        saved_mean_or_pop_mean.shape().DebugString()));
     OP_REQUIRES(
-        context, saved_maybe_inv_var.dims() == 1,
+        context, saved_maybe_inv_var_or_pop_var.dims() == 1,
         errors::InvalidArgument("saved variance must be 1-dimensional",
-                                saved_maybe_inv_var.shape().DebugString()));
+                                saved_maybe_inv_var_or_pop_var.shape().DebugString()));
 
     Tensor* x_backprop = nullptr;
     OP_REQUIRES_OK(context,
@@ -622,14 +643,34 @@ class FusedBatchNormGradOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->allocate_output(4, TensorShape({}), &placeholder_2));
 
-    functor::FusedBatchNormGrad<Device, T>()(
-        context, y_backprop, x, scale, saved_mean, saved_maybe_inv_var,
-        epsilon_, x_backprop, scale_backprop, offset_backprop, tensor_format_);
+    if (is_training_) {
+      functor::FusedBatchNormGrad<Device, T>()(
+          context, y_backprop, x, scale, saved_mean_or_pop_mean, saved_maybe_inv_var_or_pop_var,
+          epsilon_, x_backprop, scale_backprop, offset_backprop, tensor_format_);
+
+    } else {
+      // Necessary layout conversion is currently done in python.
+      CHECK(tensor_format_ == FORMAT_NHWC)
+          << "The implementation of FusedBatchNormGrad with is_training=False only support "
+          << "NHWC tensor format for now.";
+      Tensor scratch1, scratch2;
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                              DataTypeToEnum<T>::value,
+                              scale_offset_shape, &scratch1));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                              DataTypeToEnum<T>::value,
+                              scale_offset_shape, &scratch2));
+      functor::FusedBatchNormFreezeGrad<Device, T>()(
+          context->eigen_device<Device>(), y_backprop, x, scale, saved_mean_or_pop_mean, saved_maybe_inv_var_or_pop_var,
+          epsilon_, x_backprop, scale_backprop, offset_backprop,
+          scratch1.vec<T>(), scratch2.vec<T>());
+    }
   }
 
  private:
   T epsilon_;
   TensorFormat tensor_format_;
+  bool is_training_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("FusedBatchNorm").Device(DEVICE_CPU),

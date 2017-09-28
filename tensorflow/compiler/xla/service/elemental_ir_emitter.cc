@@ -293,26 +293,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
 
 llvm::Value* ElementalIrEmitter::EmitFloatMax(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) const {
-  if (ir_builder_->getFastMathFlags().noNaNs()) {
-    auto cmp = ir_builder_->CreateFCmpUGE(lhs_value, rhs_value);
-    return ir_builder_->CreateSelect(cmp, lhs_value, rhs_value);
-  } else {
-    return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maxnum,
-                                        {lhs_value, rhs_value},
-                                        {lhs_value->getType()}, ir_builder_);
-  }
+  return llvm_ir::EmitFloatMax(lhs_value, rhs_value, ir_builder_);
 }
 
 llvm::Value* ElementalIrEmitter::EmitFloatMin(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) const {
-  if (ir_builder_->getFastMathFlags().noNaNs()) {
-    auto cmp = ir_builder_->CreateFCmpULE(lhs_value, rhs_value);
-    return ir_builder_->CreateSelect(cmp, lhs_value, rhs_value);
-  } else {
-    return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minnum,
-                                        {lhs_value, rhs_value},
-                                        {lhs_value->getType()}, ir_builder_);
-  }
+  return llvm_ir::EmitFloatMin(lhs_value, rhs_value, ir_builder_);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfInv(PrimitiveType prim_type,
@@ -730,10 +716,10 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
           llvm::BasicBlock* out_block;
 
           if (ir_builder_->GetInsertPoint() == in_block->end()) {
-            body_block =
-                llvm_ir::CreateBasicBlock(nullptr, "rng_body", ir_builder_);
-            out_block =
-                llvm_ir::CreateBasicBlock(nullptr, "rng_out", ir_builder_);
+            body_block = llvm_ir::CreateBasicBlock(
+                nullptr, llvm_ir::IrName(hlo, "rng_body"), ir_builder_);
+            out_block = llvm_ir::CreateBasicBlock(
+                nullptr, llvm_ir::IrName(hlo, "rng_out"), ir_builder_);
             llvm::BranchInst::Create(body_block, in_block);
           } else {
             body_block = in_block->splitBasicBlock(
@@ -1172,7 +1158,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
 
         std::unique_ptr<llvm_ir::ForLoop> inner_loop =
             llvm_ir::ForLoop::EmitForLoop(
-                "dot.inner", ir_builder_->getInt64(0),
+                llvm_ir::IrName(hlo, "inner"), ir_builder_->getInt64(0),
                 ir_builder_->getInt64(contracted_dim_size),
                 ir_builder_->getInt64(1), ir_builder_);
 

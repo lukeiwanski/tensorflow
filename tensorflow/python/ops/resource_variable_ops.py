@@ -166,6 +166,12 @@ class ResourceVariable(variables.Variable):
     Raises:
       ValueError: If the initial value is not specified, or does not have a
         shape and `validate_shape` is `True`.
+
+    @compatibility(eager)
+    When Eager Execution is enabled, the default for the `collections` argument
+    is None, which signifies that this Variable will not be added to any
+    collections.
+    @end_compatibility
     """
     if variable_def:
       if initial_value is not None:
@@ -233,6 +239,12 @@ class ResourceVariable(variables.Variable):
     Raises:
       ValueError: If the initial value is not specified, or does not have a
         shape and `validate_shape` is `True`.
+
+    @compatibility(eager)
+    When Eager Execution is enabled, variables are never added to collections.
+    It is not implicitly added to the GLOBAL_VARIABLES or TRAINABLE_VARIABLES
+    collections, and the `collections` argument is ignored.
+    @end_compatibility
     """
     if initial_value is None:
       raise ValueError("initial_value must be specified.")
@@ -365,7 +377,10 @@ class ResourceVariable(variables.Variable):
               self._cached_value = self._read_variable_op()
           else:
             self._cached_value = None
-        ops.add_to_collections(collections, self)
+        if context.in_graph_mode():
+          ops.add_to_collections(collections, self)
+        elif ops.GraphKeys.GLOBAL_STEP in collections:
+          ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, self)
 
   def _init_from_proto(self, variable_def, import_scope=None):
     """Initializes from `VariableDef` proto."""
@@ -671,9 +686,8 @@ class ResourceVariable(variables.Variable):
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     del name
-    if dtype is not None and dtype != self.value().dtype:
-      print("trying to switch the dtype to ", dtype, " from ",
-            self.value().dtype)
+    if dtype is not None and dtype != self.dtype:
+      print("trying to switch the dtype to ", dtype, " from ", self.dtype)
       return NotImplemented
     if as_ref:
       return self.read_value().op.inputs[0]

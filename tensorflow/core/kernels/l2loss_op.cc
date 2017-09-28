@@ -31,25 +31,6 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::SyclDevice SYCLDevice;
 #endif  // TENSORFLOW_USE_SYCL
 
-template <typename Device, typename T>
-class L2LossOp : public OpKernel {
- public:
-  explicit L2LossOp(OpKernelConstruction* context) : OpKernel(context) {}
-
-  void Compute(OpKernelContext* context) override {
-    // The input tensor can be of any number of dimensions, even though it's
-    // 2D in most typical applications.
-    const Tensor& input = context->input(0);
-    // The output is a single number.
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, TensorShape({}), &output));
-    const Device& d = context->eigen_device<Device>();
-    output->scalar<T>().device(d) =
-        (input.flat<T>().square() * static_cast<T>(0.5)).sum();
-  }
-};
-
 #define REGISTER_KERNEL(T)                                      \
   REGISTER_KERNEL_BUILDER(                                      \
       Name("L2Loss").Device(DEVICE_CPU).TypeConstraint<T>("T"), \

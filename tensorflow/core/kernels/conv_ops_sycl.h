@@ -493,16 +493,6 @@ struct LaunchConv2DOp<SYCLDevice, T> {
                    GetWindowedOutputSize(input_cols, filter_cols, stride_cols,
                                          padding, &out_cols, &pad_cols));
 
-    LOG(INFO) << "Conv2D: in_depth = " << in_depth
-            << ", input_cols = " << input_cols
-            << ", filter_cols = " << filter_cols
-            << ", input_rows = " << input_rows
-            << ", filter_rows = " << filter_rows
-            << ", stride_rows = " << stride_rows
-            << ", stride_cols = " << stride_cols
-            << ", out_depth = " << out_depth;
-
-
     SYCLConv2DParams params{in_depth,    out_depth,   batch,       input_rows,
                             input_cols,  filter_rows, filter_cols, stride_rows,
                             stride_cols, out_rows,    out_cols,    pad_rows,
@@ -539,14 +529,6 @@ struct LaunchConv2DBackpropInputOp<SYCLDevice, T> {
                             input_cols,  filter_rows, filter_cols, stride_rows,
                             stride_cols, out_rows,    out_cols,    pad_rows,
                             pad_cols};
-    LOG(INFO) << "Conv2DBPIn: in_depth = " << in_depth
-            << ", input_cols = " << input_cols
-            << ", filter_cols = " << filter_cols
-            << ", input_rows = " << input_rows
-            << ", filter_rows = " << filter_rows
-            << ", stride_rows = " << stride_rows
-            << ", stride_cols = " << stride_cols
-            << ", out_depth = " << out_depth;
 
     LaunchConv2DBackpropInputSYCL<T>::launch(context, in_backprop, out_backprop,
                                              filter, params);
@@ -580,14 +562,6 @@ struct LaunchConv2DBackpropFilterOp<SYCLDevice, T> {
     // convolution kernel.
     const int64 window_rows = out_rows * stride_rows - (stride_rows - 1);
     const int64 window_cols = out_cols * stride_cols - (stride_cols - 1);
-    LOG(INFO) << "Conv2DBPFil: in_depth = " << in_depth
-            << ", input_cols = " << input_cols
-            << ", filter_cols = " << filter_cols
-            << ", input_rows = " << input_rows
-            << ", filter_rows = " << filter_rows
-            << ", stride_rows = " << stride_rows
-            << ", stride_cols = " << stride_cols
-            << ", out_depth = " << out_depth;
 
     SYCLConv2DParams params{in_depth,    out_depth,   batch,       input_rows,
                             input_cols,  window_rows, window_cols, stride_rows,
