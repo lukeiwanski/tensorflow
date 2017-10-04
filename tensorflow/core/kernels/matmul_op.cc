@@ -30,6 +30,13 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
+#ifdef ARM_COMPUTE_CL
+#include "arm_compute/core/Types.h"
+#include "arm_compute/runtime/CL/CLFunctions.h"
+#include "arm_compute/runtime/CL/CLScheduler.h"
+#include "utils/Utils.h"
+#endif  // ARM_COMPUTE_CL
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -492,9 +499,54 @@ class MatMulOp : public OpKernel {
       f(ctx->eigen_device<Device>(), out->flat<T>());
       return;
     }
+#ifdef ARM_COMPUTE_CL
+    arm_compute::CLScheduler::get().default_init();
+    arm_compute::CLGEMM arm_gemm;
+    arm_compute::CLTensor arm_a, arm_b, arm_out;
 
+    const arm_compute::TensorShape shape_a{a.shape().dim_size(0), a.shape().dim_size(1)},
+          shape_b{b.shape().dim_size(0), b.shape().dim_size(1)},
+          shape_out{out->shape().dim_size(0), out->shape().dim_size(1)};
+    arm_a.allocator()->init(arm_compute::TensorInfo(shape_a, 1, arm_compute::DataType::F32));
+    arm_b.allocator()->init(arm_compute::TensorInfo(shape_b, 1, arm_compute::DataType::F32));
+    arm_out.allocator()->init(arm_compute::TensorInfo(shape_out, 1, arm_compute::DataType::F32));
+
+    arm_gemm.configure(&arm_a, &arm_b, nullptr, &arm_out, 1.0f, 1.0f);
+
+    arm_a.allocator()->allocate();
+    arm_b.allocator()->allocate();
+    arm_out.allocator()->allocate();
+
+    auto fill_with_window =
+      [](const Tensor& tf_tensor, arm_compute::CLTensor& arm_tensor) {
+        arm_tensor.map(true);
+        auto tensor_flat = tf_tensor.flat<T>();
+        arm_compute::Window win;
+        win.use_tensor_dimensions(arm_tensor.info()->tensor_shape());
+        arm_compute::Iterator it(&arm_tensor, win);
+        arm_compute::execute_window_loop(win, [&] (arm_compute::Coordinates& c) {
+          *reinterpret_cast<T*>(it.ptr()) =
+            tensor_flat.data()[c.y() * tf_tensor.shape().dim_size(0) + c.x()];
+        }, it);
+        arm_tensor.unmap();
+    };
+
+    fill_with_window(a, arm_a); fill_with_window(b, arm_b);
+    arm_gemm.run();
+
+    arm_compute::Window out_win;
+    out_win.use_tensor_dimensions(arm_out.info()->tensor_shape());
+    arm_compute::Iterator out_it(&arm_out, out_win);
+    auto eigen_out = out->flat<T>();
+    arm_out.map(true);
+    arm_compute::execute_window_loop(out_win, [&] (arm_compute::Coordinates& c) {
+      eigen_out.data()[c.y() * out->shape().dim_size(0) + c.x()] = *reinterpret_cast<float*>(out_it.ptr());
+    }, out_it);
+    arm_out.unmap();
+#else
     LaunchMatMul<Device, T, USE_CUBLAS>::launch(
         ctx, a, b, dim_pair, &algorithms_, use_autotune_, out);
+#endif  // ARM_COMPUTE_CL
   }
 
  private:
