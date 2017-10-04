@@ -145,6 +145,10 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
+load(
+    "//third_party/acl:build_defs.bzl",
+    "if_acl",
+)
 
 # -----------------------------------------------------------------------------
 # Public targets
@@ -1769,10 +1773,8 @@ tf_cuda_library(
     ] + if_static(
         extra_deps = ["@protobuf_archive//:protobuf"],
         otherwise = ["@protobuf_archive//:protobuf_headers"],
-    ) + if_mkl(
-        [
-            "//third_party/mkl:intel_binary_blob",
-        ],
+    ) + if_mkl(["//third_party/mkl:intel_binary_blob",],
+    ) + if_acl(["//third_party/acl:intel_binary_blob",],
     ),
     alwayslink = 1,
 )
@@ -1989,10 +1991,8 @@ tf_cuda_library(
         ":protos_all_cc",
         "//third_party/eigen3",
         "//tensorflow/core/grappler:grappler_item",
-    ] + if_mkl(
-        [
-            "//third_party/mkl:intel_binary_blob",
-        ],
+    ] + if_mkl(["//third_party/mkl:intel_binary_blob",],
+    ) + if_acl(["//third_party/acl:intel_binary_blob",],
     ),
     alwayslink = 1,
 )
@@ -2032,9 +2032,9 @@ tf_cuda_library(
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//third_party/eigen3",
         "//tensorflow/core/kernels:required",
-    ] + if_mkl(
-        ["//third_party/mkl:intel_binary_blob"],
-    ) + tf_additional_core_deps() + if_static([":core_cpu_impl"]),
+    ] + if_mkl(["//third_party/mkl:intel_binary_blob"],)
+    + if_acl(["//third_party/acl:intel_binary_blob"])
+    + tf_additional_core_deps() + if_static([":core_cpu_impl"]),
     alwayslink = 1,
 )
 

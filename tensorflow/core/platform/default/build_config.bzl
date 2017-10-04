@@ -10,6 +10,10 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
+load(
+    "//third_party/acl:build_defs.bzl",
+    "if_acl",
+)
 
 # Appends a suffix to a list of deps.
 def tf_deps(deps, suffix):
@@ -469,5 +473,5 @@ def tf_additional_binary_deps():
   ] + if_mkl(
       [
           "//third_party/mkl:intel_binary_blob",
-      ],
+      ]) + if_acl(["//third_party/acl:intel_binary_blob",]
   )

@@ -17,6 +17,8 @@ load("//tensorflow:tensorflow.bzl", "if_mkl")
 # INTEL_MKL end
 load("//tensorflow:tensorflow.bzl", "if_mkl")
 
+load("//tensorflow:tensorflow.bzl", "if_acl")
+
 cc_library(
     name = "eigen3",
     hdrs = glob(["unsupported/Eigen/CXX11/src/FixedPoint/*.h"]) + [
@@ -31,7 +33,7 @@ cc_library(
         "unsupported/Eigen/CXX11/Tensor",
         "unsupported/Eigen/CXX11/FixedPoint",
     ],
-    includes = if_mkl(["./mkl_include"]),
+    includes = if_mkl(["./mkl_include"]) + if_acl(["./acl_include"]),
     visibility = ["//visibility:public"],
     deps = [
         "@eigen_archive//:eigen",

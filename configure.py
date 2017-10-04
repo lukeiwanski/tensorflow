@@ -949,6 +949,14 @@ def set_mkl():
       'downloading, please set the environment variable \"TF_MKL_ROOT\" every '
       'time before build.')
 
+def set_acl():
+  # Set up for ARM Compute Library
+  write_to_bazelrc('build:acl --define using_acl=true')
+  write_to_bazelrc('build:acl -c opt')
+  write_to_bazelrc('build:acl --copt="-DARM_COMPUTE_CL"')
+  print('Add "--config=acl" to your bazel command to build with ARM '
+        'Comptue Library support.\nPlease set the enviroment variable '
+        '\"TF_ACL_ROOT\" every time before build.')
 
 def set_monolithic():
   # Add --config=monolithic to your bazel command to use a mostly-static
@@ -1029,6 +1037,7 @@ def main():
 
   set_cc_opt_flags(environ_cp)
   set_mkl()
+  set_acl()
   set_monolithic()
 
 

@@ -9,6 +9,7 @@ load(
     "transitive_hdrs",
 )
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
+load("//third_party/acl:build_defs.bzl", "if_acl")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 
 # This returns a list of headers of all public header libraries (e.g.,
@@ -131,6 +132,8 @@ filegroup(
     ] + if_mkl([
         "//third_party/mkl:LICENSE",
         "@mkl//:LICENSE",
+    ]) + if_acl([
+        "//third_party/acl:LICENSE",
     ]) + if_not_windows([
         "@nccl_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
@@ -182,5 +185,6 @@ sh_binary(
             "//tensorflow/python:test_ops",
             "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
         ],
-    }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
+    }) + if_mkl(["//third_party/mkl:intel_binary_blob"])
+    + if_acl(["//third_party/acl:intel_binary_blob"]),
 )

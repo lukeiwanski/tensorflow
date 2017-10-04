@@ -6,6 +6,7 @@ package(default_visibility = ["//visibility:private"])
 load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
 load("//tensorflow:tensorflow.bzl", "tf_binary_additional_srcs")
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
+load("//third_party/acl:build_defs.bzl", "if_acl")
 
 genrule(
     name = "libtensorflow_proto",
@@ -119,6 +120,9 @@ genrule(
     ] + if_mkl([
         "//third_party/mkl:LICENSE",
         "@mkl//:LICENSE",
+    ]) + if_acl([
+        "//third_party/acl:LICENSE",
+        "@acl//:LICENSE",
     ]),
     outs = ["include/tensorflow/c/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
@@ -154,6 +158,9 @@ genrule(
     ] + if_mkl([
         "//third_party/mkl:LICENSE",
         "@mkl//:LICENSE",
+    ]) + if_acl([
+        "//third_party/acl:LICENSE",
+        "@acl//:LICENSE",
     ]),
     outs = ["include/tensorflow/jni/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",

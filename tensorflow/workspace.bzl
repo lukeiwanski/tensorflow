@@ -3,6 +3,7 @@
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
 load("//third_party/mkl:build_defs.bzl", "mkl_repository")
+load("//third_party/acl:build_defs.bzl", "acl_repository")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl",
      "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
@@ -163,6 +164,16 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "57ba56c4c243f403ff78f417ff854ef50b9eddf4a610a917b7c95e7fa8553a4b",
       strip_prefix = "mklml_lnx_2018.0.20170720",
       build_file = str(Label("//third_party/mkl:mkl.BUILD")),
+      repository = tf_repo_name,
+  )
+
+  acl_repository(
+      name = "acl",
+      urls = [
+          "https://github.com/lukeiwanski/ComputeLibrary/archive/feature/no_exceptions.zip",
+      ],
+      strip_prefix = "ComputeLibrary-feature-no_exceptions",
+      build_file = str(Label("//third_party/acl:acl.BUILD")),
       repository = tf_repo_name,
   )
 

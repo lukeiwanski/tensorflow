@@ -50,6 +50,10 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
+load(
+    "//third_party/acl:build_defs.bzl",
+    "if_acl",
+)
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 config_setting(
@@ -2596,6 +2600,8 @@ tf_kernel_library(
         "//conditions:default": [],
     }) + if_mkl([
         "//third_party/mkl:intel_binary_blob",
+    ]) + if_acl([
+        "//third_party/acl:intel_binary_blob",
     ]) + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
     ]),

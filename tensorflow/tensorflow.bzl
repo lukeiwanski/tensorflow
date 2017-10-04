@@ -22,6 +22,9 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",)
 
+load(
+    "//third_party/acl:build_defs.bzl",
+    "if_acl",)
 
 def full_path(relative_paths):
   return [PACKAGE_NAME + "/" + relative for relative in relative_paths]
@@ -286,6 +289,10 @@ def tf_cc_binary(name,
           [
               "//third_party/mkl:intel_binary_blob",
           ],
+      ) + if_acl(
+          [
+              "//third_party/acl:intel_binary_blob",
+          ],
       ),
       linkopts=linkopts + _rpath_linkopts(name),
       **kwargs)
@@ -535,6 +542,10 @@ def tf_cc_test(name,
       deps=deps + if_mkl(
           [
               "//third_party/mkl:intel_binary_blob",
+          ],
+      ) + if_acl(
+          [
+              "//third_party/acl:intel_binary_blob",
           ],
       ),
       # Nested select() statements seem not to be supported when passed to
