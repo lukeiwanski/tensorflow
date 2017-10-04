@@ -954,6 +954,7 @@ def set_acl():
   write_to_bazelrc('build:acl --define using_acl=true')
   write_to_bazelrc('build:acl -c opt')
   write_to_bazelrc('build:acl --copt="-DARM_COMPUTE_CL"')
+  write_to_bazelrc('build:acl --copt="-DARM_NO_EXCEPTIONS"')
   print('Add "--config=acl" to your bazel command to build with ARM '
         'Comptue Library support.\nPlease set the enviroment variable '
         '\"TF_ACL_ROOT\" every time before build.')
