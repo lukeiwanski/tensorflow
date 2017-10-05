@@ -695,32 +695,38 @@ void FillPhiloxRandom<SYCLDevice, Distribution>::operator()(
 
 }
 
-#define REGISTER(TYPE)                                                       \
-  template struct functor::FillPhiloxRandom<                                 \
-      SYCLDevice, random::UniformDistribution<random::PhiloxRandom, TYPE> >; \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("RandomUniform")                                                  \
-          .Device(DEVICE_SYCL)                                               \
-          .HostMemory("shape")                                               \
-          .TypeConstraint<TYPE>("dtype"),                                    \
-      PhiloxRandomOp<SYCLDevice, random::UniformDistribution<                \
-                                    random::PhiloxRandom, TYPE> >);          \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("RandomStandardNormal")                                           \
-          .Device(DEVICE_SYCL)                                               \
-          .HostMemory("shape")                                               \
-          .TypeConstraint<TYPE>("dtype"),                                    \
-      PhiloxRandomOp<SYCLDevice, random::NormalDistribution<                 \
-                                    random::PhiloxRandom, TYPE> >);          \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("TruncatedNormal")                                                \
-          .Device(DEVICE_SYCL)                                               \
-          .HostMemory("shape")                                               \
-          .TypeConstraint<TYPE>("dtype"),                                    \
-      PhiloxRandomOp<                                                        \
-          SYCLDevice,                                                        \
-          random::TruncatedNormalDistribution<                               \
-              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >);
+#define REGISTER(TYPE)                                                         \
+  template struct functor::FillPhiloxRandom<                                   \
+      SYCLDevice, random::UniformDistribution<random::PhiloxRandom, TYPE>>;    \
+  template struct functor::FillPhiloxRandom<                                   \
+      SYCLDevice, random::NormalDistribution<random::PhiloxRandom, TYPE>>;     \
+  template struct functor::FillPhiloxRandom<                                   \
+      SYCLDevice,                                                              \
+      random::TruncatedNormalDistribution<                                     \
+          random::SingleSampleAdapter<random::PhiloxRandom>, TYPE>>;           \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("RandomUniform")                                                    \
+          .Device(DEVICE_SYCL)                                                 \
+          .HostMemory("shape")                                                 \
+          .TypeConstraint<TYPE>("dtype"),                                      \
+      PhiloxRandomOp<SYCLDevice, random::UniformDistribution<                  \
+                                     random::PhiloxRandom, TYPE>>);            \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("RandomStandardNormal")                                             \
+          .Device(DEVICE_SYCL)                                                 \
+          .HostMemory("shape")                                                 \
+          .TypeConstraint<TYPE>("dtype"),                                      \
+      PhiloxRandomOp<SYCLDevice,                                               \
+                     random::NormalDistribution<random::PhiloxRandom, TYPE>>); \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("TruncatedNormal")                                                  \
+          .Device(DEVICE_SYCL)                                                 \
+          .HostMemory("shape")                                                 \
+          .TypeConstraint<TYPE>("dtype"),                                      \
+      PhiloxRandomOp<                                                          \
+          SYCLDevice,                                                          \
+          random::TruncatedNormalDistribution<                                 \
+              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE>>);
 
 #define REGISTER_INT(IntType)                                    \
   REGISTER_KERNEL_BUILDER(Name("RandomUniformInt")               \

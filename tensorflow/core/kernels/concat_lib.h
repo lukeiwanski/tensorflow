@@ -44,7 +44,7 @@ template <typename T>
 void ConcatSYCL(const Eigen::SyclDevice& d,
                const std::vector<
                    std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& inputs,
-               typename TTypes<T, 2>::Matrix* output);
+               Tensor* output, typename TTypes<T, 2>::Matrix* output_flat);
 #endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
 

@@ -175,7 +175,7 @@ def _sycl_autoconf_imp(repository_ctx):
     {
       "%{host_cxx_compiler}" : find_cc(repository_ctx),
       "%{host_c_compiler}" : find_c(repository_ctx),
-    })
+    }, out="crosstool/computecpp")
 
     computecpp_root = find_computecpp_root(repository_ctx)
     _check_dir(repository_ctx, computecpp_root)

@@ -1656,7 +1656,13 @@ class SessionTest(test_util.TensorFlowTestCase):
       with CaptureStderr() as log:
         sess.run(c)
       # Ensure that we did log device placement.
-      self.assertTrue('/job:local/replica:0/task:0/cpu:0' in str(log), str(log))
+      if "sycl" in test_util.gpu_device_name().lower():
+        self.assertTrue(
+            '/job:local/replica:0/task:0'+test_util.gpu_device_name()
+            in str(log), str(log))
+      else:
+        self.assertTrue('/job:local/replica:0/task:0/cpu:0' in str(log),
+            str(log))
 
   def testLocalMasterSessionTimeout(self):
     # Test that the timeout passed in a config to the session works correctly.

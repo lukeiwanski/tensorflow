@@ -163,8 +163,9 @@ class SparseTensorDenseMatMulTest(test.TestCase):
             sparse_t, dense_t, adjoint_a=True).eval()
 
   def testInvalidIndicesForSparseTensorDenseMatmulOnGPU(self):
-    # Note: use_gpu=False because nice errors are only returned from CPU kerne
-    if not test.is_gpu_available():
+    # Only run this test when using CUDA GPUs. CPU and SYCL devices do not have
+    # the same behaviour
+    if not test.is_gpu_available(cuda_only=True):
       return
     with self.test_session(use_gpu=True):
       indices = np.array([[1, 10]]).astype(np.int64)

@@ -42,16 +42,32 @@ static Graph* Matmul(int m, int k, int n, bool transpose_a, bool transpose_b,
   }                                                                            \
   BENCHMARK(BM_Matmul##_##M##_##K##_##N##_##TA##_##TB##_##TFTYPE##_##DEVICE);
 
-#define BM_Matmul(M, K, N, TA, TB)                                       \
-  BM_MatmulDev(M, K, N, TA, TB, float, DT_FLOAT, cpu);                   \
-  BM_MatmulDev(M, K, N, TA, TB, std::complex<float>, DT_COMPLEX64, cpu); \
+#if GOOGLE_CUDA
+#define BM_Matmul_GPU(M, K, N, TA, TB)                                   \
   BM_MatmulDev(M, K, N, TA, TB, float, DT_FLOAT, gpu);                   \
   BM_MatmulDev(M, K, N, TA, TB, std::complex<float>, DT_COMPLEX64, gpu); \
 /* Uncomment to enable benchmarks for double/complex128: */              \
-// BM_MatmulDev(M, K, N, TA, TB, double, DT_DOUBLE, cpu);                   \
-// BM_MatmulDev(M, K, N, TA, TB, std::complex<double>, DT_COMPLEX128, cpu); \
 // BM_MatmulDev(M, K, N, TA, TB, double, DT_DOUBLE, gpu);                   \
 // BM_MatmulDev(M, K, N, TA, TB, std::complex<double>, DT_COMPLEX128, gpu);
+#else
+#define BM_Matmul_GPU(M, K, N, TA, TB)
+#endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define BM_Matmul_SYCL(M, K, N, TA, TB)                                  \
+  BM_MatmulDev(M, K, N, TA, TB, float, DT_FLOAT, sycl);
+#else
+#define BM_Matmul_SYCL(M, K, N, TA, TB)
+#endif  // TENSORFLOW_USE_SYCL
+
+#define BM_Matmul(M, K, N, TA, TB)                                       \
+  BM_MatmulDev(M, K, N, TA, TB, float, DT_FLOAT, cpu);                   \
+  BM_MatmulDev(M, K, N, TA, TB, std::complex<float>, DT_COMPLEX64, cpu); \
+  BM_Matmul_GPU(M, K, N, TA, TB);                                        \
+  BM_Matmul_SYCL(M, K, N, TA, TB);                                       \
+/* Uncomment to enable benchmarks for double/complex128: */              \
+// BM_MatmulDev(M, K, N, TA, TB, double, DT_DOUBLE, cpu);                   \
+// BM_MatmulDev(M, K, N, TA, TB, std::complex<double>, DT_COMPLEX128, cpu); \
 
 // Batch size of 1 included for inference.
 // Typical fully connected layers

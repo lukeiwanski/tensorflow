@@ -48,6 +48,10 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#include "tensorflow/core/kernels/conv_ops_sycl.h"
+#endif  // TENSORFLOW_USE_SYCL
+
 namespace {
 
 // Returns in 'im_data' (assumes to be zero-initialized) image patch in storage
@@ -92,6 +96,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 // The fast versions using eigen computations directly. They are only enabled
 // for CPU for now since nvcc times out when trying to compile them.
@@ -1024,4 +1031,15 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
                         Conv2DSlowBackpropInputOp<GPUDevice, Eigen::half>);
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T)                          \
+  REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")     \
+                              .Device(DEVICE_SYCL)        \
+                              .TypeConstraint<T>("T")     \
+                              .HostMemory("input_sizes"), \
+                          Conv2DFastBackpropInputOp<SYCLDevice, T>);
+
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

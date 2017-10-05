@@ -107,10 +107,22 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
                          CONV_OP op, int num_threads, int stride,
                          Padding padding, bool use_gpu, DataType data_type,
                          const string& label) {
-  if (!IsGoogleCudaEnabled() && use_gpu) {
-    testing::SetLabel(
-        strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
-    return;
+  string device = "cpu";
+  if(use_gpu) {
+    if(IsGoogleCudaEnabled()) {
+      device = "gpu";
+    } else if (IsSYCLEnabled()) {
+      device = "sycl";
+      if (data_type == DT_HALF) {
+        testing::SetLabel(
+            strings::StrCat("Skipping SYCL test for DataType 'half': ", label));
+        return;
+      }
+    } else {
+      testing::SetLabel(
+          strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
+      return;
+    }
   }
   testing::SetLabel(label);
 
@@ -218,7 +230,6 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
   GraphConstructorOptions opts;
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph, g));
 
-  string device = use_gpu ? "gpu" : "cpu";
   testing::UseRealTime();
   test::Benchmark(device, g, &options).Run(iters);
   testing::ItemsProcessed(num_ops * iters);
@@ -478,6 +489,7 @@ BM_ConvFloatBkFCPU(128, 13, 13, 384, 384, 3, 3, 4, "convnet-layer5");
   BENCHMARK(BM_ConvFloatBkFGPU_##BS##_##R##_##C##_##ID##_##OD##_##KR##_##KC);  \
   BENCHMARK(BM_ConvHalfBkFGPU_##BS##_##R##_##C##_##ID##_##OD##_##KR##_##KC)
 
+
 // Benchmarks from https://github.com/soumith/convnet-benchmarks
 BM_ConvFloatBkFGPU(128, 128, 128, 3, 96, 11, 11, "convnet-layer1");
 BM_ConvFloatBkFGPU(128, 64, 64, 64, 128, 9, 9, "convnet-layer2");
@@ -501,10 +513,17 @@ static void BM_ConvFloatDepthwise(int iters, int batch, int rows, int cols,
                                   int filter_cols, DEPTHWISE_CONV_OP op,
                                   int num_threads, int stride, Padding padding,
                                   bool use_gpu, const string& label) {
-  if (!IsGoogleCudaEnabled() && use_gpu) {
-    testing::SetLabel(
-        strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
-    return;
+  string device = "cpu";
+  if(use_gpu) {
+    if(IsGoogleCudaEnabled()) {
+      device = "gpu";
+    } else if (IsSYCLEnabled()) {
+      device = "sycl";
+    } else {
+      testing::SetLabel(
+          strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
+      return;
+    }
   }
   testing::SetLabel(label);
 
@@ -598,7 +617,6 @@ static void BM_ConvFloatDepthwise(int iters, int batch, int rows, int cols,
   GraphConstructorOptions opts;
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph, g));
 
-  string device = use_gpu ? "gpu" : "cpu";
   testing::UseRealTime();
   test::Benchmark(device, g, &options).Run(iters);
   testing::ItemsProcessed(num_ops * iters);
@@ -1099,6 +1117,18 @@ static void BM_MaxPoolBk(int iters, int batch_size, int rows, int cols,
                          int depth, int kernel_rows, int kernel_cols,
                          int stride, Padding padding, int num_threads,
                          bool use_gpu, const string& label) {
+ string device = "cpu";
+ if(use_gpu) {
+   if(IsGoogleCudaEnabled()) {
+     device = "gpu";
+   } else if (IsSYCLEnabled()) {
+     device = "sycl";
+   } else {
+     testing::SetLabel(
+         strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
+     return;
+   }
+ }
   auto root = Scope::NewRootScope().ExitOnError();
 
   int64 out_height, out_width, pad_rows, pad_cols;
@@ -1126,7 +1156,6 @@ static void BM_MaxPoolBk(int iters, int batch_size, int rows, int cols,
   TF_CHECK_OK(root.status());
   Graph* g = new Graph(OpRegistry::Global());
   TF_CHECK_OK(root.ToGraph(g));
-  string device = use_gpu ? "gpu" : "cpu";
   testing::UseRealTime();
   test::Benchmark(device, g).Run(iters);
 
@@ -1300,6 +1329,18 @@ BM_ImageNetSoftmaxFwd(8192, 32768, 1, true, "softmax128");
 static void BM_TopK(int iters, int rows, int cols, int k, int num_threads,
                     bool use_gpu, const string& label) {
   testing::StopTiming();
+  string device = "cpu";
+  if(use_gpu) {
+    if(IsGoogleCudaEnabled()) {
+      device = "gpu";
+    } else if (IsSYCLEnabled()) {
+      device = "sycl";
+    } else {
+      testing::SetLabel(
+          strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
+      return;
+    }
+  }
   auto root = Scope::NewRootScope().ExitOnError();
 
   Tensor input(DT_FLOAT, TensorShape({rows, cols}));
@@ -1313,7 +1354,6 @@ static void BM_TopK(int iters, int rows, int cols, int k, int num_threads,
   TF_CHECK_OK(root.status());
   Graph* g = new Graph(OpRegistry::Global());
   TF_CHECK_OK(root.ToGraph(g));
-  string device = use_gpu ? "gpu" : "cpu";
   SessionOptions opts;
   opts.config.set_inter_op_parallelism_threads(1);
   opts.config.set_intra_op_parallelism_threads(num_threads);

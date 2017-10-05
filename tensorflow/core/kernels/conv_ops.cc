@@ -50,10 +50,18 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#include "tensorflow/core/kernels/conv_ops_sycl.h"
+#endif  // TENSORFLOW_USE_SYCL
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 template <typename Device, typename T>
@@ -786,5 +794,14 @@ REGISTER_KERNEL_BUILDER(
 template class LaunchConv2DOp<GPUDevice, float>;
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T)                                     \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("Conv2D").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+      Conv2DOp<SYCLDevice, T>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS)
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

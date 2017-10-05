@@ -63,10 +63,12 @@ from tensorflow.python.util.protobuf import compare
 
 def gpu_device_name():
   """Returns the name of a GPU device if available or the empty string."""
-  for x in device_lib.list_local_devices():
-    if x.device_type == "GPU" or x.device_type == "SYCL":
-      return compat.as_str(x.name)
-  return ""
+  return compat.as_str(device_lib.gpu_device_name())
+
+def gpu_device_type():
+  """Returns the type of a device (GPU/SYCL) if available or the empty
+  string."""
+  return compat.as_str(device_lib.gpu_device_type())
 
 
 def assert_ops_in_graph(expected_ops, graph):
@@ -488,9 +490,9 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
 
 @contextlib.contextmanager
 def device(use_gpu):
-  """Uses gpu when requested and available."""
+  """Uses gpu/sycl when requested and available."""
   if use_gpu and is_gpu_available():
-    dev = "/device:GPU:0"
+    dev = str(gpu_device_name());
   else:
     dev = "/device:CPU:0"
   with ops.device(dev):

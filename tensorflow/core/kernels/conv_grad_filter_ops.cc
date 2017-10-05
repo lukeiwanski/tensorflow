@@ -48,6 +48,10 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#include "tensorflow/core/kernels/conv_ops_sycl.h"
+#endif  // TENSORFLOW_USE_SYCL
+
 namespace {
 
 // Returns in 'col_data', image patches in storage order (height, width, depth)
@@ -90,15 +94,18 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename T>
-struct LaunchConv2DBackpropInputOp<CPUDevice, T> {
+struct LaunchConv2DBackpropFilterOp<CPUDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& out_backprop, const Tensor& input,
                   int row_stride, int col_stride, const Padding& padding,
                   Tensor* filter_backprop, TensorFormat data_format) {
     const CPUDevice& d = ctx->eigen_device<CPUDevice>();
-    functor::SpatialConvolutionBackwardInput<CPUDevice, T>()(
+    functor::SpatialConvolutionBackwardKernel<CPUDevice, T>()(
         d, filter_backprop->tensor<T, 4>(), input.tensor<T, 4>(),
         out_backprop.tensor<T, 4>(), filter_backprop->dim_size(0),
         filter_backprop->dim_size(1), row_stride, col_stride);
@@ -251,7 +258,7 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
     }
 #endif
 
-    LaunchConv2DBackpropInputOp<Device, T>()(
+    LaunchConv2DBackpropFilterOp<Device, T>()(
         context, false, false, out_backprop, input, dims.spatial_dims[0].stride,
         dims.spatial_dims[1].stride, padding_, filter_backprop, data_format_);
   }
@@ -945,5 +952,16 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
                             .HostMemory("filter_sizes"),
                         Conv2DSlowBackpropFilterOp<GPUDevice, Eigen::half>);
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T)                           \
+  REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")     \
+                              .Device(DEVICE_SYCL)         \
+                              .TypeConstraint<T>("T")      \
+                              .HostMemory("filter_sizes"), \
+                          Conv2DFastBackpropFilterOp<SYCLDevice, T>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

@@ -1087,7 +1087,9 @@ tf_kernel_library(
         ":bounds_check",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
-    ],
+    ] + if_sycl([
+        "//tensorflow/core:framework",
+    ]),
 )
 
 # Unlike gather_functor library, this does not include the CUDA code and deps.

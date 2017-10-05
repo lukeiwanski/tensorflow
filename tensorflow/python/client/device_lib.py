@@ -34,3 +34,17 @@ def list_local_devices():
     return m
 
   return [_convert(s) for s in pywrap_tensorflow.list_devices()]
+
+def gpu_device_name():
+  """Returns the name of a GPU device if available or the empty string."""
+  for x in list_local_devices():
+    if x.device_type == "GPU" or x.device_type == "SYCL":
+      return x.name
+  return ""
+
+def gpu_device_type():
+  """Returns the type of a GPU device if available or the empty string."""
+  for x in list_local_devices():
+    if x.device_type == "GPU" or x.device_type == "SYCL":
+      return x.device_type
+  return ""

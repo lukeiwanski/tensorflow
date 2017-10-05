@@ -54,10 +54,19 @@ struct ApplyGradientDescent<CPUDevice, T> {
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
-struct ApplyGradientDescentSYCL {
-  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var, T lr,
+struct ApplyGradientDescent<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstFlat grad) {
-    var.device(d) -= grad * lr;
+    typedef typename Eigen::TensorMap<
+        Eigen::TensorFixedSize<const T, Eigen::Sizes<1>, Eigen::RowMajor,
+                               Eigen::DenseIndex>,
+        Eigen::Aligned>
+        ScalarType;
+    const Eigen::IndexList<Eigen::type2index<1> > rank1;
+    ScalarType lr_sc{lr.data(), rank1};
+    Eigen::array<Eigen::DenseIndex, 1> bcast{grad.dimension(0)};
+    var.device(d) -= grad * lr_sc.broadcast(bcast);
   }
 };
 #endif
@@ -80,6 +89,39 @@ struct ApplyAdadelta<CPUDevice, T> {
     var.device(d) -= update * lr();
   }
 };
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ApplyAdadelta<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::Flat accum_update,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar rho,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad) {
+#if !defined(EIGEN_HAS_INDEX_LIST)
+    Eigen::array<int, 1> rank1{1};
+#else
+    Eigen::IndexList<Eigen::type2index<1> > rank1;
+#endif
+    const int size = grad.dimension(0);
+    Eigen::array<int, 1> broadcast_dim{size};
+
+    accum.device(d) = accum * rho.reshape(rank1).broadcast(broadcast_dim) +
+                      grad.square() * (grad.constant(T(1)) -
+                                       rho.reshape(rank1).broadcast(broadcast_dim));
+    const auto update =
+        (accum_update + epsilon.reshape(rank1).broadcast(broadcast_dim)).sqrt() *
+        (accum + epsilon.reshape(rank1).broadcast(broadcast_dim)).rsqrt() * grad;
+    accum_update.device(d) =
+        accum_update * rho.reshape(rank1).broadcast(broadcast_dim) +
+        update.square() *
+            (grad.constant(T(1)) - rho.reshape(rank1).broadcast(broadcast_dim));
+    var.device(d) -= update * lr.reshape(rank1).broadcast(broadcast_dim);
+  }
+};
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename T>
 struct ApplyProximalGradientDescent<CPUDevice, T> {
@@ -155,6 +197,26 @@ struct ApplyAdagrad<CPUDevice, T> {
     var.device(d) -= grad * lr() * accum.rsqrt();
   }
 };
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ApplyAdagrad<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstFlat grad) {
+    accum.device(d) += grad.square();
+#if !defined(EIGEN_HAS_INDEX_LIST)
+    Eigen::array<int, 1> rank1{1};
+#else
+    Eigen::IndexList<Eigen::type2index<1> > rank1;
+#endif
+    const int size = grad.dimension(0);
+    Eigen::array<int, 1> broadcast_dims{size};
+    var.device(d) -=
+        grad * lr.reshape(rank1).broadcast(broadcast_dims) * accum.rsqrt();
+  }
+};
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename T>
 struct ApplyProximalAdagrad<CPUDevice, T> {
@@ -279,6 +341,38 @@ struct ApplyMomentum<CPUDevice, T> {
   }
 };
 
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ApplyMomentum<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstFlat grad,
+                  typename TTypes<T>::ConstScalar momentum, bool use_nesterov) {
+    typedef typename Eigen::TensorMap<
+        Eigen::TensorFixedSize<const T, Eigen::Sizes<1>, Eigen::RowMajor,
+                               Eigen::DenseIndex>,
+        Eigen::Aligned>
+        ScalarType;
+
+    const Eigen::IndexList<Eigen::type2index<1> > rank1;
+    ScalarType lr_sc{lr.data(), rank1};
+    ScalarType mom_sc{momentum.data(), rank1};
+
+    const int size = grad.dimension(0);
+    Eigen::array<int, 1> broadcast_dim{size};
+
+    accum.device(d) = accum * mom_sc.broadcast(broadcast_dim) + grad;
+    if (use_nesterov) {
+      var.device(d) -= grad * lr_sc.broadcast(broadcast_dim) +
+                       accum * (mom_sc * lr_sc).broadcast(broadcast_dim);
+    } else {
+      var.device(d) -= lr_sc.broadcast(broadcast_dim) * accum;
+    }
+  }
+};
+#endif  // TENSORFLOW_USE_SYCL
+
 template <typename Device, typename T>
 struct ApplyAdamNonCuda {
   void operator()(const Device& d, typename TTypes<T>::Flat var,
@@ -310,19 +404,57 @@ struct ApplyAdamNonCuda {
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
-struct ApplyAdamSYCL {
+struct ApplyAdam<SYCLDevice, T> {
   void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
-                  T beta1_power, T beta2_power, T lr, T beta1, T beta2,
-                  T epsilon, typename TTypes<T>::ConstFlat grad) {
-    const T alpha =
-        lr * Eigen::numext::sqrt(T(1) - beta2_power) / (T(1) - beta1_power);
-    m.device(d) += (grad - m) * (T(1) - beta1);
-    v.device(d) += (grad.square() - v) * (T(1) - beta2);
-    var.device(d) -= (m * alpha) / (v.sqrt() + epsilon);
+                  typename TTypes<T>::ConstScalar beta1_power,
+                  typename TTypes<T>::ConstScalar beta2_power,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar beta1,
+                  typename TTypes<T>::ConstScalar beta2,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad,
+                  bool use_nesterov) {
+    #if !defined(EIGEN_HAS_INDEX_LIST)
+        Eigen::array<int, 1> rank1{1};
+    #else
+        Eigen::IndexList<Eigen::type2index<1> > rank1;
+    #endif
+    const int size = grad.dimension(0);
+    Eigen::array<int, 1> broadcast_dim{size};
+    const auto one = static_cast<T>(1.0);
+    m.device(d) =
+        m +
+        (beta1.constant(one) - beta1).reshape(rank1).broadcast(broadcast_dim) *
+            (grad - m);
+    v.device(d) =
+        v +
+        (beta2.constant(one) - beta2).reshape(rank1).broadcast(broadcast_dim) *
+            (grad.square() - v);
+
+    if (use_nesterov) {
+      var.device(d) -= (lr * (beta2_power.constant(one) - beta2_power).sqrt() /
+                        (beta1_power.constant(one) - beta1_power))
+                           .reshape(rank1)
+                           .broadcast(broadcast_dim) *
+                       (m * beta1.reshape(rank1).broadcast(broadcast_dim) +
+                        (beta1.constant(one) - beta1)
+                           .reshape(rank1)
+                           .broadcast(broadcast_dim) *
+                        grad) / (epsilon
+                           .reshape(rank1)
+                           .broadcast(broadcast_dim) + v.sqrt());
+    } else {
+      var.device(d) -= (lr * (beta2_power.constant(one) - beta2_power).sqrt() /
+                        (beta1_power.constant(one) - beta1_power))
+                           .reshape(rank1)
+                           .broadcast(broadcast_dim) *
+                       m / (epsilon.reshape(rank1).broadcast(broadcast_dim) + v.sqrt());
+    }
   }
 };
 #endif  // TENSORFLOW_USE_SYCL
+
 
 template <typename T>
 struct ApplyAdam<CPUDevice, T> : ApplyAdamNonCuda<CPUDevice, T> {};
@@ -343,6 +475,36 @@ struct ApplyRMSProp<CPUDevice, T> {
   }
 };
 
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ApplyRMSProp<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat ms, typename TTypes<T>::Flat mom,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar rho,
+                  typename TTypes<T>::ConstScalar momentum,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad) {
+    #if !defined(EIGEN_HAS_INDEX_LIST)
+        Eigen::array<int, 1> rank1{1};
+    #else
+        Eigen::IndexList<Eigen::type2index<1> > rank1;
+    #endif
+    const int size = grad.dimension(0);
+    Eigen::array<int, 1> broadcast_dim{size};
+    const auto one = static_cast<T>(1.0);
+    ms.device(d) = ms +
+                   (rho.constant(one) - rho).reshape(rank1).broadcast(broadcast_dim) *
+                       (grad.square() - ms);
+    mom.device(d) =
+        mom * momentum.reshape(rank1).broadcast(broadcast_dim) +
+        lr.reshape(rank1).broadcast(broadcast_dim) * grad /
+            ((epsilon.reshape(rank1).broadcast(broadcast_dim) + ms).sqrt());
+    var.device(d) -= mom;
+  }
+};
+#endif  // TENSORFLOW_USE_SYCL
+
 template <typename T>
 struct ApplyCenteredRMSProp<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
@@ -360,6 +522,37 @@ struct ApplyCenteredRMSProp<CPUDevice, T> {
     var.device(d) -= mom;
   }
 };
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ApplyCenteredRMSProp<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat mg, typename TTypes<T>::Flat ms,
+                  typename TTypes<T>::Flat mom,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar rho,
+                  typename TTypes<T>::ConstScalar momentum,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad) {
+    #if !defined(EIGEN_HAS_INDEX_LIST)
+        Eigen::array<int, 1> rank1{1};
+    #else
+        Eigen::IndexList<Eigen::type2index<1> > rank1;
+    #endif
+    const int size = grad.dimension(0);
+    Eigen::array<int, 1> broadcast_dim{size};
+    const auto one = static_cast<T>(1.0);
+    const auto one_minus_rho =
+        (rho.constant(one) - rho).reshape(rank1).broadcast(broadcast_dim);
+    ms.device(d) = ms + one_minus_rho * (grad.square() - ms);
+    mg.device(d) = mg + one_minus_rho * (grad - mg);
+    auto denom = (ms - mg.square()) + epsilon.reshape(rank1).broadcast(broadcast_dim);
+    mom.device(d) = mom * momentum.reshape(rank1).broadcast(broadcast_dim) +
+                    lr.reshape(rank1).broadcast(broadcast_dim) * grad / denom.sqrt();
+    var.device(d) -= mom;
+  }
+};
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 
@@ -402,53 +595,6 @@ class ApplyGradientDescentOp : public OpKernel {
  private:
   bool use_exclusive_lock_;
 };
-
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-class ApplyGradientDescentOp<SYCLDevice, T> : public OpKernel {
- public:
-  explicit ApplyGradientDescentOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0});
-    Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
-
-    OP_REQUIRES(
-        ctx, var.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", requested_input(0)));
-    const Tensor& alpha_dev = ctx->input(1);
-    OP_REQUIRES(ctx, IsLegacyScalar(alpha_dev.shape()),
-                errors::InvalidArgument("alpha is not a scalar: ",
-                                        alpha_dev.shape().DebugString()));
-    const Tensor& delta = ctx->input(2);
-    OP_REQUIRES(
-        ctx, var.shape().IsSameSize(delta.shape()),
-        errors::InvalidArgument("var and delta do not have the same shape",
-                                var.shape().DebugString(), " ",
-                                delta.shape().DebugString()));
-
-    auto device = ctx->eigen_sycl_device();
-    auto size = sizeof(T);
-    T alpha = T(0);
-    auto src_ptr = GetBase(&alpha_dev);
-    device.memcpyDeviceToHost(&alpha, static_cast<const T*>(src_ptr), size);
-
-    functor::ApplyGradientDescentSYCL<T>()(device, var.flat<T>(), alpha,
-                                           delta.flat<T>());
-
-    MaybeForwardRefInputToRefOutput(ctx, 0, 0);
-  }
-
- private:
-  bool use_exclusive_lock_;
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_KERNELS(D, T)                                                \
   REGISTER_KERNEL_BUILDER(                                                    \
@@ -639,6 +785,12 @@ REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNELS(SYCL, float);
+REGISTER_KERNELS(SYCL, double);
+#endif
+
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
@@ -1094,6 +1246,13 @@ REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T)
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS)
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
+
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
@@ -2323,6 +2482,12 @@ REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNELS(SYCL, float);
+REGISTER_KERNELS(SYCL, double);
+#endif  // TENSORFLOW_USE_SYCL
+
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
@@ -2533,123 +2698,6 @@ class ApplyAdamOp : public OpKernel {
   bool use_exclusive_lock_;
   bool use_nesterov_;
 };
-
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-class ApplyAdamOp<SYCLDevice, T> : public OpKernel {
- public:
-  explicit ApplyAdamOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
-                                                      {0, 1, 2});
-
-    Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
-                            ctx, 0, use_exclusive_lock_, false & var));
-    Tensor m;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
-                            ctx, 1, use_exclusive_lock_, false, &m));
-    Tensor v;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
-                            ctx, 2, use_exclusive_lock_, false, &v));
-    OP_REQUIRES(
-        ctx, var.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", requested_input(0)));
-    OP_REQUIRES(
-        ctx, m.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", requested_input(1)));
-    OP_REQUIRES(
-        ctx, v.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", requested_input(2)));
-
-    const Tensor& beta1_power_dev = ctx->input(3);
-    const Tensor& beta2_power_dev = ctx->input(4);
-    const Tensor& lr_dev = ctx->input(5);
-    const Tensor& beta1_dev = ctx->input(6);
-    const Tensor& beta2_dev = ctx->input(7);
-    const Tensor& epsilon_dev = ctx->input(8);
-
-    T beta1_power = 0;
-    T beta2_power = 0;
-    T lr = 0;
-    T beta1 = 0;
-    T beta2 = 0;
-    T epsilon = 0;
-
-    auto device = ctx->eigen_sycl_device();
-    auto size = sizeof(T);
-    auto src_ptr = GetBase(&beta1_power_dev);
-    device.memcpyDeviceToHost(&beta1_power, static_cast<const T*>(src_ptr),
-                              size);
-
-    src_ptr = GetBase(&beta2_power_dev);
-    device.memcpyDeviceToHost(&beta2_power, static_cast<const T*>(src_ptr),
-                              size);
-
-    src_ptr = GetBase(&lr_dev);
-    device.memcpyDeviceToHost(&lr, static_cast<const T*>(src_ptr), size);
-
-    src_ptr = GetBase(&beta1_dev);
-    device.memcpyDeviceToHost(&beta1, static_cast<const T*>(src_ptr), size);
-
-    src_ptr = GetBase(&beta2_dev);
-    device.memcpyDeviceToHost(&beta2, static_cast<const T*>(src_ptr), size);
-
-    src_ptr = GetBase(&epsilon_dev);
-    device.memcpyDeviceToHost(&epsilon, static_cast<const T*>(src_ptr), size);
-
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_power_dev.shape()),
-                errors::InvalidArgument("beta1_power is not a scalar: ",
-                                        beta1_power_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta2_power_dev.shape()),
-                errors::InvalidArgument("beta2_power is not a scalar: ",
-                                        beta2_power_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_dev.shape()),
-                errors::InvalidArgument("lr is not a scalar : ",
-                                        lr_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_dev.shape()),
-                errors::InvalidArgument("beta1 is not a scalar: ",
-                                        beta1_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta2_dev.shape()),
-                errors::InvalidArgument("beta2 is not a scalar: ",
-                                        beta2_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon_dev.shape()),
-                errors::InvalidArgument("epsilon is not a scalar: ",
-                                        epsilon_dev.shape().DebugString()));
-
-    const Tensor& grad = ctx->input(9);
-
-    OP_REQUIRES(ctx, var.shape().IsSameSize(m.shape()),
-                errors::InvalidArgument("var and m do not have the same shape",
-                                        var.shape().DebugString(), " ",
-                                        m.shape().DebugString()));
-    OP_REQUIRES(ctx, var.shape().IsSameSize(v.shape()),
-                errors::InvalidArgument("var and v do not have the same shape",
-                                        var.shape().DebugString(), " ",
-                                        v.shape().DebugString()));
-    OP_REQUIRES(
-        ctx, var.shape().IsSameSize(grad.shape()),
-        errors::InvalidArgument("var and grad do not have the same shape",
-                                var.shape().DebugString(), " ",
-                                grad.shape().DebugString()));
-
-    functor::ApplyAdamSYCL<T>()(device, var.flat<T>(), m.flat<T>(), v.flat<T>(),
-                                beta1_power, beta2_power, lr, beta1, beta2,
-                                epsilon, grad.flat<T>());
-
-    MaybeForwardRefInputToRefOutput(ctx, 0, 0);
-  }
-
- private:
-  bool use_exclusive_lock_;
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_KERNELS(D, T)                                     \
   REGISTER_KERNEL_BUILDER(                                         \
@@ -2940,6 +2988,15 @@ REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
+
+TF_CALL_float(REGISTER_SYCL_KERNELS);
+TF_CALL_double(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
+
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 

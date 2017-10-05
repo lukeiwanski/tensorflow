@@ -15,6 +15,10 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
+#ifdef EIGEN_USE_SYCL
+#undef EIGEN_USE_SYCL
+#endif  // EIGEN_USE_SYCL
+
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/Eigen/Eigenvalues"
 #include "tensorflow/core/framework/kernel_def_builder.h"

@@ -56,6 +56,12 @@ REGISTER_KERNEL_BUILDER(Name("Equal")
                             .HostMemory("z")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::equal_to<int32>>);
+REGISTER_KERNEL_BUILDER(
+    Name("ApproximateEqual").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
+    ApproximateEqualOp<SYCLDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("ApproximateEqual").Device(DEVICE_SYCL).TypeConstraint<double>("T"),
+    ApproximateEqualOp<SYCLDevice, double>);
 #endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

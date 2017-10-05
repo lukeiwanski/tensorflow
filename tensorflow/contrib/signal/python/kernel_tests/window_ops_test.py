@@ -57,9 +57,11 @@ class WindowOpsTest(test.TestCase):
 
   def setUp(self):
     self._window_lengths = [1, 2, 3, 4, 5, 31, 64, 128]
-    self._dtypes = [(dtypes.float16, 1e-2),
-                    (dtypes.float32, 1e-6),
+    self._dtypes = [(dtypes.float32, 1e-6),
                     (dtypes.float64, 1e-9)]
+    gpu_dev = test.gpu_device_name().lower()
+    if "gpu" in gpu_dev:
+        sef._dtypes += [(dtypes.float16, 1e-2)]
 
   def _compare_window_fns(self, np_window_fn, tf_window_fn):
     with self.test_session(use_gpu=True):

@@ -27,25 +27,9 @@ limitations under the License.
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
-
-template <typename T>
-class L2LossOp<CPUDevice, T> : public OpKernel {
- public:
-  explicit L2LossOp(OpKernelConstruction* context) : OpKernel(context) {}
-
-  void Compute(OpKernelContext* context) override {
-    // The input tensor can be of any number of dimensions, even though it's
-    // 2D in most typical applications.
-    const Tensor& input = context->input(0);
-    // The output is a single number.
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, TensorShape({}), &output));
-    const CPUDevice& d = context->eigen_device<CPUDevice>();
-    output->scalar<T>().device(d) =
-        (input.flat<T>().square() * static_cast<T>(0.5)).sum();
-  }
-};
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_KERNEL(T)                                      \
   REGISTER_KERNEL_BUILDER(                                      \
@@ -57,4 +41,15 @@ REGISTER_KERNEL(double);
 REGISTER_KERNEL(Eigen::half);
 #undef REGISTER_KERNEL
 
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(T)                                  \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("L2Loss").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+      L2LossOp<SYCLDevice, T>);
+
+REGISTER_SYCL_KERNEL(float);
+REGISTER_SYCL_KERNEL(double);
+#undef REGISTER_SYCL_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

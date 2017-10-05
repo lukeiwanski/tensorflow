@@ -254,8 +254,8 @@ class MeanTest(test.TestCase):
       variables.local_variables_initializer().run()
       for mean_result in mean_results:
         mean, update_op = mean_result
-        self.assertAlmostEqual(expected, update_op.eval())
-        self.assertAlmostEqual(expected, mean.eval())
+        self.assertAllClose(expected, update_op.eval())
+        self.assertAllClose(expected, mean.eval())
 
   def _test_3d_weighted(self, values, weights):
     expected = (
@@ -737,8 +737,8 @@ class PrecisionTest(test.TestCase):
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(1, sess.run(update_op))
-      self.assertAlmostEqual(1, precision.eval())
+      self.assertAllClose(1, sess.run(update_op))
+      self.assertAllClose(1, precision.eval())
 
   def testSomeCorrect_multipleInputDtypes(self):
     for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
@@ -924,7 +924,7 @@ class RecallTest(test.TestCase):
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
       sess.run(update_op)
-      self.assertEqual(1, recall.eval())
+      self.assertAllClose(1, recall.eval())
 
   def testSomeCorrect_multipleInputDtypes(self):
     for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
@@ -1310,8 +1310,8 @@ class SpecificityAtSensitivityTest(test.TestCase):
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
-      self.assertEqual(1, sess.run(update_op))
-      self.assertEqual(1, specificity.eval())
+      self.assertAllClose(1, sess.run(update_op))
+      self.assertAllClose(1, specificity.eval())
 
   def testSomeCorrectHighSensitivity(self):
     predictions_values = [0.1, 0.2, 0.4, 0.3, 0.0, 0.1, 0.45, 0.5, 0.8, 0.9]
@@ -1447,8 +1447,8 @@ class SensitivityAtSpecificityTest(test.TestCase):
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
-      self.assertEqual(1, sess.run(update_op))
-      self.assertEqual(1, specificity.eval())
+      self.assertAllClose(1, sess.run(update_op))
+      self.assertAllClose(1, specificity.eval())
 
   def testSomeCorrectHighSpecificity(self):
     predictions_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.1, 0.45, 0.5, 0.8, 0.9]
@@ -2746,8 +2746,8 @@ class MeanSquaredErrorTest(test.TestCase):
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
-      self.assertEqual(6, sess.run(update_op))
-      self.assertEqual(6, error.eval())
+      self.assertAllClose(6, sess.run(update_op))
+      self.assertAllClose(6, error.eval())
 
   def testSingleUpdateWithErrorAndWeights(self):
     predictions = constant_op.constant(
@@ -3010,8 +3010,8 @@ class MeanCosineDistanceTest(test.TestCase):
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
-      self.assertEqual(0, sess.run(update_op))
-      self.assertEqual(0, error.eval())
+      self.assertAllClose(0, sess.run(update_op))
+      self.assertAllClose(0, error.eval())
 
   def testSingleUpdateWithError1(self):
     np_labels = np.matrix(('1 0 0;' '0 0 1;' '0 1 0'))
@@ -3849,3 +3849,4 @@ class TruePositivesAtThresholdsTest(test.TestCase):
 
 if __name__ == '__main__':
   test.main()
+

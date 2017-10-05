@@ -1291,7 +1291,7 @@ class SeparableConv2DTest(test.TestCase):
     self._testSeparableConv2D("NHWC")
 
   def testSeparableConv2DNCHW(self):
-    if not test.is_gpu_available():
+    if not test.is_gpu_available(cuda_only=True):
       return
     self._testSeparableConv2D("NCHW")
 
@@ -1328,7 +1328,7 @@ class SeparableConv2DTest(test.TestCase):
     self._testSeparableConv2DEqualInputOutputDepth("NHWC")
 
   def testSeparableConv2DEqualInputOutputDepthNCHW(self):
-    if not test.is_gpu_available():
+    if not test.is_gpu_available(cuda_only=True):
       return
     self._testSeparableConv2DEqualInputOutputDepth("NCHW")
 

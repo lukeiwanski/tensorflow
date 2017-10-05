@@ -33,6 +33,9 @@ limitations under the License.
 namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
+#ifdef TENSORFLOW_USE_SYCL
+using SYCLDevice = Eigen::SyclDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace functor {
 
@@ -44,8 +47,8 @@ struct FusedBatchNorm;
 template <typename Device, typename T, typename U>
 struct FusedBatchNormGrad;
 
-template <typename T, typename U>
-struct FusedBatchNorm<CPUDevice, T, U> {
+template <typename Device, typename T, typename U>
+struct FusedBatchNorm {
   void operator()(OpKernelContext* context, const Tensor& x_input,
                   const Tensor& scale_input, const Tensor& offset_input,
                   const Tensor& estimated_mean_input,
@@ -74,7 +77,7 @@ struct FusedBatchNorm<CPUDevice, T, U> {
     typename TTypes<T>::Vec saved_mean(saved_mean_output->vec<T>());
     typename TTypes<T>::Vec saved_var(saved_var_output->vec<T>());
 
-    const CPUDevice& d = context->eigen_device<CPUDevice>();
+    const Device& d = context->eigen_device<Device>();
 
     const int depth = x.dimension(3);
     const int size = x.size();
@@ -100,8 +103,25 @@ struct FusedBatchNorm<CPUDevice, T, U> {
     T rest_size_adjust =
         static_cast<T>(rest_size) / static_cast<T>(rest_size_minus_one);
 
+#ifdef TENSORFLOW_USE_SYCL
+    Tensor mean_tmp;
+    Tensor variance_tmp;
+    OP_REQUIRES_OK(context, context->allocate_temp(
+                                DataTypeToEnum<T>::value,
+                                TensorShape({depth}),
+                                &mean_tmp));
+    OP_REQUIRES_OK(context, context->allocate_temp(
+                                DataTypeToEnum<T>::value,
+                                TensorShape({depth}),
+                                &variance_tmp));
+
+    auto mean = mean_tmp.flat<T>();
+    auto variance = variance_tmp.flat<T>();
+#else
     Eigen::Tensor<T, 1, Eigen::RowMajor> mean(depth);
     Eigen::Tensor<T, 1, Eigen::RowMajor> variance(depth);
+#endif  // TENSORFLOW_USE_SYCL
+
     if (is_training) {
       mean.device(d) = (x_rest_by_depth.sum(reduce_dims) * rest_size_inv);
       batch_mean.device(d) = mean;
@@ -133,8 +153,8 @@ struct FusedBatchNorm<CPUDevice, T, U> {
   }
 };
 
-template <typename T, typename U>
-struct FusedBatchNormGrad<CPUDevice, T, U> {
+template <typename Device, typename T, typename U>
+struct FusedBatchNormGrad {
   void operator()(OpKernelContext* context, const Tensor& y_backprop_input,
                   const Tensor& x_input, const Tensor& scale_input,
                   const Tensor& mean_input, const Tensor& variance_input,
@@ -163,7 +183,7 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
     //                  (x - mean(x)) * rsqrt(variance + epsilon))
     // offset_backprop = sum(y_backprop)
 
-    const CPUDevice& d = context->eigen_device<CPUDevice>();
+    const Device& d = context->eigen_device<Device>();
     const int depth = x.dimension(3);
     const int size = x.size();
     const int rest_size = size / depth;
@@ -190,7 +210,7 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
     auto coef0 = (variance + epsilon).rsqrt();
     auto coef0_rest_by_depth =
         coef0.eval().reshape(one_by_depth).broadcast(bcast_spec);
-    auto x_scaled = x_centered * coef0_rest_by_depth;
+    auto x_scaled = (x_centered * coef0_rest_by_depth).eval();
 
     auto y_backprop_rest_by_depth = y_backprop.eval().reshape(rest_by_depth);
     scale_backprop.device(d) =
@@ -724,5 +744,28 @@ REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV2")
                         FusedBatchNormGradOp<GPUDevice, Eigen::half, float>);
 
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("FusedBatchNorm").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
+    FusedBatchNormOp<SYCLDevice, float, float>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("FusedBatchNormGrad").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
+    FusedBatchNormGradOp<SYCLDevice, float, float>);
+
+REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV2")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<float>("T")
+                            .TypeConstraint<float>("U"),
+                        FusedBatchNormOp<SYCLDevice, float, float>);
+
+REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV2")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<float>("T")
+                            .TypeConstraint<float>("U"),
+                        FusedBatchNormGradOp<SYCLDevice, float, float>);
+
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

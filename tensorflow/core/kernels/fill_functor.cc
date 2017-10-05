@@ -101,7 +101,7 @@ DEFINE_SETONE_CPU(complex128);
 template <typename T>
 void SetOneFunctor<Eigen::SyclDevice, T>::operator()(
     const Eigen::SyclDevice& d, typename TTypes<T>::Flat out) {
-  out.device(d) = out.constant(T(1));
+  To32Bit(out).device(d) = To32Bit(out).constant(T(1));
 }
 
 #define DEFINE_SETONE_SYCL(T) \
@@ -109,6 +109,12 @@ void SetOneFunctor<Eigen::SyclDevice, T>::operator()(
 DEFINE_SETONE_SYCL(float);
 DEFINE_SETONE_SYCL(bool);
 DEFINE_SETONE_SYCL(double);
+DEFINE_SETONE_SYCL(uint8);
+DEFINE_SETONE_SYCL(int8);
+DEFINE_SETONE_SYCL(uint16);
+DEFINE_SETONE_SYCL(int16);
+DEFINE_SETONE_SYCL(int32);
+DEFINE_SETONE_SYCL(int64);
 #undef DEFINE_SETONE_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 

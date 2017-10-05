@@ -127,37 +127,25 @@ void ConcatCPUImpl(
 }
 
 #ifdef TENSORFLOW_USE_SYCL
-template <typename T, typename ElementCopier>
+template <typename T, typename IntType>
 void ConcatSYCLImpl(
     const Eigen::SyclDevice& d,
     const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
-        inputs,
-    int64 cost_per_unit, ElementCopier copier,
+        inputs_flat,
     typename TTypes<T, 2>::Matrix* output) {
-  size_t num_inputs = inputs.size();
-
-  std::vector<ptrdiff_t> sizes;
-  sizes.reserve(num_inputs);
-  int64 row_size = 0;
-  for (const auto& input : inputs) {
-    sizes.push_back(input->dimension(1));
-    row_size += sizes.back();
-  }
-
-  T* out = &(*output)(0, 0);
-  std::vector<const T*> inp;
-  inp.reserve(num_inputs);
-  for (const auto& input : inputs) {
-    inp.push_back(&(*input)(0, 0));
-  }
-  const int64 dim0 = output->dimension(0);
-  for (int64 i = 0; i < dim0; ++i) {
-    for (int64 j = 0; j < num_inputs; ++j) {
-      auto size = sizes[j];
-      d.memcpy(out, inp[j], size * sizeof(T));
-      out += size;
-      inp[j] += size;
+  Eigen::array<IntType, 2> offset{0, 0};
+  for (int i = 0; i < inputs_flat.size(); ++i) {
+    Eigen::array<IntType, 2> size;
+    size[0] = inputs_flat[i]->dimension(0);
+    size[1] = inputs_flat[i]->dimension(1);
+    if (std::is_same<IntType, int32>::value) {
+      To32Bit(*output).slice(offset, size).device(d) =
+          To32Bit(*inputs_flat[i]);
+    } else {
+      output->slice(offset, size).device(d) = *inputs_flat[i];
     }
+
+    offset[1] += size[1];
   }
 }
 #endif // TENSORFLOW_USE_SYCL

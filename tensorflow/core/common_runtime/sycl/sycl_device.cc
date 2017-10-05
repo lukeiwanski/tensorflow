@@ -23,7 +23,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-SYCLDevice::~SYCLDevice() {}
+SYCLDevice::~SYCLDevice() {
+  if(gpu_device_info_)
+    delete gpu_device_info_;
+}
 
 void SYCLDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   assert(context);

@@ -1725,7 +1725,8 @@ class PoolingTest(test.TestCase):
   def testOpEdgeCases(self):
     with self.test_session() as sess:
       pool_funcs = [nn_ops.max_pool, nn_ops.avg_pool]
-      if test.is_gpu_available():
+      # MaxPoolWithArgMax is implemented only on CUDA.
+      if test.is_gpu_available(cuda_only=True):
         pool_funcs.append(nn_ops.max_pool_with_argmax)
       for pool_func in pool_funcs:
         # Illegal strides.

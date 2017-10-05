@@ -225,8 +225,25 @@ struct SelectScalarFunctor<CPUDevice, T>
         : SelectScalarFunctorBase<CPUDevice, T> {};
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
-struct SelectScalarFunctor<SYCLDevice, T>
-        : SelectScalarFunctorBase<SYCLDevice, T> {};
+struct SelectScalarFunctor<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat out,
+                  TTypes<bool>::ConstScalar cond,
+                  typename TTypes<T>::ConstFlat then_flat,
+                  typename TTypes<T>::ConstFlat else_flat) {
+#if !defined(EIGEN_HAS_INDEX_LIST)
+  Eigen::array<int, 1> rank1{1};
+#else
+  Eigen::IndexList<Eigen::type2index<1>> rank1;
+#endif
+  const int size  = then_flat.dimension(0);
+  Eigen::array<int, 1> broadcast_dims{size};
+
+  To32Bit(out).device(d) = cond.reshape(rank1)
+                               .broadcast(broadcast_dims)
+                               .select(then_flat, else_flat);
+
+  }
+};
 #endif // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>

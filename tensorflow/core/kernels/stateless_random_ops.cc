@@ -26,6 +26,9 @@ namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
+#ifdef TENSORFLOW_USE_SYCL
+using SYCLDevice = Eigen::SyclDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 
@@ -169,5 +172,40 @@ TF_CALL_double(REGISTER);
 #undef REGISTER
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER(DEV, TYPE)                                              \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("StatelessRandomUniform")                                     \
+          .Device(DEVICE_##DEV)                                          \
+          .HostMemory("shape")                                           \
+          .HostMemory("seed")                                            \
+          .TypeConstraint<TYPE>("dtype"),                                \
+      StatelessRandomOp<DEV##Device, random::UniformDistribution<        \
+                                         random::PhiloxRandom, TYPE> >); \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("StatelessRandomNormal")                                      \
+          .Device(DEVICE_##DEV)                                          \
+          .HostMemory("shape")                                           \
+          .HostMemory("seed")                                            \
+          .TypeConstraint<TYPE>("dtype"),                                \
+      StatelessRandomOp<DEV##Device, random::NormalDistribution<         \
+                                         random::PhiloxRandom, TYPE> >); \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("StatelessTruncatedNormal")                                   \
+          .Device(DEVICE_##DEV)                                          \
+          .HostMemory("shape")                                           \
+          .HostMemory("seed")                                            \
+          .TypeConstraint<TYPE>("dtype"),                                \
+      StatelessRandomOp<                                                 \
+          DEV##Device,                                                   \
+          random::TruncatedNormalDistribution<                           \
+              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >);
+
+#define REGISTER_SYCL_KERNELS(TYPE) REGISTER(SYCL, TYPE)
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS)
+#undef REGISTER_SYCL_KERNELS
+#undef REGISTER
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

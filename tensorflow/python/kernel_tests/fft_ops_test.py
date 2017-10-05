@@ -69,6 +69,10 @@ class BaseFFTOpsTest(test.TestCase):
       self._tfFFT(x, rank, fft_length=None)
 
   def _checkGradComplex(self, func, x, y, result_is_complex=True):
+    # SYCL does not support complex at present
+    if not test.is_gpu_available(cuda_only=True):
+      return
+
     with self.test_session(use_gpu=True):
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)

@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
-
 #include "tensorflow/core/kernels/gather_functor.h"
+
+#if GOOGLE_CUDA
 #include "tensorflow/core/framework/register_types.h"
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -24,6 +25,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
 
+#if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.
 #define DECLARE_GPU_SPECS_INDEX(T, Index)                             \
   template <>                                                         \
@@ -43,12 +45,7 @@ TF_CALL_complex128(DECLARE_GPU_SPECS);
 
 #undef DECLARE_GPU_SPECS
 #undef DECLARE_GPU_SPECS_INDEX
+#endif  // GOOGLE_CUDA
 
 }  // namespace functor
 }  // namespace tensorflow
-
-#else
-
-#include "tensorflow/core/kernels/gather_functor.h"
-
-#endif  // GOOGLE_CUDA

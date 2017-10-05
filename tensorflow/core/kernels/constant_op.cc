@@ -205,7 +205,7 @@ struct FillFunctor<SYCLDevice, T> {
     const int size = out.dimension(0);
     Eigen::array<int, 1> broadcast_dims{size};
 
-    To32Bit(out).device(d) = in.reshape(rank1).broadcast(broadcast_dims);
+    To32Bit(out).device(d) = To32Bit(in).reshape(rank1).broadcast(broadcast_dims);
   }
 };
 }  // namespace functor
@@ -371,8 +371,10 @@ TF_CALL_POD_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
 
 #ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL(bool, SYCL);
 REGISTER_KERNEL(float, SYCL);
 REGISTER_KERNEL(bool, SYCL);
+REGISTER_KERNEL(int64, SYCL);
 REGISTER_KERNEL_BUILDER(Name("OnesLike")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")

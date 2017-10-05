@@ -78,33 +78,9 @@ class BiasOp : public BinaryOp<T> {
                                 {0}, 0, input.shape(), &output));
     if (input.NumElements() == 0) return;
 
-    switch (input.shape().dims()) {
-      case 2:
-        Compute<2>(context, input, bias, output);
-        break;
-      case 3:
-        Compute<3>(context, input, bias, output);
-        break;
-      case 4:
-        Compute<4>(context, input, bias, output);
-        break;
-      case 5:
-        Compute<5>(context, input, bias, output);
-        break;
-      default:
-        OP_REQUIRES(context, false,
-                    errors::InvalidArgument("Only ranks up to 5 supported: ",
-                                            input.shape().DebugString()));
-    }
-  }
-
-  // Add biases for an input matrix of rank Dims, by using the Bias.
-  template <int Dims>
-  void Compute(OpKernelContext* ctx, const Tensor& input, const Tensor& bias,
-               Tensor* output) {
-    functor::Bias<Device, T, Dims> functor;
-    functor(ctx->eigen_device<Device>(), input.tensor<T, Dims>(), bias.vec<T>(),
-            output->tensor<T, Dims>());
+    functor::Bias<Device, T> functor;
+    functor(context->template eigen_device<Device>(), input.flat<T>(),
+            bias.vec<T>(), output->flat<T>());
   }
 
  private:
@@ -132,11 +108,9 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
       BiasOp<SYCLDevice, type>);
 
 TF_CALL_INTEGRAL_TYPES(REGISTER_KERNEL);
-REGISTER_KERNEL(float);
-REGISTER_KERNEL(double);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 #endif  // TENSORFLOW_USE_SYCL
-
 namespace {
 
 void GetBiasValueDims(const Tensor& value_tensor, TensorFormat data_format,
@@ -219,8 +193,9 @@ class BiasGradOp : public OpKernel {
     if (channel == 0) {
       return;  // Nothing to do
     } else if (output_backprop.NumElements() == 0) {
-      // Eigen often crashes by design on empty tensors, but setZero is safe
-      output->template flat<T>().setZero();
+      // Eigen often crashes by design on empty tensors, but this is safe
+      output->template flat<T>().device(context->eigen_device<Device>()) =
+        output->template flat<T>().constant(T(0));
     } else {
       Eigen::DSizes<int, 2> two_dims(batch * height * width, channel);
 #ifdef EIGEN_HAS_INDEX_LIST
@@ -229,9 +204,8 @@ class BiasGradOp : public OpKernel {
       Eigen::array<int, 1> reduction_axis = {0};
 #endif
       output->template flat<T>().device(context->eigen_device<Device>()) =
-          output_backprop.flat<T>()
+          output_backprop.flat_inner_dims<T>()
               .template cast<typename AccumulatorType<T>::type>()
-              .reshape(two_dims)
               .sum(reduction_axis)
               .template cast<T>();
     }
@@ -257,8 +231,7 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
       BiasGradOp<SYCLDevice, type>);
 
 TF_CALL_INTEGRAL_TYPES(REGISTER_KERNEL);
-REGISTER_KERNEL(float);
-REGISTER_KERNEL(double);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 #endif  // TENSORFLOW_USE_SYCL
 
