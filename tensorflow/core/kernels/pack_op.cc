@@ -120,7 +120,7 @@ class PackOp : public OpKernel {
 #endif  // GOOGLE_CUDA
 #ifdef TENSORFLOW_USE_SYCL
       if (std::is_same<Device, SYCLDevice>::value) {
-        ConcatSYCL<T>(c->eigen_sycl_device(), inputs_flat, &output_flat);
+        ConcatSYCL<T>(c->eigen_sycl_device(), inputs_flat, output, &output_flat);
         return;
       }
 #endif // TENSORFLOW_USE_SYCL

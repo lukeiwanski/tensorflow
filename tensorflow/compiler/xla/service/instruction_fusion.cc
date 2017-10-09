@@ -67,6 +67,7 @@ namespace xla {
     case HloOpcode::kReducePrecision:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kSelect:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
@@ -204,14 +205,7 @@ bool InstructionFusion::CanFuseOnAllPaths(
 StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   bool changed = false;
   module_ = module;
-  std::vector<HloComputation*> computations;
-  for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    computations.push_back(computation.get());
-  }
-  for (auto& computation : computations) {
+  for (auto* computation : module->MakeNonfusionComputations()) {
     CHECK(!computation->IsFusionComputation());
     computation_ = computation;
 

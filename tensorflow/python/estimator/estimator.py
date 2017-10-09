@@ -43,6 +43,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.summary import summary
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import evaluation
 from tensorflow.python.training import monitored_session
@@ -202,6 +203,15 @@ class Estimator(object):
 
     return public_model_fn
 
+  def latest_checkpoint(self):
+    """Finds the filename of latest saved checkpoint file in `model_dir`.
+
+    Returns:
+      The full path to the latest checkpoint or `None` if no checkpoint was
+      found.
+    """
+    return saver.latest_checkpoint(self.model_dir)
+
   def train(self, input_fn, hooks=None, steps=None, max_steps=None):
     """Trains a model given training data input_fn.
 
@@ -321,7 +331,7 @@ class Estimator(object):
               predict_keys=None,
               hooks=None,
               checkpoint_path=None):
-    """Returns predictions for given features.
+    """Yields predictions for given features.
 
     Args:
       input_fn: Input function returning features which is a dictionary of
@@ -467,7 +477,8 @@ class Estimator(object):
       # Build the SignatureDefs from receivers and all outputs
       signature_def_map = build_all_signature_defs(
           serving_input_receiver.receiver_tensors,
-          estimator_spec.export_outputs)
+          estimator_spec.export_outputs,
+          serving_input_receiver.receiver_tensors_alternatives)
 
       if not checkpoint_path:
         # Locate the latest checkpoint
@@ -660,6 +671,13 @@ class Estimator(object):
           input_fn, model_fn_lib.ModeKeys.TRAIN)
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.TRAIN, self.config)
+      # Check if the user created a loss summary, and add one if they didn't.
+      # We assume here that the summary is called 'loss'. If it is not, we will
+      # make another one with the name 'loss' to ensure it shows up in the right
+      # graph in TensorBoard.
+      if not any([x.op.name == 'loss'
+                  for x in ops.get_collection(ops.GraphKeys.SUMMARIES)]):
+        summary.scalar('loss', estimator_spec.loss)
       ops.add_to_collection(ops.GraphKeys.LOSSES, estimator_spec.loss)
       all_hooks.extend(hooks)
       all_hooks.extend([

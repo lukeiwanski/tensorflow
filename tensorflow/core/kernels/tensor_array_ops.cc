@@ -736,7 +736,8 @@ class TensorArrayPackOrGatherOp : public OpKernel {
 #endif  // GOOGLE_CUDA
 #ifdef TENSORFLOW_USE_SYCL
     if (std::is_same<Device, SYCLDevice>::value) {
-      ConcatSYCL<T>(ctx->eigen_sycl_device(), input_tensors_flat, &output_flat);
+      ConcatSYCL<T>(ctx->eigen_sycl_device(), input_tensors_flat,
+                    output_tensor, &output_flat);
       return;
     }
 #endif  // TENSORFLOW_USE_SYCL
@@ -1008,7 +1009,7 @@ class TensorArrayConcatOp : public OpKernel {
 #ifdef TENSORFLOW_USE_SYCL
       if (std::is_same<Device, SYCLDevice>::value) {
         ConcatSYCL<T>(ctx->eigen_sycl_device(), input_tensors_flat,
-                      &output_flat);
+                      output_tensor, &output_flat);
         return;
       }
 #endif  // TENSORFLOW_USE_SYCL

@@ -85,15 +85,19 @@ template <typename T>
 void ConcatSYCL(const Eigen::SyclDevice& d,
                const std::vector<
                    std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& inputs,
-               typename TTypes<T, 2>::Matrix* output) {
-  ConcatSYCLImpl<T>(d, inputs, sizeof(T) /* cost_per_unit */, MemCpyCopier<T>(),
-                   output);
+               Tensor* output, typename TTypes<T, 2>::Matrix* output_flat) {
+  if (output->NumElements() < std::numeric_limits<int32>::max()) {
+    ConcatSYCLImpl<T, int32>(d, inputs, output_flat);
+  } else {
+    ConcatSYCLImpl<T, int64>(d, inputs, output_flat);
+  }
 }
+
 #define REGISTER_SYCL(T)                                                      \
  template void ConcatSYCL<T>(                                                 \
      const Eigen::SyclDevice&,                                                \
      const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&, \
-     typename TTypes<T, 2>::Matrix* output);
+     Tensor* output, typename TTypes<T, 2>::Matrix* output_flat);
 
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL)
 

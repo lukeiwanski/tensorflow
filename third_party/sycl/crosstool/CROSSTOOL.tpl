@@ -8,8 +8,8 @@ default_toolchain {
 }
 
 default_toolchain {
-  cpu: "aarch64" 
-  toolchain_identifier: "local_arm" 
+  cpu: "aarch64"
+  toolchain_identifier: "local_arm"
 }
 
 default_toolchain {
@@ -88,10 +88,6 @@ toolchain {
 
   # Anticipated future default.
   linker_flag: "-no-canonical-prefixes"
-  unfiltered_cxx_flag: "-fno-canonical-system-headers"
-
-  # Have gcc return the exit code from ld.
-  linker_flag: "-pass-exit-codes"
 
   # All warnings are enabled. Maybe enable -Werror as well?
   compiler_flag: "-Wall"
@@ -193,7 +189,7 @@ toolchain {
   unfiltered_cxx_flag: "-D__TIME__=\"redacted\""
 
   compiler_flag: "-fPIE"
-  
+
   # Keep stack frames for debugging, even in opt mode.
   compiler_flag: "-fno-omit-frame-pointer"
 
@@ -203,7 +199,7 @@ toolchain {
 
   # Have gcc return the exit code from ld.
   linker_flag: "-pass-exit-codes"
- 
+
   # All warnings are enabled. Maybe enable -Werror as well?
   compiler_flag: "-Wall"
 

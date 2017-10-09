@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import glob
 import os
 import tempfile
 
@@ -55,6 +56,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.summary import summary_iterator
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import checkpoint_state_pb2
@@ -573,6 +575,29 @@ class EstimatorTrainTest(test.TestCase):
     self.assertEqual(
         5, estimator._load_global_step_from_checkpoint_dir(est.model_dir))
 
+  def test_loss_summary(self):
+    est = estimator.Estimator(model_fn=model_fn_global_step_incrementer,
+                              config=run_config.RunConfig(save_summary_steps=1))
+    est.train(dummy_input_fn, steps=1)
+
+    # Make sure nothing is stuck in limbo.
+    writer_cache.FileWriterCache.clear()
+
+    # Get last Event written.
+    event_paths = glob.glob(os.path.join(est.model_dir, 'events*'))
+    last_event = None
+    for last_event in summary_iterator.summary_iterator(event_paths[-1]):
+      pass
+
+    self.assertEqual('loss', last_event.summary.value[0].tag)
+
+  def test_latest_checkpoint(self):
+    est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
+    self.assertIsNone(est.latest_checkpoint())
+    est.train(dummy_input_fn, steps=5)
+    self.assertIsNotNone(est.latest_checkpoint())
+    self.assertTrue(est.latest_checkpoint().startswith(est.model_dir))
+
   def test_steps_and_saves_reloads(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
     est.train(dummy_input_fn, steps=5)
@@ -970,9 +995,7 @@ class EstimatorEvaluateTest(test.TestCase):
         model_fn=_model_fn_with_eval_metric_ops,
         params=params)
     scores = est2.evaluate(
-        dummy_input_fn,
-        steps=1,
-        checkpoint_path=saver.latest_checkpoint(est1.model_dir))
+        dummy_input_fn, steps=1, checkpoint_path=est1.latest_checkpoint())
     self.assertEqual(5, scores['global_step'])
 
   def test_scaffold_is_used(self):
@@ -1314,12 +1337,11 @@ class EstimatorPredictTest(test.TestCase):
     est1 = estimator.Estimator(model_fn=_model_fn)
     est1.train(dummy_input_fn, steps=1)
     est2 = estimator.Estimator(model_fn=_model_fn, model_dir=est1.model_dir)
-    self.assertEqual(
-        [32.],
-        next(
-            est2.predict(
-                dummy_input_fn,
-                checkpoint_path=saver.latest_checkpoint(est1.model_dir))))
+    self.assertEqual([32.],
+                     next(
+                         est2.predict(
+                             dummy_input_fn,
+                             checkpoint_path=est2.latest_checkpoint())))
 
   def test_scaffold_is_used(self):
 
@@ -1526,7 +1548,7 @@ class EstimatorExportTest(test.TestCase):
     # hack in an op that uses the asset, in order to test asset export.
     # this is not actually valid, of course.
     def serving_input_receiver_with_asset_fn():
-      features, receiver_tensor = serving_input_receiver_fn()
+      features, receiver_tensor, _ = serving_input_receiver_fn()
       filename = ops.convert_to_tensor(vocab_file_name,
                                        dtypes.string,
                                        name='asset_filepath')

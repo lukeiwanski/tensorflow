@@ -173,11 +173,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.new_http_archive(
       name = "eigen_archive",
       urls = [
-          #"http://mirror.bazel.build/bitbucket.org/eigen/eigen/get/2b5586d1d4f3.tar.gz",
-          "https://bitbucket.org/mehdi_goli/opencl/get/70f3d6edbe02.tar.gz",
+          #"http://mirror.bazel.build/bitbucket.org/eigen/eigen/get/d0323eda93d5.tar.gz",
+          "https://bitbucket.org/mehdi_goli/opencl/get/d0323eda93d5.tar.gz",
       ],
       #sha256 = "ca7beac153d4059c02c8fc59816c82d54ea47fe58365e8aded4082ded0b820c4",
-      strip_prefix = "mehdi_goli-opencl-70f3d6edbe02",
+      strip_prefix = "mehdi_goli-opencl-d0323eda93d5",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
@@ -373,10 +373,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   patched_http_archive(
       name = "protobuf_archive",
       urls = [
-          "http://mirror.bazel.build/github.com/google/protobuf/archive/0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66.tar.gz",
+          "http://mirror.bazel.build/github.com/google/protobuf/archive/b04e5cba356212e4e8c66c61bbe0c3a20537c5b9.tar.gz",
       ],
-      sha256 = "6d43b9d223ce09e5d4ce8b0060cb8a7513577a35a64c7e3dad10f0703bf3ad93",
-      strip_prefix = "protobuf-0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66",
+      sha256 = "e178a25c52efcb6b05988bdbeace4c0d3f2d2fe5b46696d1d9898875c3803d6a",
+      strip_prefix = "protobuf-b04e5cba356212e4e8c66c61bbe0c3a20537c5b9",
       # TODO: remove patching when tensorflow stops linking same protos into
       #       multiple shared libraries loaded in runtime by python.
       #       This patch fixes a runtime crash when tensorflow is compiled
@@ -540,11 +540,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   temp_workaround_http_archive(
       name = "llvm",
       urls = [
-          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/343595467c91e2db33e7e157adc87b2e53ddbe1a.tar.gz",
-          # "https://github.com/llvm-mirror/llvm/archive/343595467c91e2db33e7e157adc87b2e53ddbe1a.tar.gz",
+          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/bb3c660e87f59abb665570a31b01ab125ec4c10e.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/bb3c660e87f59abb665570a31b01ab125ec4c10e.tar.gz",
       ],
-      sha256 = "74a9b0a4dfd65082acb134ef865ee82f4e77dfbd33bb14458253a7937232ed7e",
-      strip_prefix = "llvm-343595467c91e2db33e7e157adc87b2e53ddbe1a",
+      sha256 = "caab6d7978e6771cb4e9b5b89607c5370de8aa642913c6c14e892468194c94e4",
+      strip_prefix = "llvm-bb3c660e87f59abb665570a31b01ab125ec4c10e",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
       repository = tf_repo_name,
   )
