@@ -277,7 +277,9 @@ class BatchNormalization(base.Layer):
     with ops.name_scope(None, 'AssignMovingAvg',
                         [variable, value, one_minus_decay]) as scope:
       with ops.colocate_with(variable):
-        update_delta = (variable.read_value() - value) * one_minus_decay
+        update_delta = math_ops.multiply(
+            math_ops.subtract(variable.read_value(), value),
+            one_minus_decay)
         if isinstance(variable, resource_variable_ops.ResourceVariable):
           # state_ops.assign_sub does an extra read_variable_op after the
           # assign. We avoid that here.
@@ -328,7 +330,7 @@ class BatchNormalization(base.Layer):
                                       lambda: self._one_minus_decay,
                                       lambda: 0.)
     else:
-      one_minus_decay = self._one_minus_decay
+      one_minus_decay = ops.convert_to_tensor(self._one_minus_decay)
     if training_value or training_value is None:
       mean_update = self._assign_moving_average(self.moving_mean, mean,
                                                 one_minus_decay)

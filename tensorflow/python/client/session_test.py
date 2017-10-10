@@ -1661,7 +1661,7 @@ class SessionTest(test_util.TensorFlowTestCase):
             '/job:local/replica:0/task:0'+test_util.gpu_device_name()
             in str(log), str(log))
       else:
-        self.assertTrue('/job:local/replica:0/task:0/cpu:0' in str(log),
+        self.assertTrue('/job:local/replica:0/task:0/device:CPU:0' in str(log),
             str(log))
 
   def testLocalMasterSessionTimeout(self):
