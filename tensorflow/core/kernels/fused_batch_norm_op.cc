@@ -98,9 +98,8 @@ struct FusedBatchNorm {
 
     auto x_rest_by_depth = x.reshape(rest_by_depth);
     const int rest_size_minus_one = (rest_size > 1) ? (rest_size - 1) : 1;
-    T rest_size_inv = static_cast<T>(1.0f / static_cast<T>(rest_size));
     // This adjustment is for Bessel's correction
-    T rest_size_adjust =
+    const T rest_size_adjust =
         static_cast<T>(rest_size) / static_cast<T>(rest_size_minus_one);
 
 #ifdef TENSORFLOW_USE_SYCL
@@ -123,22 +122,22 @@ struct FusedBatchNorm {
 #endif  // TENSORFLOW_USE_SYCL
 
     if (is_training) {
-      mean.device(d) = (x_rest_by_depth.sum(reduce_dims) * rest_size_inv);
-      batch_mean.device(d) = mean;
-      saved_mean.device(d) = mean;
+      mean.device(d) = x_rest_by_depth.mean(reduce_dims);
+      d.memcpy(batch_mean.data(), mean.data(), mean.size() * sizeof(T));
+      d.memcpy(saved_mean.data(), mean.data(), mean.size() * sizeof(T));
     } else {
-      mean.device(d) = estimated_mean;
+      d.memcpy(mean.data(), estimated_mean.data(), estimated_mean.size() * sizeof(T));
     }
 
     auto x_centered =
-        x_rest_by_depth - mean.reshape(one_by_depth).broadcast(bcast_spec);
+        (x_rest_by_depth - mean.reshape(one_by_depth).broadcast(bcast_spec)).eval();
 
     if (is_training) {
-      variance.device(d) = x_centered.square().sum(reduce_dims) * rest_size_inv;
+      variance.device(d) = x_centered.square().mean(reduce_dims);
       batch_var.device(d) = variance * rest_size_adjust;
-      saved_var.device(d) = variance;
+      d.memcpy(saved_var.data(), variance.data(), variance.size() * sizeof(T));
     } else {
-      variance.device(d) = estimated_variance;
+      d.memcpy(variance.data(), estimated_variance.data(), estimated_variance.size() * sizeof(T));
     }
 
     auto scaling_factor = ((variance + epsilon).rsqrt() * scale)
@@ -202,7 +201,7 @@ struct FusedBatchNormGrad {
 #endif
 
     auto x_rest_by_depth = x.reshape(rest_by_depth);
-    T rest_size_inv = static_cast<T>(1.0f / static_cast<T>(rest_size));
+    const T rest_size_inv = static_cast<T>(1.0f / static_cast<T>(rest_size));
 
     auto x_mean_rest_by_depth =
         mean.reshape(one_by_depth).broadcast(bcast_spec);
