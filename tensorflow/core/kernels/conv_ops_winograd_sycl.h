@@ -12,13 +12,6 @@
 
 namespace tensorflow {
 typedef Eigen::SyclDevice SYCLDevice;
-
-/** Enum to allow specialisations for different convolution algorithms. */
-enum class ConvType {
-  Forward,
-  InputBackprop,
-  FilterBackprop,
-};
 namespace functor {
 
 template <typename T, int M, int N, int R, int S>
@@ -401,8 +394,10 @@ struct WinogradConv {
       const T* kernel_data = ConvertToActualTypeSycl(T, kernel_accessor_);
       T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
 
+      const Index feature = index % p_.features_;
+      const Index tile_idx = index / p_.features_;
       const SYCL2DWindow w = p_.winograd_input_window<M, N, R, S>(
-          index, CType == ConvType::InputBackprop);
+          tile_idx, CType == ConvType::InputBackprop);
 
       IntermediateTile<T, M, N, R, S> tmp{};
 
@@ -414,7 +409,7 @@ struct WinogradConv {
         InputTile<T, M, N, R, S> inp(input_data + offset, p_.in_cols_,
                                      p_.channels_, w.rend - w.rstart,
                                      w.cend - w.cstart, w.firstr, w.firstc);
-        FilterTile<T, M, N, R, S, CType> filter(kernel_data, channel, w.feature,
+        FilterTile<T, M, N, R, S, CType> filter(kernel_data, channel, feature,
                                                 p_.window_cols_, p_.channels_,
                                                 p_.features_);
         tmp.update(TransformedInputTile<T, M, N, R, S>{inp},
