@@ -678,7 +678,7 @@ void FillPhiloxRandom<SYCLDevice, Distribution>::operator()(
     typename Distribution::ResultElementType* data, int64 size,
     Distribution dist) {
 
-  const size_t group_size = device.maxSyclThreadsPerBlock();
+  const size_t group_size = device.getNearestPowerOfTwoWorkGroupSize();
   const size_t group_count = (size + group_size - 1) / group_size;
 
   auto buffer = device.get_sycl_buffer(data);
