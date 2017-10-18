@@ -63,8 +63,10 @@ class MaxPool2DSYCL {
     T* input_data = ConvertToActualTypeSycl(T, input_accessor_);
     T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
 
+    const size_t num_elements = output_accessor_.get_size() / sizeof(T);
+
     int index = item.get(0);
-    if (index < n_threads_) {
+    if (index < num_elements) {
       int n = index;
       int d = n % p_.depth_;
       n /= p_.depth_;
@@ -165,8 +167,10 @@ class MaxPoolGradSYCL {
     T* input_backprop = ConvertToActualTypeSycl(T, input_backprop_accessor_);
     T* output_backprop = ConvertToActualTypeSycl(T, output_backprop_accessor_);
 
+    const size_t output_backprop_ret_size = output_backprop_accessor_.get_size() / sizeof(T);
+
     const int index = item.get(0);
-    if (index < n_threads_) {
+    if (index < output_backprop_ret_size) {
       T output_value = static_cast<T>(0);
       int n = index;
       const int d = n % p_.depth_;
@@ -315,8 +319,10 @@ class MaxPoolGradGradSYCL {
     T* input_backprop = ConvertToActualTypeSycl(T, input_backprop_accessor_);
     T* output_backprop = ConvertToActualTypeSycl(T, output_backprop_accessor_);
 
+    const size_t output_data_ret_size = output_data_accessor_.get_size() / sizeof(T);
+
     int index = item.get(0);
-    if (index < n_threads_) {
+    if (index < output_data_ret_size) {
       int n = index;
       int d = n % p_.depth_;
       n /= p_.depth_;
