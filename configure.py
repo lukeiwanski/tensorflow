@@ -956,7 +956,7 @@ def set_acl():
   write_to_bazelrc('build:acl --copt="-DARM_COMPUTE_CL"')
   write_to_bazelrc('build:acl --copt="-DARM_NO_EXCEPTIONS"')
   print('Add "--config=acl" to your bazel command to build with ARM '
-        'Comptue Library support.\nPlease set the enviroment variable '
+        'Compute Library support.\nPlease set the environment variable '
         '\"TF_ACL_ROOT\" every time before build.')
 
 def set_monolithic():
