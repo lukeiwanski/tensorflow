@@ -182,13 +182,24 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "and will be removed in the future.")
 
   native.new_http_archive(
+      name = "mkl_dnn",
+      urls = [
+          "https://github.com/01org/mkl-dnn/archive/b01e3a55a07be62172e713bcd2644c5176360212.tar.gz",
+          "http://mirror.bazel.build/github.com/01org/mkl-dnn/archive/b01e3a55a07be62172e713bcd2644c5176360212.tar.gz",
+      ],
+      sha256 = "0d529ad4c49dc799e6df07c2b88b115d0668735da15fb3b3862d28d33fa68165",
+      strip_prefix = "mkl-dnn-b01e3a55a07be62172e713bcd2644c5176360212",
+      build_file = str(Label("//third_party/mkl_dnn:mkldnn.BUILD")),
+  )
+
+  native.new_http_archive(
       name = "eigen_archive",
       urls = [
-          #"http://mirror.bazel.build/bitbucket.org/eigen/eigen/get/2b5586d1d4f3.tar.gz",
-          "https://bitbucket.org/mehdi_goli/opencl/get/70f3d6edbe02.tar.gz",
+          #"http://mirror.bazel.build/bitbucket.org/eigen/eigen/get/c484b7bc76d5.tar.gz",
+          "https://bitbucket.org/mehdi_goli/opencl/get/0701f78ee2de.tar.gz",
       ],
       #sha256 = "ca7beac153d4059c02c8fc59816c82d54ea47fe58365e8aded4082ded0b820c4",
-      strip_prefix = "mehdi_goli-opencl-70f3d6edbe02",
+      strip_prefix = "mehdi_goli-opencl-0701f78ee2de",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
@@ -724,12 +735,23 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       actual = "@cub_archive//:cub",
   )
 
+  native.new_http_archive(
+      name = "cython",
+      sha256 = "6dcd30b5ceb887b2b965ee7ceb82ea3acb5f0642fe2206c7636b45acea4798e5",
+      urls = [
+          "http://mirror.bazel.build/github.com/cython/cython/archive/3732784c45cfb040a5b0936951d196f83a12ea17.tar.gz",
+          "https://github.com/cython/cython/archive/3732784c45cfb040a5b0936951d196f83a12ea17.tar.gz",
+      ],
+      strip_prefix = "cython-3732784c45cfb040a5b0936951d196f83a12ea17",
+      build_file = str(Label("//third_party:cython.BUILD")),
+  )
+
   native.http_archive(
       name = "bazel_toolchains",
       urls = [
-          "http://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/9dbd803ad3b9447430a296810197b09b3a710956.tar.gz",
-          # "https://github.com/bazelbuild/bazel-toolchains/archive/9dbd803ad3b9447430a296810197b09b3a710956.tar.gz",
+          "http://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/b2b4b38433bf2d1159360855ea4004378308711b.tar.gz",
+          # "https://github.com/bazelbuild/bazel-toolchains/archive/b2b4b38433bf2d1159360855ea4004378308711b.tar.gz",
       ],
-      sha256 = "0799aa12db5260a499beb40f81744e760c59d055bfc5d271dd2c2ed4d5419faa",
-      strip_prefix = "bazel-toolchains-9dbd803ad3b9447430a296810197b09b3a710956",
+      sha256 = "46187270ca04ff8109980f45c3438fabfe48695e163789096eb82ee097ffe685",
+      strip_prefix = "bazel-toolchains-b2b4b38433bf2d1159360855ea4004378308711b",
   )

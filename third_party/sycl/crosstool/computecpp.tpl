@@ -109,7 +109,10 @@ def get_device_compiler_flags(compiler_flags):
       '-std=c++11',
       '-sycl', '-emit-llvm', '-no-serial-memop',
       '-Xclang', '-cl-denorms-are-zero',
-      '-Xclang', '-cl-fp32-correctly-rounded-divide-sqrt'
+      '-Xclang', '-cl-fp32-correctly-rounded-divide-sqrt',
+      '-Xclang', '-cl-mad-enable',
+      '-Xclang', '-cl-unsafe-math-optimizations',
+      '-mllvm', '-inline-threshold=10000000'
   ]
   return computecpp_flags + remove_unknown_computecpp_flags(compiler_flags)
 

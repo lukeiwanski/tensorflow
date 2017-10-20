@@ -154,7 +154,7 @@ class Tensor {
 
   /// Returns true iff this tensor is aligned.
   bool IsAligned() const {
-#if EIGEN_MAX_ALIGN_BYTES == 0 || defined(TENSORFLOW_USE_SYCL)
+#if EIGEN_MAX_ALIGN_BYTES == 0
     return true;
 #else
     void* ptr = base<void>();

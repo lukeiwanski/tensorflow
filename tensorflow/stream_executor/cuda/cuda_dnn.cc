@@ -562,7 +562,7 @@ static bool TensorOpMathEnabled() {
     bool ret;
     TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DISABLE_TENSOR_OP_MATH",
                                                /*default=*/false, &ret));
-    return ret;
+    return !ret;
   }();
   return is_enabled;
 }
@@ -583,6 +583,7 @@ class ScopedConvolutionDescriptor {
     }
     const auto& strides64 = convolution_descriptor.strides();
     const auto& padding64 = convolution_descriptor.padding();
+    const auto& dilations64 = convolution_descriptor.dilations();
     if (convolution_descriptor.pad_alignment() ==
         dnn::PadAlignment::kTensorFlowPadding) {
       LOG(ERROR) << "TensorFlow padding alignment is not supported.";
@@ -591,15 +592,19 @@ class ScopedConvolutionDescriptor {
     // cuDNN requires arrays of ints.
     std::vector<int> strides(convolution_descriptor.ndims());
     std::vector<int> padding(convolution_descriptor.ndims());
+    std::vector<int> dilations(convolution_descriptor.ndims());
     std::transform(strides64.cbegin(), strides64.cend(), strides.begin(),
                    &CheckedNarrowing<int64, int>);
     std::transform(padding64.cbegin(), padding64.cend(), padding.begin(),
                    &CheckedNarrowing<int64, int>);
-    std::vector<int> upscale(convolution_descriptor.ndims(), 1);
+    // TODO(yangzihao): Test with negative dilation to make sure that cudnn
+    // doesn't crash.
+    std::transform(dilations64.cbegin(), dilations64.cend(), dilations.begin(),
+                   &CheckedNarrowing<int64, int>);
 
     status = wrap::cudnnSetConvolutionNdDescriptor(
         parent_, handle_, convolution_descriptor.ndims(), padding.data(),
-        strides.data(), upscale.data(),
+        strides.data(), dilations.data(),
         // NOTE(keveman): cuDNN supports convolution and cross correlation.
         // However, almost all the use cases do cross correlation, so just
         // hard coding it here.
@@ -2469,58 +2474,73 @@ struct WinogradNonfused {
 };
 
 bool CudnnSupport::GetConvolveAlgorithms(
-    bool with_winograd_nonfused,
-    std::vector<dnn::AlgorithmDesc::Index>* out_algorithms) {
-  out_algorithms->assign({
-      // clang-format off
-      CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM,
-      CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
-      CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
-      CUDNN_CONVOLUTION_FWD_ALGO_DIRECT,
-      CUDNN_CONVOLUTION_FWD_ALGO_FFT,
+    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
+  std::vector<dnn::AlgorithmDesc::Index> algo_types = {
+    // clang-format off
+    CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM,
+    CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
+    CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
+    CUDNN_CONVOLUTION_FWD_ALGO_DIRECT,
+    CUDNN_CONVOLUTION_FWD_ALGO_FFT,
 #if CUDNN_VERSION >= 5000
-      CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD,
+    CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD,
 #endif
-      // clang-format on
-  });
+    // clang-format on
+  };
   if (CudnnEnvVar<FftTilingForward>::IsEnabled()) {
-    out_algorithms->push_back(CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING);
+    algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING);
   }
 #if CUDNN_VERSION >= 5100
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
-    out_algorithms->push_back(CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED);
+    algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED);
   }
 #endif
+
+  out_algorithms->clear();
+  for (auto i : algo_types) {
+    out_algorithms->push_back({i, /*use_tensor_ops=*/false});
+    if (cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled()) {
+      out_algorithms->push_back({i, /*use_tensor_ops=*/true});
+    }
+  }
   return true;
 }
 
 bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
-    bool with_winograd_nonfused,
-    std::vector<dnn::AlgorithmDesc::Index>* out_algorithms) {
-  out_algorithms->assign({
-      // clang-format off
-      CUDNN_CONVOLUTION_BWD_DATA_ALGO_0,
-      CUDNN_CONVOLUTION_BWD_DATA_ALGO_1,
-      CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT,
-      CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING,
+    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
+  std::vector<dnn::AlgorithmDesc::Index> algo_types = {
+    // clang-format off
+    CUDNN_CONVOLUTION_BWD_DATA_ALGO_0,
+    CUDNN_CONVOLUTION_BWD_DATA_ALGO_1,
+    CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT,
+    CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING,
 #if CUDNN_VERSION >= 5000
-      CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD,
+    CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD,
 #endif
-      // clang-format on
-  });
+    // clang-format on
+  };
 #if CUDNN_VERSION >= 5100
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
-    out_algorithms->push_back(
-        CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED);
+    algo_types.push_back(CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED);
   }
 #endif
+
+  out_algorithms->clear();
+  for (auto i : algo_types) {
+    out_algorithms->push_back({i, /*use_tensor_ops=*/false});
+    if (cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled()) {
+      out_algorithms->push_back({i, /*use_tensor_ops=*/true});
+    }
+  }
   return true;
 }
 
 bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
-    bool with_winograd_nonfused,
-    std::vector<dnn::AlgorithmDesc::Index>* out_algorithms) {
-  out_algorithms->assign({
+    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
+  std::vector<dnn::AlgorithmDesc::Index> algo_types = {
       // clang-format off
       CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0,
       CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1,
@@ -2529,13 +2549,20 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
       // Based on cudnn.h, the following is not implemented.
       // CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD,
       // clang-format on
-  });
+  };
 #if CUDNN_VERSION >= 5110
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
-    out_algorithms->push_back(
-        CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED);
+    algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED);
   }
 #endif
+
+  out_algorithms->clear();
+  for (auto i : algo_types) {
+    out_algorithms->push_back({i, /*use_tensor_ops=*/false});
+    if (cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled()) {
+      out_algorithms->push_back({i, /*use_tensor_ops=*/true});
+    }
+  }
   return true;
 }
 
@@ -2982,7 +3009,6 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
       if (memory_limit_bytes < 0) {
         memory_limit_bytes = 0;
       }
-
       cudnnConvolutionBwdDataAlgo_t algo_to_use;
       cudnnStatus_t status = wrap::cudnnGetConvolutionBackwardDataAlgorithm(
           parent_, ToHandle(dnn_handle_),
@@ -2995,7 +3021,7 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
           /*algo=*/&algo_to_use);
       CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Unable to find a suitable "
                                                 "algorithm for doing backward "
-                                                "filter convolution";
+                                                "data convolution";
       return algo_to_use;
     };
 

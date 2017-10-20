@@ -288,12 +288,13 @@ class RandomGammaOp : public OpKernel {
                                                       &samples_shape));
     }
     const int64 num_samples = samples_shape.num_elements();
-    if (num_samples == 0) return;
 
     samples_shape.AppendShape(alpha_t.shape());
     // Allocate output samples.
     Tensor* samples_t = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, samples_shape, &samples_t));
+
+    if (num_samples == 0) return;
 
     using random::PhiloxRandom;
 
@@ -677,7 +678,7 @@ void FillPhiloxRandom<SYCLDevice, Distribution>::operator()(
     typename Distribution::ResultElementType* data, int64 size,
     Distribution dist) {
 
-  const size_t group_size = device.maxSyclThreadsPerBlock();
+  const size_t group_size = device.getNearestPowerOfTwoWorkGroupSize();
   const size_t group_count = (size + group_size - 1) / group_size;
 
   auto buffer = device.get_sycl_buffer(data);

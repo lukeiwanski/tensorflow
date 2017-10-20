@@ -39,78 +39,6 @@ typedef Eigen::GpuDevice GPUDevice;
 typedef Eigen::SyclDevice SYCLDevice;
 #endif  // TENSORFLOW_USE_SYCL
 
-template <typename Device, typename T>
-class BiasOp : public BinaryOp<T> {
- public:
-  explicit BiasOp(OpKernelConstruction* context) : BinaryOp<T>(context) {
-    string data_format;
-    if (context->GetAttr("data_format", &data_format).ok()) {
-      OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                  errors::InvalidArgument("Invalid data format"));
-    } else {
-      data_format_ = FORMAT_NHWC;
-    }
-    OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument(context->device()->name() +
-                                        " BiasOp only supports NHWC."));
-  }
-
-  void Compute(OpKernelContext* context) override {
-    const Tensor& input = context->input(0);
-    const Tensor& bias = context->input(1);
-
-    OP_REQUIRES(context, TensorShapeUtils::IsMatrixOrHigher(input.shape()),
-                errors::InvalidArgument("Input tensor must be at least 2D: ",
-                                        input.shape().DebugString()));
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(bias.shape()),
-                errors::InvalidArgument("Biases must be 1D: ",
-                                        bias.shape().DebugString()));
-    const auto last_dim = input.shape().dims() - 1;
-    OP_REQUIRES(
-        context, bias.shape().dim_size(0) == input.shape().dim_size(last_dim),
-        errors::InvalidArgument(
-            "Must provide as many biases as the last dimension "
-            "of the input tensor: ",
-            bias.shape().DebugString(), " vs. ", input.shape().DebugString()));
-
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                {0}, 0, input.shape(), &output));
-    if (input.NumElements() == 0) return;
-
-    functor::Bias<Device, T> functor;
-    functor(context->template eigen_device<Device>(), input.flat<T>(),
-            bias.vec<T>(), output->flat<T>());
-  }
-
- private:
-  TensorFormat data_format_;
-};
-
-#define REGISTER_KERNEL(type)                                         \
-  REGISTER_KERNEL_BUILDER(                                            \
-      Name("BiasAdd").Device(DEVICE_CPU).TypeConstraint<type>("T"),   \
-      BiasOp<CPUDevice, type>);                                       \
-  REGISTER_KERNEL_BUILDER(                                            \
-      Name("BiasAddV1").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      BiasOp<CPUDevice, type>);
-
-TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
-#undef REGISTER_KERNEL
-
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_KERNEL(type)                                          \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("BiasAdd").Device(DEVICE_SYCL).TypeConstraint<type>("T"),   \
-      BiasOp<SYCLDevice, type>);                                       \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("BiasAddV1").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
-      BiasOp<SYCLDevice, type>);
-
-TF_CALL_INTEGRAL_TYPES(REGISTER_KERNEL);
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
-#undef REGISTER_KERNEL
-#endif  // TENSORFLOW_USE_SYCL
 namespace {
 
 void GetBiasValueDims(const Tensor& value_tensor, TensorFormat data_format,
@@ -154,6 +82,125 @@ struct AccumulatorType<Eigen::half> {
 }  // namespace
 
 template <typename Device, typename T>
+class BiasOp : public BinaryOp<T> {
+ public:
+  explicit BiasOp(OpKernelConstruction* context) : BinaryOp<T>(context) {
+    string data_format;
+    if (context->GetAttr("data_format", &data_format).ok()) {
+      OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                  errors::InvalidArgument("Invalid data format"));
+    } else {
+      data_format_ = FORMAT_NHWC;
+    }
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& input = context->input(0);
+    const Tensor& bias = context->input(1);
+
+    OP_REQUIRES(context, TensorShapeUtils::IsMatrixOrHigher(input.shape()),
+                errors::InvalidArgument("Input tensor must be at least 2D: ",
+                                        input.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(bias.shape()),
+                errors::InvalidArgument("Biases must be 1D: ",
+                                        bias.shape().DebugString()));
+
+    // Added by intel_tf to support NCHW on CPU regardless of MKL used or not.
+    size_t channel_dim;
+    if (data_format_ == FORMAT_NCHW) {
+      OP_REQUIRES(context, input.dims() == 4,
+                  errors::InvalidArgument(
+                      "NCHW format supports only 4D input tensor."));
+      channel_dim = 1;
+    } else {
+      channel_dim = input.shape().dims() - 1;  // End of code by intel_tf.
+    }
+
+    OP_REQUIRES(
+        context,
+        bias.shape().dim_size(0) == input.shape().dim_size(channel_dim),
+        errors::InvalidArgument(
+            "Must provide as many biases as the last dimension "
+            "of the input tensor: ",
+            bias.shape().DebugString(), " vs. ", input.shape().DebugString()));
+
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, input.shape(), &output));
+    if (input.NumElements() == 0) return;
+
+    // Added by intel_tf to support NCHW on CPU regardless of MKL used or not.
+    if (data_format_ == FORMAT_NCHW) {
+      int32 batch, height, width, channel;
+      GetBiasValueDims(input, data_format_, &batch, &height, &width, &channel);
+      Eigen::DSizes<int32, 4> four_dims(1, channel, 1, 1);
+      Eigen::DSizes<int32, 4> broad_cast_dims(batch, 1, height, width);
+      const Device& d = context->eigen_device<Device>();
+      output->tensor<T, 4>().device(d) =
+          input.tensor<T, 4>() +
+          bias.tensor<T, 1>().reshape(four_dims).broadcast(broad_cast_dims);
+      return;
+    }  // End of code by intel_tf.
+
+    switch (input.shape().dims()) {
+      case 2:
+        Compute<2>(context, input, bias, output);
+        break;
+      case 3:
+        Compute<3>(context, input, bias, output);
+        break;
+      case 4:
+        Compute<4>(context, input, bias, output);
+        break;
+      case 5:
+        Compute<5>(context, input, bias, output);
+        break;
+      default:
+        OP_REQUIRES(context, false,
+                    errors::InvalidArgument("Only ranks up to 5 supported: ",
+                                            input.shape().DebugString()));
+    }
+  }
+
+  // Add biases for an input matrix of rank Dims, by using the Bias.
+  template <int Dims>
+  void Compute(OpKernelContext* ctx, const Tensor& input, const Tensor& bias,
+               Tensor* output) {
+    functor::Bias<Device, T, Dims> functor;
+    functor(ctx->eigen_device<Device>(), input.tensor<T, Dims>(), bias.vec<T>(),
+            output->tensor<T, Dims>());
+  }
+
+ private:
+  TensorFormat data_format_;
+};
+
+#define REGISTER_KERNEL(type)                                         \
+  REGISTER_KERNEL_BUILDER(                                            \
+      Name("BiasAdd").Device(DEVICE_CPU).TypeConstraint<type>("T"),   \
+      BiasOp<CPUDevice, type>);                                       \
+  REGISTER_KERNEL_BUILDER(                                            \
+      Name("BiasAddV1").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+      BiasOp<CPUDevice, type>);
+
+TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
+#undef REGISTER_KERNEL
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_KERNEL(type)                                          \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("BiasAdd").Device(DEVICE_SYCL).TypeConstraint<type>("T"),   \
+      BiasOp<SYCLDevice, type>);                                       \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("BiasAddV1").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      BiasOp<SYCLDevice, type>);
+
+TF_CALL_INTEGRAL_TYPES(REGISTER_KERNEL);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
+#undef REGISTER_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
+
+template <typename Device, typename T>
 class BiasGradOp : public OpKernel {
  public:
   explicit BiasGradOp(OpKernelConstruction* context) : OpKernel(context) {
@@ -164,9 +211,6 @@ class BiasGradOp : public OpKernel {
     } else {
       data_format_ = FORMAT_NHWC;
     }
-    OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument(context->device()->name() +
-                                        " BiasGradOp only supports NHWC."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -197,17 +241,40 @@ class BiasGradOp : public OpKernel {
       output->template flat<T>().device(context->eigen_device<Device>()) =
         output->template flat<T>().constant(T(0));
     } else {
-      Eigen::DSizes<int, 2> two_dims(batch * height * width, channel);
+      // Added by intel_tf to support NCHW on CPU regardless of MKL used or not.
+      if (data_format_ == FORMAT_NCHW) {
+        OP_REQUIRES(context, output_backprop.dims() == 4,
+                    errors::InvalidArgument(
+                        "NCHW format supports only 4D input/output tensor."));
+        Eigen::DSizes<int, 4> four_dims(batch, channel, height, width);
 #ifdef EIGEN_HAS_INDEX_LIST
-      Eigen::IndexList<Eigen::type2index<0> > reduction_axis;
+        using idx0 = Eigen::type2index<0>;
+        using idx2 = Eigen::type2index<2>;
+        using idx3 = Eigen::type2index<3>;
+        Eigen::IndexList<idx0, idx2, idx3> reduction_axes;
 #else
-      Eigen::array<int, 1> reduction_axis = {0};
+        Eigen::array<int, 3> reduction_axes = {0, 2, 3};
 #endif
-      output->template flat<T>().device(context->eigen_device<Device>()) =
-          output_backprop.flat_inner_dims<T>()
-              .template cast<typename AccumulatorType<T>::type>()
-              .sum(reduction_axis)
-              .template cast<T>();
+        output->template flat<T>().device(context->eigen_device<Device>()) =
+            output_backprop.flat<T>()
+                .template cast<typename AccumulatorType<T>::type>()
+                .reshape(four_dims)
+                .sum(reduction_axes)
+                .template cast<T>();  // End of code by intel_tf.
+      } else {
+        Eigen::DSizes<int, 2> two_dims(batch * height * width, channel);
+#ifdef EIGEN_HAS_INDEX_LIST
+        Eigen::IndexList<Eigen::type2index<0> > reduction_axis;
+#else
+        Eigen::array<int, 1> reduction_axis = {0};
+#endif
+        output->template flat<T>().device(context->eigen_device<Device>()) =
+            output_backprop.flat<T>()
+                .template cast<typename AccumulatorType<T>::type>()
+                .reshape(two_dims)
+                .sum(reduction_axis)
+                .template cast<T>();
+      }
     }
   }
 

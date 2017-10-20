@@ -182,7 +182,7 @@ class SumReductionTest(BaseReductionTest):
 
     # test that mean doesn't overflow
     # only on GPU, since it has the more accurate implementation
-    if not test.is_gpu_available():
+    if not test.is_gpu_available(cuda_only=True):
       return
 
     arr = np.ones([68000], dtype=np.float16)

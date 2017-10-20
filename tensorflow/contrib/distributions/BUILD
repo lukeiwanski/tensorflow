@@ -305,6 +305,8 @@ cuda_py_test(
     additional_deps = [
         ":distributions_py",
         "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -671,6 +673,24 @@ cuda_py_test(
         "//third_party/py/numpy",
         "@six_archive//:six",
         "//tensorflow/contrib/linalg:linalg_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "absolute_value_test",
+    size = "small",
+    srcs = ["python/kernel_tests/bijectors/absolute_value_test.py"],
+    additional_deps = [
+        ":bijectors_py",
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",

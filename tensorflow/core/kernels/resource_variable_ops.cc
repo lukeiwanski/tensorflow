@@ -395,16 +395,16 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(type)                                      \
-  REGISTER_KERNEL_BUILDER(Name("AssignAddVariableOp")                    \
-                              .Device(DEVICE_SYCL)                       \
-                              .HostMemory("resource")                    \
-                              .TypeConstraint<type>("dtype"),            \
-                          AssignUpdateVariableOp<SYCLDevice, type, ADD>);\
-  REGISTER_KERNEL_BUILDER(Name("AssignSubVariableOp")                    \
-                              .Device(DEVICE_SYCL)                       \
-                              .HostMemory("resource")                    \
-                              .TypeConstraint<type>("dtype"),            \
+#define REGISTER_SYCL_KERNELS(type)                                       \
+  REGISTER_KERNEL_BUILDER(Name("AssignAddVariableOp")                     \
+                              .Device(DEVICE_SYCL)                        \
+                              .HostMemory("resource")                     \
+                              .TypeConstraint<type>("dtype"),             \
+                          AssignUpdateVariableOp<SYCLDevice, type, ADD>); \
+  REGISTER_KERNEL_BUILDER(Name("AssignSubVariableOp")                     \
+                              .Device(DEVICE_SYCL)                        \
+                              .HostMemory("resource")                     \
+                              .TypeConstraint<type>("dtype"),             \
                           AssignUpdateVariableOp<SYCLDevice, type, SUB>);
 
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS);
@@ -517,9 +517,21 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_GATHER_GPU);
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_GATHER_SYCL(type) REGISTER_GATHER_ALL_INDICES(SYCL, type)
+#define REGISTER_GATHER_SYCL(type, index_type)                         \
+  REGISTER_KERNEL_BUILDER(Name("ResourceGather")                       \
+                              .Device(DEVICE_SYCL)                     \
+                              .HostMemory("resource")                  \
+                              .HostMemory("indices")                   \
+                              .TypeConstraint<type>("dtype")           \
+                              .TypeConstraint<index_type>("Tindices"), \
+                          ResourceGatherOp<SYCLDevice, type, index_type>)
 
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_GATHER_SYCL);
+#define REGISTER_GATHER_SYCL_ALL_INDICES(type) \
+  REGISTER_GATHER_SYCL(type, int32);           \
+  REGISTER_GATHER_SYCL(type, int64)
+
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_GATHER_SYCL_ALL_INDICES);
+#undef REGISTER_GATHER_SYCL_ALL_INDICES
 #undef REGISTER_GATHER_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 

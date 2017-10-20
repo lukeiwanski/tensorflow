@@ -223,6 +223,10 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
         ConvBackpropComputeDimensions(
             type_string(), /*num_spatial_dims=*/2, input.shape(), filter_shape,
             out_backprop.shape(), strides_, padding_, data_format_, &dims));
+    LOG(INFO) << "Filter: \nInput:"<< input.shape().DebugString().c_str() << 
+      "\nOutput:"<<out_backprop.shape().DebugString().c_str() <<
+      "\nFilter:"<<filter_shape.DebugString().c_str()<<
+      "\nStrides:"<<strides_[0] << " " << strides_[1];
 
     Tensor* filter_backprop = nullptr;
     OP_REQUIRES_OK(context,
@@ -823,40 +827,35 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune && !AutoTuneConvBwdFilter::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {
-    std::vector<AlgorithmDesc::Index> algorithms;
+    std::vector<AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
     ProfileResult best_result;
     ProfileResult best_result_no_scratch;
-    // TODO(benbarsdell): Ideally this should not attempt using tensor op math
-    // if it's not enabled.
-    for (bool use_tensor_ops : {false, true}) {
-      for (auto algo_index : algorithms) {
-        // TODO(zhengxq): profile each algorithm multiple times to better
-        // accuracy.
-        AlgorithmDesc profile_algorithm(algo_index, use_tensor_ops);
-        CudnnScratchAllocator scratch_allocator(
-            ConvolveBackwardFilterScratchSize, ctx);
-        ProfileResult profile_result;
-        bool cudnn_launch_status =
-            stream
-                ->ThenConvolveBackwardFilterWithAlgorithm(
-                    input_desc, input_ptr, output_desc, out_backprop_ptr,
-                    conv_desc, filter_desc, &filter_backprop_ptr,
-                    &scratch_allocator, AlgorithmConfig(profile_algorithm),
-                    &profile_result)
-                .ok();
-        if (cudnn_launch_status) {
-          if (profile_result.is_valid()) {
-            if (profile_result.elapsed_time_in_ms() <
-                best_result.elapsed_time_in_ms()) {
-              best_result = profile_result;
-            }
-            if (scratch_allocator.TotalByteSize() == 0 &&
-                profile_result.elapsed_time_in_ms() <
-                    best_result_no_scratch.elapsed_time_in_ms()) {
-              best_result_no_scratch = profile_result;
-            }
+    for (auto profile_algorithm : algorithms) {
+      // TODO(zhengxq): profile each algorithm multiple times to better
+      // accuracy.
+      CudnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
+                                              ctx);
+      ProfileResult profile_result;
+      bool cudnn_launch_status =
+          stream
+              ->ThenConvolveBackwardFilterWithAlgorithm(
+                  input_desc, input_ptr, output_desc, out_backprop_ptr,
+                  conv_desc, filter_desc, &filter_backprop_ptr,
+                  &scratch_allocator, AlgorithmConfig(profile_algorithm),
+                  &profile_result)
+              .ok();
+      if (cudnn_launch_status) {
+        if (profile_result.is_valid()) {
+          if (profile_result.elapsed_time_in_ms() <
+              best_result.elapsed_time_in_ms()) {
+            best_result = profile_result;
+          }
+          if (scratch_allocator.TotalByteSize() == 0 &&
+              profile_result.elapsed_time_in_ms() <
+                  best_result_no_scratch.elapsed_time_in_ms()) {
+            best_result_no_scratch = profile_result;
           }
         }
       }

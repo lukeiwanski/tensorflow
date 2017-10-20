@@ -298,19 +298,18 @@ class Conv2DOp : public BinaryOp<T> {
                                         filter.shape().DebugString()));
 
     for (int i = 0; i < 3; i++) {
-      OP_REQUIRES(
-          context,
-          FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
-          errors::InvalidArgument("filter too large"));
+      OP_REQUIRES(context, FastBoundsCheck(filter.dim_size(i),
+                                           std::numeric_limits<int>::max()),
+                  errors::InvalidArgument("filter too large"));
     }
 
     // The last dimension for input is in_depth. It must be the same as the
     // filter's in_depth.
     const int64 in_depth = GetTensorDim(input, data_format_, 'C');
-    OP_REQUIRES(context, in_depth == filter.dim_size(2),
-                errors::InvalidArgument(
-                    "input and filter must have the same depth: ", in_depth,
-                    " vs ", filter.dim_size(2)));
+    OP_REQUIRES(
+        context, in_depth == filter.dim_size(2),
+        errors::InvalidArgument("input and filter must have the same depth: ",
+                                in_depth, " vs ", filter.dim_size(2)));
 
     // The last dimension for filter is out_depth.
     const int out_depth = static_cast<int>(filter.dim_size(3));
@@ -318,20 +317,18 @@ class Conv2DOp : public BinaryOp<T> {
     // The second dimension for input is rows/height.
     // The first dimension for filter is rows/height.
     const int64 input_rows_raw = GetTensorDim(input, data_format_, 'H');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_rows_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("Input rows too large"));
+    OP_REQUIRES(context, FastBoundsCheck(input_rows_raw,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("Input rows too large"));
     const int input_rows = static_cast<int>(input_rows_raw);
     const int filter_rows = static_cast<int>(filter.dim_size(0));
 
     // The third dimension for input is columns/width.
     // The second dimension for filter is columns/width.
     const int64 input_cols_raw = GetTensorDim(input, data_format_, 'W');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_cols_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("Input cols too large"));
+    OP_REQUIRES(context, FastBoundsCheck(input_cols_raw,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("Input cols too large"));
     const int input_cols = static_cast<int>(input_cols_raw);
     const int filter_cols = static_cast<int>(filter.dim_size(1));
 
@@ -362,7 +359,7 @@ class Conv2DOp : public BinaryOp<T> {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
 
-    VLOG(2) << "Conv2D: in_depth = " << in_depth
+    LOG(INFO) << "Conv2D: in_depth = " << in_depth
             << ", input_cols = " << input_cols
             << ", filter_cols = " << filter_cols
             << ", input_rows = " << input_rows
@@ -670,38 +667,33 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune &&
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
-    std::vector<AlgorithmDesc::Index> algorithms;
+    std::vector<AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveAlgorithms(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
     ProfileResult best_result;
     ProfileResult best_result_no_scratch;
-    // TODO(benbarsdell): Ideally this should not attempt using tensor op math
-    // if it's not enabled.
-    for (bool use_tensor_ops : {false, true}) {
-      for (auto algo_index : algorithms) {
-        // TODO(zhengxq): profile each algorithm multiple times to better
-        // accuracy.
-        AlgorithmDesc profile_algorithm(algo_index, use_tensor_ops);
-        CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-        ProfileResult profile_result;
-        bool cudnn_launch_status =
-            stream
-                ->ThenConvolveWithAlgorithm(
-                    input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                    output_desc, &output_ptr, &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm), &profile_result)
-                .ok();
-        if (cudnn_launch_status) {
-          if (profile_result.is_valid()) {
-            if (profile_result.elapsed_time_in_ms() <
-                best_result.elapsed_time_in_ms()) {
-              best_result = profile_result;
-            }
-            if (scratch_allocator.TotalByteSize() == 0 &&
-                profile_result.elapsed_time_in_ms() <
-                    best_result_no_scratch.elapsed_time_in_ms()) {
-              best_result_no_scratch = profile_result;
-            }
+    for (auto profile_algorithm : algorithms) {
+      // TODO(zhengxq): profile each algorithm multiple times to better
+      // accuracy.
+      CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+      ProfileResult profile_result;
+      bool cudnn_launch_status =
+          stream
+              ->ThenConvolveWithAlgorithm(
+                  input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+                  output_desc, &output_ptr, &scratch_allocator,
+                  AlgorithmConfig(profile_algorithm), &profile_result)
+              .ok();
+      if (cudnn_launch_status) {
+        if (profile_result.is_valid()) {
+          if (profile_result.elapsed_time_in_ms() <
+              best_result.elapsed_time_in_ms()) {
+            best_result = profile_result;
+          }
+          if (scratch_allocator.TotalByteSize() == 0 &&
+              profile_result.elapsed_time_in_ms() <
+                  best_result_no_scratch.elapsed_time_in_ms()) {
+            best_result_no_scratch = profile_result;
           }
         }
       }
