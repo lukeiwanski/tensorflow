@@ -536,7 +536,8 @@ filegroup(
     data = if_mkl(
         [
             "//third_party/mkl:intel_binary_blob",
-        ],) + if_acl(
+        ],
+    ) + if_acl(
         [
             "//third_party/acl:intel_binary_blob",
         ],

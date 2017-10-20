@@ -1779,7 +1779,10 @@ tf_cuda_library(
             "//third_party/mkl:intel_binary_blob",
             "@mkl_dnn//:mkl_dnn",
         ],
-    ) + if_acl(["//third_party/acl:intel_binary_blob",],
+    ) + if_acl(
+        [
+            "//third_party/acl:intel_binary_blob",
+        ],
     ),
     alwayslink = 1,
 )
@@ -1997,8 +2000,14 @@ tf_cuda_library(
         ":protos_all_cc",
         "//third_party/eigen3",
         "//tensorflow/core/grappler:grappler_item",
-    ] + if_mkl(["//third_party/mkl:intel_binary_blob",],
-    ) + if_acl(["//third_party/acl:intel_binary_blob",],
+    ] + if_mkl(
+        [
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ) + if_acl(
+        [
+            "//third_party/acl:intel_binary_blob",
+        ],
     ),
     alwayslink = 1,
 )
@@ -2043,9 +2052,11 @@ tf_cuda_library(
             "//third_party/mkl:intel_binary_blob",
             "@mkl_dnn//:mkl_dnn",
         ],
-    ) + if_acl(["//third_party/acl:intel_binary_blob"],
+    ) + if_acl(
+        [
+            "//third_party/acl:intel_binary_blob"
+        ],
     ) + tf_additional_core_deps() + if_static([":core_cpu_impl"]),
-    ),
     alwayslink = 1,
 )
 

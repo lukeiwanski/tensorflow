@@ -185,6 +185,6 @@ sh_binary(
             "//tensorflow/python:test_ops",
             "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
         ],
-    }) + if_mkl(["//third_party/mkl:intel_binary_blob"])
-    + if_acl(["//third_party/acl:intel_binary_blob"]),
+    }) + if_mkl(["//third_party/mkl:intel_binary_blob"]
+    ) + if_acl(["//third_party/acl:intel_binary_blob"]),
 )
