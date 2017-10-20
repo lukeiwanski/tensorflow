@@ -227,10 +227,6 @@ class Conv2DFastBackpropInputOp : public OpKernel {
                        "Conv2DFastBackpropInput", /*num_spatial_dims=*/2,
                        input_shape, filter.shape(), out_backprop.shape(),
                        strides_, padding_, data_format_, &dims));
-    LOG(INFO) << "Input: \nInput:"<< input_shape.DebugString().c_str() <<
-      "\nOutput:"<<out_backprop.shape().DebugString().c_str() <<
-      "\nFilter:"<<filter.shape().DebugString().c_str()<<
-      "\nStrides:"<<strides_[0] << " " << strides_[1];
 
     Tensor* in_backprop = nullptr;
     OP_REQUIRES_OK(context,

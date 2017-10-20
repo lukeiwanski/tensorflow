@@ -395,16 +395,16 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(type)                                       \
-  REGISTER_KERNEL_BUILDER(Name("AssignAddVariableOp")                     \
-                              .Device(DEVICE_SYCL)                        \
-                              .HostMemory("resource")                     \
-                              .TypeConstraint<type>("dtype"),             \
-                          AssignUpdateVariableOp<SYCLDevice, type, ADD>); \
-  REGISTER_KERNEL_BUILDER(Name("AssignSubVariableOp")                     \
-                              .Device(DEVICE_SYCL)                        \
-                              .HostMemory("resource")                     \
-                              .TypeConstraint<type>("dtype"),             \
+#define REGISTER_SYCL_KERNELS(type)                                      \
+  REGISTER_KERNEL_BUILDER(Name("AssignAddVariableOp")                    \
+                              .Device(DEVICE_SYCL)                       \
+                              .HostMemory("resource")                    \
+                              .TypeConstraint<type>("dtype"),            \
+                          AssignUpdateVariableOp<SYCLDevice, type, ADD>);\
+  REGISTER_KERNEL_BUILDER(Name("AssignSubVariableOp")                    \
+                              .Device(DEVICE_SYCL)                       \
+                              .HostMemory("resource")                    \
+                              .TypeConstraint<type>("dtype"),            \
                           AssignUpdateVariableOp<SYCLDevice, type, SUB>);
 
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS);
