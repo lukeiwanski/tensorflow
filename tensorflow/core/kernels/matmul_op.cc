@@ -504,8 +504,8 @@ class MatMulOp : public OpKernel {
     arm_compute::CLGEMM arm_gemm;
     arm_compute::CLTensor arm_a, arm_b, arm_out;
 
-    const arm_compute::TensorShape shape_a{a.shape().dim_size(0), a.shape().dim_size(1)},
-          shape_b{b.shape().dim_size(0), b.shape().dim_size(1)},
+    const arm_compute::TensorShape shape_a{b.shape().dim_size(0), b.shape().dim_size(1)},
+          shape_b{a.shape().dim_size(0), a.shape().dim_size(1)},
           shape_out{out->shape().dim_size(0), out->shape().dim_size(1)};
     arm_a.allocator()->init(arm_compute::TensorInfo(shape_a, 1, arm_compute::DataType::F32));
     arm_b.allocator()->init(arm_compute::TensorInfo(shape_b, 1, arm_compute::DataType::F32));
@@ -531,14 +531,14 @@ class MatMulOp : public OpKernel {
         arm_tensor.unmap();
     };
 
-    fill_with_window(a, arm_a); fill_with_window(b, arm_b);
+    fill_with_window(b, arm_a); fill_with_window(a, arm_b);;
     arm_gemm.run();
 
     arm_compute::Window out_win;
     out_win.use_tensor_dimensions(arm_out.info()->tensor_shape());
+    arm_out.map(true);
     arm_compute::Iterator out_it(&arm_out, out_win);
     auto eigen_out = out->flat<T>();
-    arm_out.map(true);
     arm_compute::execute_window_loop(out_win, [&] (arm_compute::Coordinates& c) {
       eigen_out.data()[c.y() * out->shape().dim_size(0) + c.x()] = *reinterpret_cast<float*>(out_it.ptr());
     }, out_it);
