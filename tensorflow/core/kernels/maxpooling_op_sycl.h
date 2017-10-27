@@ -45,28 +45,28 @@ template <typename T>
 class MaxPool2DSYCL {
  public:
   static constexpr auto read_mode = cl::sycl::access::mode::read;
-  static constexpr auto write_mode = cl::sycl::access::mode::write;
+  static constexpr auto write_mode = cl::sycl::access::mode::discard_write;
   static constexpr auto global_access = cl::sycl::access::target::global_buffer;
   using read_accessor =
       cl::sycl::accessor<uint8_t, 1, read_mode, global_access>;
   using write_accessor =
       cl::sycl::accessor<uint8_t, 1, write_mode, global_access>;
 
-  MaxPool2DSYCL(const int n_threads, const PoolParameters& params,
+  MaxPool2DSYCL(const int n_threads, const int output_size,
+                const PoolParameters& params,
                 const read_accessor input_accessor,
                 write_accessor output_accessor)
       : n_threads_{n_threads},
+        output_size_{output_size},
         p_{params},
         input_accessor_{input_accessor},
         output_accessor_{output_accessor} {}
   inline TF_ATTRIBUTE_ALWAYS_INLINE void operator()(cl::sycl::item<1> item) {
-    T* input_data = ConvertToActualTypeSycl(T, input_accessor_);
-    T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
-
-    const size_t num_elements = output_accessor_.get_size() / sizeof(T);
-
     int index = item.get(0);
-    if (index < num_elements) {
+    if (index < output_size_) {
+      T* input_data = ConvertToActualTypeSycl(T, input_accessor_);
+      T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
+
       int n = index;
       int d = n % p_.depth_;
       n /= p_.depth_;
@@ -79,8 +79,7 @@ class MaxPool2DSYCL {
       rstart = cl::sycl::max(rstart, 0);
       n /= p_.out_rows_;
       T maxval = Eigen::NumTraits<T>::lowest();
-      const T* input_data_n =
-          input_data + n * p_.in_cols_ * p_.in_rows_ * p_.depth_;
+      const T* input_data_n = input_data + n * p_.in_cols_ * p_.in_rows_ * p_.depth_;
       for (int r = rstart; r < rend; ++r) {
         for (int c = cstart; c < cend; ++c) {
           int idx = (r * p_.in_cols_ + c) * p_.depth_ + d;
@@ -95,6 +94,7 @@ class MaxPool2DSYCL {
 
  private:
   const int n_threads_;
+  const int output_size_;
   const SYCL2DPoolParams p_;
   const read_accessor input_accessor_;
   write_accessor output_accessor_;
@@ -111,7 +111,8 @@ struct LaunchMaxPoolingOpSYCL {
 
     const int output_size = output->NumElements();
     const int workgroup_size = device.maxSyclThreadsPerBlock();
-    const int n_threads = RoundUpToNearestMultiple(output_size, workgroup_size);
+    const int n_threads = output_size > workgroup_size ? RoundUpToNearestMultiple(output_size, workgroup_size) :
+                                                         output_size;
 
     auto input_buffer =
         device.get_sycl_buffer(tensor_in.template flat<T>().data());
@@ -121,7 +122,7 @@ struct LaunchMaxPoolingOpSYCL {
     device.sycl_queue().submit([&](cl::sycl::handler& cgh) {
       auto input_access = input_buffer.template get_access<read_mode>(cgh);
       auto output_access = output_buffer.template get_access<write_mode>(cgh);
-      Functor max_pool(n_threads, params, input_access, output_access);
+      Functor max_pool(n_threads, output_size, params, input_access, output_access);
 
       cgh.parallel_for(cl::sycl::range<1>(n_threads), max_pool);
     });
@@ -143,34 +144,34 @@ template <typename T>
 class MaxPoolGradSYCL {
  public:
   static constexpr auto read_mode = cl::sycl::access::mode::read;
-  static constexpr auto write_mode = cl::sycl::access::mode::write;
+  static constexpr auto write_mode = cl::sycl::access::mode::discard_write;
   static constexpr auto global_access = cl::sycl::access::target::global_buffer;
   using read_accessor =
       cl::sycl::accessor<uint8_t, 1, read_mode, global_access>;
   using write_accessor =
       cl::sycl::accessor<uint8_t, 1, write_mode, global_access>;
 
-  MaxPoolGradSYCL(const int n_threads, const SYCL2DPoolParams& params,
+  MaxPoolGradSYCL(const int n_threads, const int output_size,
+                  const SYCL2DPoolParams& params,
                   const read_accessor input_data_accessor,
                   const read_accessor output_data_accessor,
                   const read_accessor input_backprop_accessor,
                   write_accessor output_backprop_accessor)
       : n_threads_{n_threads},
+        output_size_{output_size},
         p_{params},
         input_data_accessor_{input_data_accessor},
         output_data_accessor_{output_data_accessor},
         input_backprop_accessor_{input_backprop_accessor},
         output_backprop_accessor_{output_backprop_accessor} {}
   inline TF_ATTRIBUTE_ALWAYS_INLINE void operator()(cl::sycl::item<1> item) {
-    T* input_data = ConvertToActualTypeSycl(T, input_data_accessor_);
-    T* output_data = ConvertToActualTypeSycl(T, output_data_accessor_);
-    T* input_backprop = ConvertToActualTypeSycl(T, input_backprop_accessor_);
-    T* output_backprop = ConvertToActualTypeSycl(T, output_backprop_accessor_);
-
-    const size_t output_backprop_ret_size = output_backprop_accessor_.get_size() / sizeof(T);
-
     const int index = item.get(0);
-    if (index < output_backprop_ret_size) {
+    if (index < output_size_) {
+      T* input_data = ConvertToActualTypeSycl(T, input_data_accessor_);
+      T* output_data = ConvertToActualTypeSycl(T, output_data_accessor_);
+      T* input_backprop = ConvertToActualTypeSycl(T, input_backprop_accessor_);
+      T* output_backprop = ConvertToActualTypeSycl(T, output_backprop_accessor_);
+
       T output_value = static_cast<T>(0);
       int n = index;
       const int d = n % p_.depth_;
@@ -234,6 +235,7 @@ class MaxPoolGradSYCL {
 
  private:
   const int n_threads_;
+  const int output_size_;
   const SYCL2DPoolParams p_;
 
   const read_accessor input_data_accessor_;
@@ -254,7 +256,8 @@ struct LaunchMaxPoolingGradOpSYCL {
 
     const int output_size = output->NumElements();
     const int workgroup_size = device.maxSyclThreadsPerBlock();
-    const int n_threads = RoundUpToNearestMultiple(output_size, workgroup_size);
+    const int n_threads = output_size > workgroup_size ? RoundUpToNearestMultiple(output_size, workgroup_size) :
+                                                         output_size;
 
     auto input_data_buffer =
         device.get_sycl_buffer(tensor_in.template flat<T>().data());
@@ -274,7 +277,7 @@ struct LaunchMaxPoolingGradOpSYCL {
           input_backprop_buffer.template get_access<read_mode>(cgh);
       auto output_backprop_access =
           output_backprop_buffer.template get_access<write_mode>(cgh);
-      Functor max_pool(n_threads, params, input_data_access, output_data_access,
+      Functor max_pool(n_threads, output_size, params, input_data_access, output_data_access,
                        input_backprop_access, output_backprop_access);
 
       cgh.parallel_for(cl::sycl::range<1>(n_threads), max_pool);
@@ -295,34 +298,34 @@ template <typename T>
 class MaxPoolGradGradSYCL {
  public:
   static constexpr auto read_mode = cl::sycl::access::mode::read;
-  static constexpr auto write_mode = cl::sycl::access::mode::write;
+  static constexpr auto write_mode = cl::sycl::access::mode::discard_write;
   static constexpr auto global_access = cl::sycl::access::target::global_buffer;
   using read_accessor =
       cl::sycl::accessor<uint8_t, 1, read_mode, global_access>;
   using write_accessor =
       cl::sycl::accessor<uint8_t, 1, write_mode, global_access>;
 
-  MaxPoolGradGradSYCL(const int n_threads, const PoolParameters& params,
+  MaxPoolGradGradSYCL(const int n_threads, const int output_size,
+                      const PoolParameters& params,
                       const read_accessor input_data_accessor,
                       const read_accessor output_data_accessor,
                       const read_accessor input_backprop_accessor,
                       write_accessor output_backprop_accessor)
       : n_threads_{n_threads},
+        output_size_{output_size},
         p_{params},
         input_data_accessor_{input_data_accessor},
         output_data_accessor_{output_data_accessor},
         input_backprop_accessor_{input_backprop_accessor},
         output_backprop_accessor_{output_backprop_accessor} {}
   inline TF_ATTRIBUTE_ALWAYS_INLINE void operator()(cl::sycl::item<1> item) {
-    T* input_data = ConvertToActualTypeSycl(T, input_data_accessor_);
-    T* output_data = ConvertToActualTypeSycl(T, output_data_accessor_);
-    T* input_backprop = ConvertToActualTypeSycl(T, input_backprop_accessor_);
-    T* output_backprop = ConvertToActualTypeSycl(T, output_backprop_accessor_);
-
-    const size_t output_data_ret_size = output_data_accessor_.get_size() / sizeof(T);
-
     int index = item.get(0);
-    if (index < output_data_ret_size) {
+    if (index < output_size_) {
+      T* input_data = ConvertToActualTypeSycl(T, input_data_accessor_);
+      T* output_data = ConvertToActualTypeSycl(T, output_data_accessor_);
+      T* input_backprop = ConvertToActualTypeSycl(T, input_backprop_accessor_);
+      T* output_backprop = ConvertToActualTypeSycl(T, output_backprop_accessor_);
+
       int n = index;
       int d = n % p_.depth_;
       n /= p_.depth_;
@@ -356,6 +359,7 @@ class MaxPoolGradGradSYCL {
 
  private:
   const int n_threads_;
+  const int output_size_;
   const SYCL2DPoolParams p_;
 
   const read_accessor input_data_accessor_;
@@ -376,7 +380,8 @@ struct LaunchMaxPoolingGradGradOpSYCL {
 
     const int output_size = output->NumElements();
     const int workgroup_size = device.maxSyclThreadsPerBlock();
-    const int n_threads = RoundUpToNearestMultiple(output_size, workgroup_size);
+    const int n_threads = output_size > workgroup_size ? RoundUpToNearestMultiple(output_size, workgroup_size) :
+                                                         output_size;
 
     auto input_data_buffer =
         device.get_sycl_buffer(tensor_in.template flat<T>().data());
@@ -396,7 +401,7 @@ struct LaunchMaxPoolingGradGradOpSYCL {
           input_backprop_buffer.template get_access<read_mode>(cgh);
       auto output_backprop_access =
           output_backprop_buffer.template get_access<write_mode>(cgh);
-      Functor maxpoolgradgrad(n_threads, params, input_data_access,
+      Functor maxpoolgradgrad(n_threads, output_size, params, input_data_access,
                               output_data_access, input_backprop_access,
                               output_backprop_access);
 
