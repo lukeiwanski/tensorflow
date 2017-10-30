@@ -52,12 +52,11 @@ class MaxPool2DSYCL {
   using write_accessor =
       cl::sycl::accessor<uint8_t, 1, write_mode, global_access>;
 
-  MaxPool2DSYCL(const int n_threads, const int output_size,
+  MaxPool2DSYCL(const int output_size,
                 const PoolParameters& params,
                 const read_accessor input_accessor,
                 write_accessor output_accessor)
-      : n_threads_{n_threads},
-        output_size_{output_size},
+      : output_size_{output_size},
         p_{params},
         input_accessor_{input_accessor},
         output_accessor_{output_accessor} {}
@@ -93,7 +92,6 @@ class MaxPool2DSYCL {
   }
 
  private:
-  const int n_threads_;
   const int output_size_;
   const SYCL2DPoolParams p_;
   const read_accessor input_accessor_;
@@ -122,7 +120,7 @@ struct LaunchMaxPoolingOpSYCL {
     device.sycl_queue().submit([&](cl::sycl::handler& cgh) {
       auto input_access = input_buffer.template get_access<read_mode>(cgh);
       auto output_access = output_buffer.template get_access<write_mode>(cgh);
-      Functor max_pool(n_threads, output_size, params, input_access, output_access);
+      Functor max_pool(output_size, params, input_access, output_access);
 
       cgh.parallel_for(cl::sycl::range<1>(n_threads), max_pool);
     });
@@ -151,14 +149,13 @@ class MaxPoolGradSYCL {
   using write_accessor =
       cl::sycl::accessor<uint8_t, 1, write_mode, global_access>;
 
-  MaxPoolGradSYCL(const int n_threads, const int output_size,
+  MaxPoolGradSYCL(const int output_size,
                   const SYCL2DPoolParams& params,
                   const read_accessor input_data_accessor,
                   const read_accessor output_data_accessor,
                   const read_accessor input_backprop_accessor,
                   write_accessor output_backprop_accessor)
-      : n_threads_{n_threads},
-        output_size_{output_size},
+      : output_size_{output_size},
         p_{params},
         input_data_accessor_{input_data_accessor},
         output_data_accessor_{output_data_accessor},
@@ -234,7 +231,6 @@ class MaxPoolGradSYCL {
   }
 
  private:
-  const int n_threads_;
   const int output_size_;
   const SYCL2DPoolParams p_;
 
@@ -277,7 +273,7 @@ struct LaunchMaxPoolingGradOpSYCL {
           input_backprop_buffer.template get_access<read_mode>(cgh);
       auto output_backprop_access =
           output_backprop_buffer.template get_access<write_mode>(cgh);
-      Functor max_pool(n_threads, output_size, params, input_data_access, output_data_access,
+      Functor max_pool(output_size, params, input_data_access, output_data_access,
                        input_backprop_access, output_backprop_access);
 
       cgh.parallel_for(cl::sycl::range<1>(n_threads), max_pool);
@@ -305,14 +301,13 @@ class MaxPoolGradGradSYCL {
   using write_accessor =
       cl::sycl::accessor<uint8_t, 1, write_mode, global_access>;
 
-  MaxPoolGradGradSYCL(const int n_threads, const int output_size,
+  MaxPoolGradGradSYCL(const int output_size,
                       const PoolParameters& params,
                       const read_accessor input_data_accessor,
                       const read_accessor output_data_accessor,
                       const read_accessor input_backprop_accessor,
                       write_accessor output_backprop_accessor)
-      : n_threads_{n_threads},
-        output_size_{output_size},
+      : output_size_{output_size},
         p_{params},
         input_data_accessor_{input_data_accessor},
         output_data_accessor_{output_data_accessor},
@@ -358,7 +353,6 @@ class MaxPoolGradGradSYCL {
   }
 
  private:
-  const int n_threads_;
   const int output_size_;
   const SYCL2DPoolParams p_;
 
@@ -401,7 +395,7 @@ struct LaunchMaxPoolingGradGradOpSYCL {
           input_backprop_buffer.template get_access<read_mode>(cgh);
       auto output_backprop_access =
           output_backprop_buffer.template get_access<write_mode>(cgh);
-      Functor maxpoolgradgrad(n_threads, output_size, params, input_data_access,
+      Functor maxpoolgradgrad(output_size, params, input_data_access,
                               output_data_access, input_backprop_access,
                               output_backprop_access);
 
