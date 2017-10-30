@@ -45,14 +45,11 @@ def GetTestConfigs(include_nchw_vect_c=False):
     all the valid test configs as tuples of data_format and use_gpu.
   """
   test_configs = [("NHWC", False), ("NHWC", True)]
-  if not test.is_gpu_available():
+  if not test.is_gpu_available(cuda_only=True):
     tf_logging.info("NCHW and NCHW_VECT_C tests skipped because not run with "
-                    "--config=cuda or --config=sycl or no GPUs available.")
+                    "--config=cuda or no GPUs available.")
     return test_configs
   # "NCHW" format is currently supported exclusively on CUDA GPUs.
-  if "sycl" in test_util.gpu_device_name().lower():
-    return test_configs
-
   test_configs += [("NCHW", True)]
   if include_nchw_vect_c:
     if test.is_gpu_available(
