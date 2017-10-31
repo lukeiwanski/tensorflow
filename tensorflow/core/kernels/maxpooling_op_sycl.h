@@ -109,8 +109,7 @@ struct LaunchMaxPoolingOpSYCL {
 
     const int output_size = output->NumElements();
     const int workgroup_size = device.maxSyclThreadsPerBlock();
-    const int n_threads = output_size > workgroup_size ? RoundUpToNearestMultiple(output_size, workgroup_size) :
-                                                         output_size;
+    const int n_threads = RoundUpToNearestMultiple(output_size, workgroup_size);
 
     auto input_buffer =
         device.get_sycl_buffer(tensor_in.template flat<T>().data());
@@ -252,8 +251,7 @@ struct LaunchMaxPoolingGradOpSYCL {
 
     const int output_size = output->NumElements();
     const int workgroup_size = device.maxSyclThreadsPerBlock();
-    const int n_threads = output_size > workgroup_size ? RoundUpToNearestMultiple(output_size, workgroup_size) :
-                                                         output_size;
+    const int n_threads = RoundUpToNearestMultiple(output_size, workgroup_size);
 
     auto input_data_buffer =
         device.get_sycl_buffer(tensor_in.template flat<T>().data());
@@ -374,8 +372,7 @@ struct LaunchMaxPoolingGradGradOpSYCL {
 
     const int output_size = output->NumElements();
     const int workgroup_size = device.maxSyclThreadsPerBlock();
-    const int n_threads = output_size > workgroup_size ? RoundUpToNearestMultiple(output_size, workgroup_size) :
-                                                         output_size;
+    const int n_threads = RoundUpToNearestMultiple(output_size, workgroup_size);
 
     auto input_data_buffer =
         device.get_sycl_buffer(tensor_in.template flat<T>().data());
