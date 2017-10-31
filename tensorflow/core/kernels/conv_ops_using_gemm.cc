@@ -802,16 +802,18 @@ TF_CALL_float(REGISTER_CPU);
 #undef REGISTER_CPU
 #endif  // USE_GEMM_FOR_CONV
 
+#ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL(T)                                         \
-  REGISTER_KERNEL_BUILDER(                                      \
+  REGISTER_KERNEL_BUILDER(                                       \
       Name("Conv2D").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
-      Conv2DUsingGemmOp<                                        \
+      Conv2DUsingGemmOp<                                         \
           T, Im2ColConvFunctor<SYCLDevice, T, T, T, FastGemmFunctor<SYCLDevice, T, T, T>>>);
 
 #if defined(USE_GEMM_FOR_CONV)
 TF_CALL_float(REGISTER_SYCL);
 #undef REGISTER_SYCL
 #endif  // USE_GEMM_FOR_CONV
+#endif  // TENSORFLOW_USE_SYCL
 
 
 }  // namespace tensorflow
