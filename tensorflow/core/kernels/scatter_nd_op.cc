@@ -142,6 +142,26 @@ class ScatterNdUpdateOp : public OpKernel {
   }
 };
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SCATTER_ND_KERNEL_INDEX(type, index_type, dev, name) \
+  REGISTER_KERNEL_BUILDER(Name(name)                                  \
+                              .Device(DEVICE_##dev)                   \
+                              .TypeConstraint<type>("T")              \
+                              .TypeConstraint<index_type>("Tindices") \
+                              .HostMemory("shape")                    \
+                              .HostMemory("indices"),                 \
+                          ScatterNdOp<dev##Device, type, index_type>)
+
+#define REGISTER_SCATTER_ND_UPDATE_KERNEL_INDEX(type, index_type, dev, name, \
+                                                op)                          \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name(name)                                                             \
+          .Device(DEVICE_##dev)                                              \
+          .TypeConstraint<type>("T")                                         \
+          .TypeConstraint<index_type>("Tindices")                            \
+					.HostMemory("indices"),									                           \
+      ScatterNdUpdateOp<dev##Device, type, index_type, op>)
+#else
 #define REGISTER_SCATTER_ND_KERNEL_INDEX(type, index_type, dev, name) \
   REGISTER_KERNEL_BUILDER(Name(name)                                  \
                               .Device(DEVICE_##dev)                   \
@@ -158,6 +178,7 @@ class ScatterNdUpdateOp : public OpKernel {
           .TypeConstraint<type>("T")                                         \
           .TypeConstraint<index_type>("Tindices"),                           \
       ScatterNdUpdateOp<dev##Device, type, index_type, op>)
+#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_SCATTER_ND_KERNEL(type, dev, name)         \
   REGISTER_SCATTER_ND_KERNEL_INDEX(type, int32, dev, name); \
@@ -359,31 +380,6 @@ class IndexFlattener {
     return indices.flat_inner_dims<Index>();
   }
 };
-
-#ifdef TENSORFLOW_USE_SYCL
-template <typename Index>
-class IndexFlattener<SYCLDevice, Index> {
- public:
-  IndexFlattener() { indices_host_ = nullptr; }
-  ~IndexFlattener() { delete[] indices_host_; }
-
-  inline typename TTypes<Index, 2>::ConstTensor operator()(
-      OpKernelContext* c, const Tensor& indices) {
-    size_t num_indices = indices.NumElements();
-    indices_host_ = new Index[num_indices];
-    auto device = c->eigen_sycl_device();
-    auto size = sizeof(Index) * num_indices;
-    auto src_ptr = GetBase(&indices);
-    device.memcpyDeviceToHost(indices_host_, static_cast<const Index*>(src_ptr),
-                              size);
-    return typename TTypes<Index, 2>::ConstTensor(
-        indices_host_, indices.shape().AsEigenDSizes<2>());
-  }
-
- private:
-  Index* indices_host_;
-};
-#endif
 
 template <typename Device, typename T, typename Index,
           scatter_nd_op::UpdateOp Op>
