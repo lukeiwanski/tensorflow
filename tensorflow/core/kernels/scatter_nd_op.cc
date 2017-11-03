@@ -372,15 +372,6 @@ Status PrepareAndValidateInputs(OpKernelContext* c,
   return Status::OK();
 }
 
-template <typename Device, typename Index>
-class IndexFlattener {
- public:
-  inline typename TTypes<Index, 2>::ConstTensor operator()(
-      OpKernelContext*, const Tensor& indices) {
-    return indices.flat_inner_dims<Index>();
-  }
-};
-
 template <typename Device, typename T, typename Index,
           scatter_nd_op::UpdateOp Op>
 Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
@@ -392,8 +383,7 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
   TF_RETURN_IF_ERROR(PrepareAndValidateInputs<Index>(
       c, shape, indices, updates, &slice_dim, &num_updates, &slice_size));
 
-  IndexFlattener<Device, Index> index_flattener;
-  auto indices_flat = index_flattener(c, indices);
+  auto indices_flat = indices.flat_inner_dims<Index>();
   auto updates_flat = updates.shaped<T, 2>({num_updates, slice_size});
 
   if (allocate) {
