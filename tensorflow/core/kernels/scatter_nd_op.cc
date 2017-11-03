@@ -159,7 +159,7 @@ class ScatterNdUpdateOp : public OpKernel {
           .Device(DEVICE_##dev)                                              \
           .TypeConstraint<type>("T")                                         \
           .TypeConstraint<index_type>("Tindices")                            \
-					.HostMemory("indices"),									                           \
+          .HostMemory("indices"),                                            \
       ScatterNdUpdateOp<dev##Device, type, index_type, op>)
 #else
 #define REGISTER_SCATTER_ND_KERNEL_INDEX(type, index_type, dev, name) \
