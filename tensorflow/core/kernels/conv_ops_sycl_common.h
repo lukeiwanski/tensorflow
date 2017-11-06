@@ -219,8 +219,6 @@ struct SYCLConv2DParams {
     const Index rend = std::min(last_used_r + 1, out_rows_);
     n /= in_rows_;
 
-//    printf("ii: %i, r: %i, rs: %i, re: %i, ofr: %i, c: %i, cs: %i, ce: %i, ofc: %i, batch: %i\n",
-//        tile_idx, r, first_used_r, rend, offset_r, c, first_used_c, cend, offset_c, n);
     return {first_used_r, rend, offset_r, first_used_c, cend, offset_c, n};
   }
   inline TF_ATTRIBUTE_ALWAYS_INLINE SYCL2DKernelWindow

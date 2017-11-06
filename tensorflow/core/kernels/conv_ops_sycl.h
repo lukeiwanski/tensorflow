@@ -196,15 +196,21 @@ struct LaunchConv2DBackpropInputOp<SYCLDevice, T> {
       return;
     }
 
-    // Note: The input and output depths are switched for the naive input
-    // backprop
-    SYCLConv2DParams params{out_depth,   in_depth,    batch,       input_rows,
+    SYCLConv2DParams params{in_depth,    out_depth,   batch,       input_rows,
                             input_cols,  filter_rows, filter_cols, stride_rows,
                             stride_cols, out_rows,    out_cols,    pad_rows,
                             pad_cols};
 
-    LaunchConv2DBackpropInputSYCL<T>::launch(context, in_backprop, out_backprop,
-                                             filter, params);
+    LaunchIm2Col<T, ConvType::InputBackprop>::launch(
+        context, in_backprop, out_backprop, filter, params);
+    // Note: The input and output depths are switched for the naive input
+    // backprop
+    //SYCLConv2DParams params{out_depth,   in_depth,    batch,       input_rows,
+    //                        input_cols,  filter_rows, filter_cols, stride_rows,
+    //                        stride_cols, out_rows,    out_cols,    pad_rows,
+    //                        pad_cols};
+    //LaunchConv2DBackpropInputSYCL<T>::launch(context, in_backprop, out_backprop,
+    //                                         filter, params);
   }
 
  private:
