@@ -36,32 +36,22 @@ class GSYCLInterface {
     bool found_device = false;
     auto device_list = Eigen::get_sycl_supported_devices();
     // Obtain list of supported devices from Eigen
-    for (const auto& device : device_list) {
-      if (device.is_gpu()) {
-        // returns first found GPU
-        AddDevice(device);
-        found_device = true;
-      }
-    }
+
+    AddDevicesIf(device_list, found_device, [](const cl::sycl::device& d) { return d.is_accelerator(); });
+    AddDevicesIf(device_list, found_device, [](const cl::sycl::device& d) { return d.is_gpu(); });
 
     if (!found_device) {
       // Currently Intel GPU is not supported
-      LOG(WARNING) << "No OpenCL GPU found that is supported by ComputeCpp, "
+      LOG(WARNING) << "No OpenCL accelerator nor GPU found that is supported by ComputeCpp, "
                       "trying OpenCL CPU";
     }
 
-    for (const auto& device : device_list) {
-      if (device.is_cpu()) {
-        // returns first found CPU
-        AddDevice(device);
-        found_device = true;
-      }
-    }
+    AddDevicesIf(device_list, found_device, [](const cl::sycl::device d) { return d.is_cpu(); });
 
     if (!found_device) {
       // Currently Intel GPU is not supported
       LOG(FATAL)
-          << "No OpenCL GPU nor CPU found that is supported by ComputeCpp";
+          << "No OpenCL device found that is supported by ComputeCpp";
     } else {
       LOG(INFO) << "Found following OpenCL devices:";
       for (int i = 0; i < device_list.size(); i++) {
@@ -96,6 +86,16 @@ class GSYCLInterface {
       delete p;
     }
     m_queue_interface_.clear();
+  }
+
+  template <class Predicate>
+  void AddDevicesIf(const std::vector<cl::sycl::device>& device_list, bool& found_device, Predicate pred) {
+    for (const auto& device : device_list) {
+      if (pred(device)) {
+        AddDevice(device);
+        found_device = true;
+      }
+    }
   }
 
   void AddDevice(const cl::sycl::device& d) {
