@@ -1022,7 +1022,6 @@ def main():
     environ_cp['TF_NEED_JEMALLOC'] = '0'
     environ_cp['TF_NEED_OPENCL_SYCL'] = '0'
     environ_cp['TF_NEED_COMPUTECPP'] = '0'
-    environ_cp['TF_NEED_OPENCL'] = '0'
     environ_cp['TF_NEED_S3'] = '0'
     environ_cp['TF_CUDA_CLANG'] = '0'
 
@@ -1050,7 +1049,8 @@ def main():
     set_host_c_compiler(environ_cp)
     set_action_env_var(environ_cp, 'TF_NEED_COMPUTECPP', 'ComputeCPP', True)
     if environ_cp.get('TF_NEED_COMPUTECPP') == '1':
-      set_computecpp_toolkit_path(environ_cp, 'TF_VECTORIZE_SYCL', 'SYCL Vectorization', False)
+      set_computecpp_toolkit_path(environ_cp)
+      set_action_env_var(environ_cp, 'TF_VECTORIZE_SYCL', 'SYCL Vectorization', False)
     else:
       set_trisycl_include_dir(environ_cp)
 
