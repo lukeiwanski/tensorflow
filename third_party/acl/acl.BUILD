@@ -24,6 +24,12 @@ filegroup(
 )
 
 filegroup(
+    name = "libarm_compute_core.so",
+    srcs = ["lib/libarm_compute_core.so"],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
     name = "libOpenCL.so",
     srcs = ["lib/libOpenCL.so"],
     visibility = ["//visibility:public"],

@@ -19,6 +19,7 @@ cc_library(
     name = "intel_binary_blob",
     srcs = if_acl([
         "@acl//:libarm_compute.so",
+        "@acl//:libarm_compute_core.so",
         "@acl//:libOpenCL.so",
     ]),
     visibility = ["//visibility:public"],
