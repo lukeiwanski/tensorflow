@@ -8,13 +8,8 @@ default_toolchain {
 }
 
 default_toolchain {
-  cpu: "aarch64"
-  toolchain_identifier: "local_arm"
-}
-
-default_toolchain {
   cpu: "arm"
-  toolchain_identifier: "local_arm"
+  toolchain_identifier: "local_linux"
 }
 
 toolchain {
@@ -91,9 +86,6 @@ toolchain {
 
   # All warnings are enabled. Maybe enable -Werror as well?
   compiler_flag: "-Wall"
-
-  # Enable SSE instructions by default
-  compiler_flag: "-msse3"
 
   # Anticipated future default.
   linker_flag: "-Wl,-no-as-needed"
