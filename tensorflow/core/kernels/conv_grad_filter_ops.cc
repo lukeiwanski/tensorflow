@@ -17,6 +17,7 @@ limitations under the License.
 
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
+#define TF_USE_SYCLDNN
 
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 
@@ -47,6 +48,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
+
+#ifdef TF_USE_SYCLDNN
+#include "tensorflow/core/kernels/conv_ops_sycl.h"
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 
@@ -108,7 +113,7 @@ struct LaunchConv2DBackpropFilterOp<CPUDevice, T> {
   }
 };
 
-#ifdef TENSORFLOW_USE_SYCL
+#ifdef TF_USE_SYCLEIGEN
 template <typename T>
 struct LaunchConv2DBackpropFilterOp<SYCLDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
@@ -983,7 +988,7 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
                               .HostMemory("filter_sizes"), \
                           Conv2DFastBackpropFilterOp<SYCLDevice, T>);
 
-REGISTER_SYCL_KERNELS(float);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS)
 #undef REGISTER_SYCL_KERNELS
 #endif  // TENSORFLOW_USE_SYCL
 

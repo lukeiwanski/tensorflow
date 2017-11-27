@@ -1,7 +1,3 @@
-/*
- * Copyright 2017 John Lawson, Codeplay Software.
- * All rights reserved.
- */
 #ifndef TENSORFLOW_USE_SYCL
 #error This file should only be included when compiling with SYCL support
 #endif
@@ -13,10 +9,7 @@
 
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 
-#include "tensorflow/core/kernels/conv_ops_im2col_sycl.h"
-#include "tensorflow/core/kernels/conv_ops_naive_sycl.h"
-#include "tensorflow/core/kernels/conv_ops_sycl_common.h"
-#include "tensorflow/core/kernels/conv_ops_winograd_sycl.h"
+#include "tensorflow/core/kernels/conv_ops_sycl_launcher.h"
 
 namespace tensorflow {
 typedef Eigen::SyclDevice SYCLDevice;
@@ -33,6 +26,7 @@ struct LaunchConv2DOp<SYCLDevice, T> {
                   TensorFormat data_format) {
     CHECK(data_format == FORMAT_NHWC) << "SYCL convolution implementation only "
                                          "supports NHWC tensor format.";
+    // TODO(jwlawson): Move this into sycl conv2d launcher
     if (launch_matmul(context, input, filter, stride_rows, stride_cols, padding,
                       output)) {
       return;
@@ -58,28 +52,14 @@ struct LaunchConv2DOp<SYCLDevice, T> {
                             input_cols,  filter_rows, filter_cols, stride_rows,
                             stride_cols, out_rows,    out_cols,    pad_rows,
                             pad_cols};
-    if (stride_rows == 1 && stride_cols == 1 && filter_rows == 3 &&
-        filter_cols == 1) {
-      LaunchMatmulWinograd<T, 2, 1, 3, 1, ConvType::Forward>::launch(
-          context, output, input, filter, params);
-      return;
-    }
-    if (stride_rows == 1 && stride_cols == 1 && filter_rows == 1 &&
-        filter_cols == 3) {
-      LaunchMatmulWinograd<T, 1, 2, 1, 3, ConvType::Forward>::launch(
-          context, output, input, filter, params);
-      return;
-    }
-    if (stride_rows == 1 && stride_cols == 1 && filter_rows == 3 &&
-        filter_cols == 3) {
-      LaunchMatmulWinograd<T, 2, 2, 3, 3, ConvType::Forward>::launch(
-          context, output, input, filter, params);
-      return;
-    }
-    LaunchIm2Col<T, ConvType::Forward>::launch(context, output, input, filter,
-                                               params);
 
-    // LaunchConv2DSYCL<T>::launch(context, output, input, filter, params);
+    T const* const in_ptr = input.template flat<T>().data();
+    T const* const fil_ptr = filter.template flat<T>().data();
+    T* const out_ptr = output->template flat<T>().data();
+
+    default_selector sel;
+    launch_conv2d<T, ConvType::Forward>(context->eigen_device<SYCLDevice>(),
+                                        in_ptr, fil_ptr, params, out_ptr, sel);
   }
 
  private:
@@ -94,6 +74,7 @@ struct LaunchConv2DOp<SYCLDevice, T> {
    * Returns true if the convolution has been launched, and false if the
    * convolution cannot be computed using a matrix multiply.
    */
+  // TODO(jwlawson): Move this into sycl conv2d launcher
   bool launch_matmul(OpKernelContext* context, const Tensor& input,
                      const Tensor& filter, int64 stride_rows, int64 stride_cols,
                      const Padding& padding, Tensor* output) {
@@ -142,6 +123,7 @@ struct LaunchConv2DBackpropInputOp<SYCLDevice, T> {
                   const Tensor& filter, int64 stride_rows, int64 stride_cols,
                   const Padding& padding, Tensor* in_backprop,
                   TensorFormat data_format) {
+    // TODO(jwlawson): Move this into sycl conv2d launcher
     if (launch_matmul(context, out_backprop, filter, stride_rows, stride_cols,
                       padding, in_backprop)) {
       return;
@@ -163,54 +145,19 @@ struct LaunchConv2DBackpropInputOp<SYCLDevice, T> {
                    GetWindowedOutputSize(input_cols, filter_cols, stride_cols,
                                          padding, &out_cols, &pad_cols));
 
-    if (stride_rows == 1 && stride_cols == 1 && filter_rows == 3 &&
-        filter_cols == 1) {
-      // We need to change the padding from input padding to output padding for
-      // the winograd matmul kernel. pad_out = filt_size - 1 - pad_in
-      SYCLConv2DParams params{
-          out_depth,   in_depth,     batch,       out_rows,    out_cols,
-          filter_rows, filter_cols,  stride_rows, stride_cols, input_rows,
-          input_cols,  2 - pad_rows, -pad_cols};
-      LaunchMatmulWinograd<T, 2, 1, 3, 1, ConvType::InputBackprop>::launch(
-          context, in_backprop, out_backprop, filter, params);
-      return;
-    }
-    if (stride_rows == 1 && stride_cols == 1 && filter_rows == 1 &&
-        filter_cols == 3) {
-      SYCLConv2DParams params{
-          out_depth,   in_depth,    batch,       out_rows,    out_cols,
-          filter_rows, filter_cols, stride_rows, stride_cols, input_rows,
-          input_cols,  -pad_rows,   2 - pad_cols};
-      LaunchMatmulWinograd<T, 1, 2, 1, 3, ConvType::InputBackprop>::launch(
-          context, in_backprop, out_backprop, filter, params);
-      return;
-    }
-    if (stride_rows == 1 && stride_cols == 1 && filter_rows == 3 &&
-        filter_cols == 3) {
-      SYCLConv2DParams params{
-          out_depth,   in_depth,     batch,       out_rows,    out_cols,
-          filter_rows, filter_cols,  stride_rows, stride_cols, input_rows,
-          input_cols,  2 - pad_rows, 2 - pad_cols};
-      LaunchMatmulWinograd<T, 2, 2, 3, 3, ConvType::InputBackprop>::launch(
-          context, in_backprop, out_backprop, filter, params);
-      return;
-    }
-
     SYCLConv2DParams params{in_depth,    out_depth,   batch,       input_rows,
                             input_cols,  filter_rows, filter_cols, stride_rows,
                             stride_cols, out_rows,    out_cols,    pad_rows,
                             pad_cols};
 
-    LaunchIm2Col<T, ConvType::InputBackprop>::launch(
-        context, in_backprop, out_backprop, filter, params);
-    // Note: The input and output depths are switched for the naive input
-    // backprop
-    //SYCLConv2DParams params{out_depth,   in_depth,    batch,       input_rows,
-    //                        input_cols,  filter_rows, filter_cols, stride_rows,
-    //                        stride_cols, out_rows,    out_cols,    pad_rows,
-    //                        pad_cols};
-    //LaunchConv2DBackpropInputSYCL<T>::launch(context, in_backprop, out_backprop,
-    //                                         filter, params);
+    T const* const in_ptr = out_backprop.template flat<T>().data();
+    T const* const fil_ptr = filter.template flat<T>().data();
+    T* const out_ptr = in_backprop->template flat<T>().data();
+
+    default_selector sel;
+    launch_conv2d<T, ConvType::InputBackprop>(
+        context->eigen_device<SYCLDevice>(), in_ptr, fil_ptr, params, out_ptr,
+        sel);
   }
 
  private:
@@ -225,6 +172,7 @@ struct LaunchConv2DBackpropInputOp<SYCLDevice, T> {
    * Returns true if the convolution has been launched, and false if the
    * convolution cannot be computed using a matrix multiply.
    */
+  // TODO(jwlawson): Move this into sycl conv2d launcher
   bool launch_matmul(OpKernelContext* context, const Tensor& out_backprop,
                      const Tensor& filter, int64 stride_rows, int64 stride_cols,
                      const Padding& padding, Tensor* in_backprop) {
@@ -258,6 +206,7 @@ struct LaunchConv2DBackpropFilterOp<SYCLDevice, T> {
                   const Tensor& input, int64 stride_rows, int64 stride_cols,
                   const Padding& padding, Tensor* filter_backprop,
                   TensorFormat data_format) {
+    // TODO(jwlawson): Move this into sycl conv2d launcher
     if (launch_matmul(context, out_backprop, input, stride_rows, stride_cols,
                       padding, filter_backprop)) {
       return;
@@ -279,37 +228,19 @@ struct LaunchConv2DBackpropFilterOp<SYCLDevice, T> {
                    GetWindowedOutputSize(input_cols, filter_cols, stride_cols,
                                          padding, &out_cols, &pad_cols));
 
-    // Need to map the dimensions provided by TF to those we expect in the
-    // convolution kernel.
-    const int64 window_rows = out_rows * stride_rows - (stride_rows - 1);
-    const int64 window_cols = out_cols * stride_cols - (stride_cols - 1);
-
     SYCLConv2DParams params{in_depth,    out_depth,   batch,       input_rows,
-                            input_cols,  window_rows, window_cols, stride_rows,
-                            stride_cols, filter_rows, filter_cols, pad_rows,
+                            input_cols,  filter_rows, filter_cols, stride_rows,
+                            stride_cols, out_rows,    out_cols,    pad_rows,
                             pad_cols};
 
-    if (stride_rows == 1 && stride_cols == 1 && filter_rows == 1 &&
-        filter_cols == 3) {
-      LaunchMatmulWinograd<T, 1, 3, 1, 2, ConvType::FilterBackprop>::launch(
-          context, filter_backprop, input, out_backprop, params);
-      return;
-    }
-    if (stride_rows == 1 && stride_cols == 1 && filter_rows == 3 &&
-        filter_cols == 1) {
-      LaunchMatmulWinograd<T, 3, 1, 2, 1, ConvType::FilterBackprop>::launch(
-          context, filter_backprop, input, out_backprop, params);
-      return;
-    }
-    if (stride_rows == 1 && stride_cols == 1 && filter_rows == 3 &&
-        filter_cols == 3) {
-      LaunchMatmulWinograd<T, 3, 3, 2, 2, ConvType::FilterBackprop>::launch(
-          context, filter_backprop, input, out_backprop, params);
-      return;
-    }
+    T const* const in_ptr = input.template flat<T>().data();
+    T const* const fil_ptr = out_backprop.template flat<T>().data();
+    T* const out_ptr = filter_backprop->template flat<T>().data();
 
-    LaunchConv2DBackpropFilterSYCL<T>::launch(context, filter_backprop, input,
-                                              out_backprop, params);
+    default_selector sel;
+    launch_conv2d<T, ConvType::FilterBackprop>(
+        context->eigen_device<SYCLDevice>(), in_ptr, fil_ptr, params, out_ptr,
+        sel);
   }
 
  private:
@@ -324,6 +255,7 @@ struct LaunchConv2DBackpropFilterOp<SYCLDevice, T> {
    * Returns true if the convolution has been launched, and false if the
    * convolution cannot be computed using a matrix multiply.
    */
+  // TODO(jwlawson): Move this into sycl conv2d launcher
   bool launch_matmul(OpKernelContext* context, const Tensor& out_backprop,
                      const Tensor& input, int64 stride_rows, int64 stride_cols,
                      const Padding& padding, Tensor* filter_backprop) {

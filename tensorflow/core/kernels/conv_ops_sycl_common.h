@@ -1,13 +1,13 @@
-/*
- * Copyright 2017 John Lawson, Codeplay Software.
- * All rights reserved.
- */
 #ifndef TENSORFLOW_USE_SYCL
 #error This file should only be included when compiling with SYCL support
 #endif
 
 #ifndef TENSORFLOW_KERNELS_CONV_OPS_SYCL_COMMON_H_
 #define TENSORFLOW_KERNELS_CONV_OPS_SYCL_COMMON_H_
+
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 /**
@@ -16,12 +16,35 @@ namespace tensorflow {
  * zero, otherwise we need to ensure that the value is rounded up rather
  * than down.
  */
-template <typename IntegerType>
+template <
+    typename IntegerType,
+    typename std::enable_if<std::is_signed<IntegerType>::value, int>::type = 0>
 inline TF_ATTRIBUTE_ALWAYS_INLINE IntegerType
 RoundRatioUpAboveZero(const IntegerType num, const IntegerType div) {
   static_assert(std::is_integral<IntegerType>::value,
-                "RoundRatioUpAboveZero only valid for integral types");
-  return num < 0 ? 0 : (num + div - 1) / div;
+                "RoundRatioUpAboveZero is only valid for integral types");
+  return num < 0 ? 0 : (num % div != 0 ? num / div + 1 : num / div);
+}
+template <typename IntegerType,
+          typename std::enable_if<std::is_unsigned<IntegerType>::value>::type* =
+              nullptr>
+inline TF_ATTRIBUTE_ALWAYS_INLINE IntegerType
+RoundRatioUpAboveZero(const IntegerType num, const IntegerType div) {
+  static_assert(std::is_integral<IntegerType>::value,
+                "RoundRatioUpAboveZero is only valid for integral types");
+  return num % div != 0 ? num / div + 1 : num / div;
+}
+/**
+ * Helper function to provide the ratio of two integers, always rounded up.
+ */
+template <typename IntegerType>
+inline TF_ATTRIBUTE_ALWAYS_INLINE IntegerType
+RoundRatioUp(const IntegerType num, const IntegerType div) {
+  static_assert(std::is_integral<IntegerType>::value,
+                "RoundRatioUp is only valid for integral types");
+  IntegerType quotient = num / div;
+  IntegerType additive = num % div == 0 ? 0 : 1;
+  return num < 0 ? quotient : quotient + additive;
 }
 /**
  * Helper function to round up an integral value to the nearest multiple of a
@@ -31,7 +54,7 @@ template <typename IntegerType>
 inline TF_ATTRIBUTE_ALWAYS_INLINE IntegerType
 RoundUpToNearestMultiple(IntegerType val, const IntegerType multiplier) {
   static_assert(std::is_integral<IntegerType>::value,
-                "RoundUpToNearestMultiple only valid for integral types");
+                "RoundUpToNearestMultiple is only valid for integral types");
   const IntegerType diff = val % multiplier;
   if (diff > 0) {
     val += (multiplier - diff);
@@ -44,6 +67,18 @@ enum class ConvType {
   InputBackprop,
   FilterBackprop,
 };
+/** The different algorithms supported to compute convolutions. */
+enum class algorithm {
+  matmul,
+  winograd_1x3,
+  winograd_3x1,
+  winograd_3x3,
+  im2col,
+  direct,
+  not_supported,
+};
+template <typename T, typename backend_type, algorithm Algo, ConvType CType>
+struct Launcher;
 
 struct SYCL2DWindow {
   using Index = int;
@@ -105,26 +140,31 @@ struct SYCLConv2DParams {
         out_rows_{static_cast<Index>(out_rows)},
         out_cols_{static_cast<Index>(out_cols)},
         pad_rows_{static_cast<Index>(pad_rows)},
-        pad_cols_{static_cast<Index>(pad_cols)} {}
+        pad_cols_{static_cast<Index>(pad_cols)},
+        dilation_rows_{1},
+        dilation_cols_{1} {}
 
-  const Index channels_;
-  const Index features_;
-  const Index batch_;
+  Index channels_;
+  Index features_;
+  Index batch_;
 
-  const Index in_rows_;
-  const Index in_cols_;
+  Index in_rows_;
+  Index in_cols_;
 
-  const Index window_rows_;
-  const Index window_cols_;
+  Index window_rows_;
+  Index window_cols_;
 
-  const Index stride_rows_;
-  const Index stride_cols_;
+  Index stride_rows_;
+  Index stride_cols_;
 
-  const Index out_rows_;
-  const Index out_cols_;
+  Index out_rows_;
+  Index out_cols_;
 
-  const Index pad_rows_;
-  const Index pad_cols_;
+  Index pad_rows_;
+  Index pad_cols_;
+
+  Index dilation_rows_;
+  Index dilation_cols_;
 
   /**
    * Get the index in the kernel tensor for a particular channel, row and
@@ -142,16 +182,16 @@ struct SYCLConv2DParams {
    * particular channel, row and column. Here we have to mirror the kernel
    * indices to match how the backprop is computed.
    */
-  inline TF_ATTRIBUTE_ALWAYS_INLINE Index backprop_index(const Index channel,
-                                                         const Index feature,
+  inline TF_ATTRIBUTE_ALWAYS_INLINE Index backprop_index(const Index feature,
+                                                         const Index channel,
                                                          const Index i,
                                                          const Index j) const {
     const Index mirrored_row = window_rows_ - i - 1;
     const Index mirrored_col = window_cols_ - j - 1;
     return ((mirrored_row * window_cols_ + mirrored_col) * features_ +
-            channel) *
+            feature) *
                channels_ +
-           feature;
+           channel;
   }
   /**
    * For the filter backprop we are using the output tensor as the filter of
@@ -179,23 +219,28 @@ struct SYCLConv2DParams {
     static_assert(std::is_signed<Index>::value, "Index must be a signed type");
     Index batch = tile_idx;
     const Index cstart = (batch % out_cols_) * stride_cols_ - pad_cols_;
-    const Index cend = std::min(cstart + window_cols_, in_cols_);
+    const Index cend =
+        cl::sycl::min(cstart + (window_cols_ * dilation_cols_), in_cols_);
     const Index firstc = cstart < 0 ? -cstart : 0;
     batch /= out_cols_;
 
     const Index rstart = (batch % out_rows_) * stride_rows_ - pad_rows_;
-    const Index rend = std::min(rstart + window_rows_, in_rows_);
+    const Index rend =
+        cl::sycl::min(rstart + (window_rows_ * dilation_rows_), in_rows_);
     const Index firstr = rstart < 0 ? -rstart : 0;
     batch /= out_rows_;
 
     return {rstart, rend, firstr, cstart, cend, firstc, batch};
   }
+  // TODO(jwlawson): Merge with output_window_from_input
+  // The expected values of firstx are different between the two, so combining
+  // the functions would be tricky. This version is required by the direct input
+  // backprop kernel, while the other is required by the im2col input transform
+  // kernels.
   inline TF_ATTRIBUTE_ALWAYS_INLINE SYCL2DWindow
-  output_window_from_input(const Index tile_idx) const {
-    static_assert(std::is_integral<Index>::value,
-                  "Index must be an integral type");
-    static_assert(std::is_signed<Index>::value, "Index must be a signed type");
-    Index n = tile_idx;
+  output_window_from_input_no_dilation(const Index index) const {
+    Index n = index;
+
     // c is the index in the padded output tensor (ie with lots of extra zeros),
     // but without the first padding. first_padded_c adds this extra padding.
     const Index c = (n % in_cols_) + pad_cols_;
@@ -206,7 +251,8 @@ struct SYCLConv2DParams {
         RoundRatioUpAboveZero(first_padded_c, stride_cols_);
 
     const Index offset_c = first_used_c * stride_cols_ - first_padded_c;
-    const Index cend = std::min(last_used_c + 1, out_cols_);
+    const Index cstart = cl::sycl::max(first_used_c, static_cast<Index>(0));
+    const Index cend = cl::sycl::min(last_used_c + 1, out_cols_);
     n /= in_cols_;
 
     const Index r = (n % in_rows_) + pad_rows_;
@@ -216,7 +262,37 @@ struct SYCLConv2DParams {
         RoundRatioUpAboveZero(first_padded_r, stride_rows_);
 
     const Index offset_r = first_used_r * stride_rows_ - first_padded_r;
-    const Index rend = std::min(last_used_r + 1, out_rows_);
+    const Index rstart = cl::sycl::max(first_used_r, static_cast<Index>(0));
+    const Index rend = cl::sycl::min(last_used_r + 1, out_rows_);
+    n /= in_rows_;
+
+    return {rstart, rend, offset_r, cstart, cend, offset_c, n};
+  }
+  inline TF_ATTRIBUTE_ALWAYS_INLINE SYCL2DWindow
+  output_window_from_input(const Index tile_idx) const {
+    static_assert(std::is_integral<Index>::value,
+                  "Index must be an integral type");
+    static_assert(std::is_signed<Index>::value, "Index must be a signed type");
+    Index n = tile_idx;
+    // c is the index in the padded output tensor (ie with lots of extra zeros),
+    // but without the first padding. first_padded_c adds this extra padding.
+    const Index c = (n % in_cols_) + pad_cols_;
+    const Index first_padded_c = c - (window_cols_ - 1) * dilation_cols_;
+    // The first and last output indices affected by this input.
+    const Index last_used_c = c / stride_cols_;
+    Index first_used_c = RoundRatioUp(first_padded_c, stride_cols_);
+
+    const Index offset_c = first_used_c * stride_cols_ - first_padded_c;
+    const Index cend = cl::sycl::min(last_used_c + 1, out_cols_);
+    n /= in_cols_;
+
+    const Index r = (n % in_rows_) + pad_rows_;
+    const Index last_used_r = r / stride_rows_;
+    const Index first_padded_r = r - (window_rows_ - 1) * dilation_rows_;
+    Index first_used_r = RoundRatioUp(first_padded_r, stride_rows_);
+
+    const Index offset_r = first_used_r * stride_rows_ - first_padded_r;
+    const Index rend = cl::sycl::min(last_used_r + 1, out_rows_);
     n /= in_rows_;
 
     return {first_used_r, rend, offset_r, first_used_c, cend, offset_c, n};
@@ -233,12 +309,12 @@ struct SYCLConv2DParams {
     n /= channels_;
 
     Index cstart = n % out_cols_ - pad_cols_;
-    const Index cend = std::min(cstart + window_cols_, in_cols_);
+    const Index cend = cl::sycl::min(cstart + window_cols_, in_cols_);
     const Index firstc = cstart < 0 ? -cstart : 0;
     n /= out_cols_;
 
     Index rstart = n - pad_rows_;
-    const Index rend = std::min(rstart + window_rows_, in_rows_);
+    const Index rend = cl::sycl::min(rstart + window_rows_, in_rows_);
     const Index firstr = rstart < 0 ? -rstart : 0;
 
     return {rstart, rend, firstr, cstart, cend, firstc, feature, channel};
@@ -255,12 +331,12 @@ struct SYCLConv2DParams {
       Index batch = index;
 
       const Index cstart = (batch % no_out_tile_cols) * N - pad_cols_;
-      const Index cend = std::min(cstart + N + S - 1, in_cols_);
+      const Index cend = cl::sycl::min(cstart + N + S - 1, in_cols_);
       const Index firstc = cstart < 0 ? -cstart : 0;
       batch /= no_out_tile_cols;
 
       const Index rstart = (batch % no_out_tile_rows) * M - pad_rows_;
-      const Index rend = std::min(rstart + M + R - 1, in_rows_);
+      const Index rend = cl::sycl::min(rstart + M + R - 1, in_rows_);
       const Index firstr = rstart < 0 ? -rstart : 0;
       batch /= no_out_tile_rows;
 
@@ -272,12 +348,12 @@ struct SYCLConv2DParams {
 
       const Index cstart = (n % no_out_tile_cols) * N + pad_cols_ - S + 1;
       const Index firstc = cstart < 0 ? -cstart : 0;
-      const Index cend = std::min(cstart + N + S - 1, in_cols_);
+      const Index cend = cl::sycl::min(cstart + N + S - 1, in_cols_);
       n /= no_out_tile_cols;
 
       const Index rstart = (n % no_out_tile_rows) * M + pad_rows_ - R + 1;
       const Index firstr = rstart < 0 ? -rstart : 0;
-      const Index rend = std::min(rstart + M + R - 1, in_rows_);
+      const Index rend = cl::sycl::min(rstart + M + R - 1, in_rows_);
       n /= no_out_tile_rows;
 
       return {rstart, rend, firstr, cstart, cend, firstc, n};
@@ -291,11 +367,11 @@ struct SYCLConv2DParams {
     Index batch = tile_idx;
 
     const Index col = batch % no_out_tile_cols * N;
-    const Index cend = std::min(col + N, out_cols_);
+    const Index cend = cl::sycl::min(col + N, out_cols_);
     batch /= no_out_tile_cols;
 
     const Index row = batch % no_out_tile_rows * M;
-    const Index rend = std::min(row + M, out_rows_);
+    const Index rend = cl::sycl::min(row + M, out_rows_);
     batch /= no_out_tile_rows;
 
     const Index offset =
@@ -310,11 +386,11 @@ struct SYCLConv2DParams {
     Index batch = tile_idx;
 
     const Index col = batch % n_tile_cols * S;
-    const Index cend = std::min(col + N, window_cols_);
+    const Index cend = cl::sycl::min(col + N, window_cols_);
     batch /= n_tile_cols;
 
     const Index row = batch % n_tile_rows * R;
-    const Index rend = std::min(row + M, window_rows_);
+    const Index rend = cl::sycl::min(row + M, window_rows_);
     batch /= n_tile_rows;
 
     const Index offset =
@@ -323,5 +399,52 @@ struct SYCLConv2DParams {
     return {rend - row, cend - col, offset};
   }
 };
+// Ideally we would use a variadic template to capture the arg parameters to
+// pass to the functor constructor, however there is a bug in gcc 4.8 which
+// prevents the variadic parameter pack from being passed to the cgh lambda. We
+// provide a number of functions here to work around this.
+template <typename Functor, typename T, typename Index, typename Arg>
+static void launch_transform(Eigen::SyclDevice const& device,
+                             T const* const input, T* const transform,
+                             const Index n_items,
+                             SYCLConv2DParams const& params, Arg arg) {
+  static constexpr auto read_mode = Functor::read_mode;
+  static constexpr auto write_mode = Functor::write_mode;
+
+  const Index workgroup_size = device.maxSyclThreadsPerBlock();
+  const Index n_threads = RoundUpToNearestMultiple(n_items, workgroup_size);
+
+  device.sycl_queue().submit([&](cl::sycl::handler& cgh) {
+    auto input_access = device.get_sycl_accessor<read_mode>(cgh, input);
+    auto transform_access =
+        device.get_sycl_accessor<write_mode>(cgh, transform);
+
+    Functor extract_fun(n_items, arg, params, input_access, transform_access);
+    cgh.parallel_for(cl::sycl::range<1>(n_threads), extract_fun);
+  });
 }
+template <typename Functor, typename T, typename Index, typename Arg1,
+          typename Arg2>
+static void launch_transform(Eigen::SyclDevice const& device,
+                             T const* const input, T* const transform,
+                             const Index n_items,
+                             SYCLConv2DParams const& params, Arg1 arg1,
+                             Arg2 arg2) {
+  static constexpr auto read_mode = Functor::read_mode;
+  static constexpr auto write_mode = Functor::write_mode;
+
+  const Index workgroup_size = device.maxSyclThreadsPerBlock();
+  const Index n_threads = RoundUpToNearestMultiple(n_items, workgroup_size);
+
+  device.sycl_queue().submit([&](cl::sycl::handler& cgh) {
+    auto input_access = device.get_sycl_accessor<read_mode>(cgh, input);
+    auto transform_access =
+        device.get_sycl_accessor<write_mode>(cgh, transform);
+
+    Functor extract_fun(n_items, arg1, arg2, params, input_access,
+                        transform_access);
+    cgh.parallel_for(cl::sycl::range<1>(n_threads), extract_fun);
+  });
+}
+}  // namespace tensorflow
 #endif  // TENSORFLOW_KERNELS_CONV_OPS_SYCL_COMMON_H_

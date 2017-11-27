@@ -1,8 +1,3 @@
-/*
- * Copyright 2017 John Lawson, Codeplay Software.
- * All rights reserved.
- */
-
 #ifndef TENSORFLOW_USE_SYCL
 #error This file should only be included when compiling with SYCL support
 #endif
