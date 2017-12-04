@@ -44,6 +44,7 @@ cc_library(
         sycl_library_path("ComputeCpp")
     ],
     includes = ["include/"],
+    linkopts = ["-lOpenCL"],
     linkstatic = 0,
 )
 
