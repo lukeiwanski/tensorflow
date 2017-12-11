@@ -178,21 +178,30 @@ struct ExtractInputTiles<T, ConvType::FilterBackprop> {
       T in_val = input_data[index];
       const SYCL2DWindow w = p_.output_window_from_input(input_idx);
 
-      for (Index r = w.rstart, in_r = p_.window_rows_ - 1; r < w.rend;
+      Index init_r = w.rstart;
+      Index init_r_idx = p_.window_rows_ - 1;
+      if (init_r < 0) {
+        Index n_inc = RoundRatioUpAboveZero(-init_r, p_.dilation_rows_);
+        init_r_idx -= n_inc * p_.stride_rows_;
+        init_r += n_inc * p_.dilation_rows_;
+      }
+      Index init_c = w.cstart;
+      Index init_c_idx = p_.window_cols_ - 1;
+      if (init_c < 0) {
+        Index n_inc = RoundRatioUpAboveZero(-init_c, p_.dilation_cols_);
+        init_c_idx -= n_inc * p_.stride_cols_;
+        init_c += n_inc * p_.dilation_cols_;
+      }
+      for (Index r = init_r, in_r = init_r_idx; r < w.rend;
            r += p_.dilation_rows_, in_r -= p_.stride_rows_) {
-        if (r >= 0) {
-          for (Index c = w.cstart, in_c = p_.window_cols_ - 1; c < w.cend;
-               c += p_.dilation_cols_, in_c -= p_.stride_cols_) {
-            if (c >= 0) {
-              T* tile_start =
-                  output_data +
-                  ((r * p_.out_cols_ + c) * p_.channels_ + channel) *
-                      tile_size_;
-              Index tile_idx =
-                  ((w.batch * p_.window_rows_ + in_r) * p_.window_cols_ + in_c);
-              tile_start[tile_idx] = in_val;
-            }
-          }
+        for (Index c = init_c, in_c = init_c_idx; c < w.cend;
+             c += p_.dilation_cols_, in_c -= p_.stride_cols_) {
+          T* tile_start =
+              output_data +
+              ((r * p_.out_cols_ + c) * p_.channels_ + channel) * tile_size_;
+          Index tile_idx =
+              ((w.batch * p_.window_rows_ + in_r) * p_.window_cols_ + in_c);
+          tile_start[tile_idx] = in_val;
         }
       }
     }

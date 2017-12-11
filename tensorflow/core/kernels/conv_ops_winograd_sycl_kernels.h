@@ -49,22 +49,26 @@ struct FilterTile<T, M, N, R, S, ConvType::Forward> final
   using BaseFilterTile<T, M, N, R, S>::data;
   /**
    * Read the filter data from the provided input array. The pointer is assumed
-   * to be at the first value that should be read into the input tile.
+   * to be at the start of the filter tensor.
    *
    * The input is expected to be in (Height x Width x Channel x Feature) format.
+   * The height of the filter (no. of rows) is expected to be R, and the width
+   * (no. of cols) is S.
    *
    * NOTE: The template here allows different address space attributes to be
    * passed with the pointer, rather than specifying the pointer will be to
    * global memory or to local memory.
    */
   template <typename _T>
-  inline TF_ATTRIBUTE_ALWAYS_INLINE FilterTile(_T* input, int channel,
-                                               int feature, int n_cols,
-                                               int n_channels, int n_features) {
+  inline TF_ATTRIBUTE_ALWAYS_INLINE FilterTile(_T const* input,
+                                               int const channel,
+                                               int const feature,
+                                               int const n_channels,
+                                               int const n_features) {
+    input += channel * n_features + feature;
     for (int r = 0; r < R; ++r) {
       for (int c = 0; c < S; ++c) {
-        int idx =
-            ((r * n_cols + c) * n_channels + channel) * n_features + feature;
+        int idx = (r * S + c) * n_channels * n_features;
         data[r][c] = input[idx];
       }
     }
@@ -76,8 +80,8 @@ struct FilterTile<T, M, N, R, S, ConvType::InputBackprop> final
   using BaseFilterTile<T, M, N, R, S>::data;
   /**
    * Read the filter data from the provided input array but mirror the filter
-   * for use in backprop. The pointer is assumed to be at the first value that
-   * should be read into the input tile.
+   * for use in backprop. The pointer is assumed to be at the start of the
+   * filter tensor.
    *
    * The input is expected to be in (Height x Width x Channel x Feature) format.
    *
@@ -86,18 +90,18 @@ struct FilterTile<T, M, N, R, S, ConvType::InputBackprop> final
    * global memory or to local memory.
    */
   template <typename _T>
-  inline TF_ATTRIBUTE_ALWAYS_INLINE FilterTile(
-      _T const* input, int const channel, int const feature, int const n_cols,
-      int const n_channels, int const n_features) {
+  inline TF_ATTRIBUTE_ALWAYS_INLINE FilterTile(_T const* input,
+                                               int const channel,
+                                               int const feature,
+                                               int const n_channels,
+                                               int const n_features) {
+    input += feature * n_channels + channel;
     for (int r = 0; r < R; ++r) {
       for (int c = 0; c < S; ++c) {
         // Here the transforms (R - 1 - r) and (S - 1 - c) mirror the filter
         // data. Note that the channel and feature dims were switched in the
         // kernel params.
-        int idx =
-            (((R - 1 - r) * n_cols + (S - 1 - c)) * n_features + feature) *
-                n_channels +
-            channel;
+        int idx = ((R - 1 - r) * S + (S - 1 - c)) * n_features * n_channels;
         data[r][c] = input[idx];
       }
     }
@@ -213,8 +217,12 @@ struct IntermediateTile {
     input += feature * n_tiles + tile_idx;
     for (int r = 0; r < A; ++r) {
       for (int c = 0; c < B; ++c) {
+        const int idx = (r * B + c) * n_features * n_tiles;
+        data[r][c] = input[idx];
+#if 0
         data[r][c] = *input;
         input += n_features * n_tiles;
+#endif
       }
     }
   }
@@ -279,8 +287,12 @@ struct OutputData {
     output += tile_idx * n_channels + channel;
     for (int r = 0; r < A; ++r) {
       for (int c = 0; c < B; ++c) {
+        const int idx = (r * B + c) * n_tiles * n_channels;
+        output[idx] = tile.data[r][c];
+#if 0
         *output = tile.data[r][c];
         output += n_tiles * n_channels;
+#endif
       }
     }
   }
@@ -305,8 +317,12 @@ struct OutputData {
     output += feature * n_channels + channel;
     for (int r = 0; r < A; ++r) {
       for (int c = 0; c < B; ++c) {
+        const int idx = (r * B + c) * n_features * n_channels;
+        output[idx] = tile.data[r][c];
+#if 0
         *output = tile.data[r][c];
         output += n_features * n_channels;
+#endif
       }
     }
   }
@@ -333,7 +349,10 @@ struct OutputData {
   /**
    * Write the output tile to the correct output memory. The output pointer
    * should be at the start of the output buffer. The resulting output shape is
-   * NHWC.
+   * HWCF.
+   *
+   * The filter has size M x N when run in FilterBackprop mode, so we don't need
+   * to check the bounds for writing to the output.
    *
    * NOTE: The template here allows different address space attributes to be
    * passed with the pointer, rather than specifying the pointer will be to
@@ -347,8 +366,12 @@ struct OutputData {
     output += channel * n_features + feature;
     for (int r = 0; r < M; ++r) {
       for (int c = 0; c < N; ++c) {
+        const int idx = (r * N + c) * n_channels * n_features;
+        output[idx] = tile.data[r][c];
+#if 0
         *output = tile.data[r][c];
         output += n_channels * n_features;
+#endif
       }
     }
   }
@@ -404,8 +427,7 @@ struct WinogradConv {
                                      p_.channels_, w.rend - w.rstart,
                                      w.cend - w.cstart, w.firstr, w.firstc);
         FilterTile<T, M, N, R, S, CType> filter(kernel_data, channel, feature,
-                                                p_.window_cols_, p_.channels_,
-                                                p_.features_);
+                                                p_.channels_, p_.features_);
         tmp.update(TransformedInputTile<T, M, N, R, S>{inp},
                    TransformedFilterTile<T, M, N, R, S>{filter});
       }
@@ -476,8 +498,8 @@ struct ExtractInputTiles {
                                    firstr, firstc);
 
       OutputData<T, M, N, R, S>::write_transformed_input(
-          output_data, index / p_.channels_, channel_idx, n_tiles_,
-          p_.channels_, TransformedInputTile<T, M, N, R, S>{inp});
+          output_data, tile_idx, channel_idx, n_tiles_, p_.channels_,
+          TransformedInputTile<T, M, N, R, S>{inp});
     }
   }
 
@@ -582,11 +604,10 @@ struct ExtractKernelTiles {
       T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
 
       const Index feature_idx = index % p_.features_;
-      const Index channel_idx = (index / p_.features_) % p_.channels_;
+      const Index channel_idx = index / p_.features_;
 
-      FilterTile<T, M, N, R, S, CType> filter(kernel_data, channel_idx,
-                                              feature_idx, p_.window_cols_,
-                                              p_.channels_, p_.features_);
+      FilterTile<T, M, N, R, S, CType> filter(
+          kernel_data, channel_idx, feature_idx, p_.channels_, p_.features_);
       TransformedFilterTile<T, M, N, R, S> transformed{filter};
 
       OutputData<T, M, N, R, S>::write_transformed_filter(
