@@ -9,106 +9,15 @@
 
 namespace tensorflow {
 typedef Eigen::SyclDevice SYCLDevice;
-namespace functor {
-template <typename T, int C1 = 1, int C2 = 1>
-struct BatchMatmul {
-  using TensorShape = Eigen::DSizes<Eigen::DenseIndex, 3>;
-  using TensorType = Eigen::Tensor<T, 3, Eigen::RowMajor, Eigen::DenseIndex>;
-  using Tensor = Eigen::TensorMap<TensorType, Eigen::Aligned>;
-  using ConstTensorType =
-      Eigen::Tensor<T const, 3, Eigen::RowMajor, Eigen::DenseIndex>;
-  using ConstTensor = Eigen::TensorMap<ConstTensorType, Eigen::Aligned>;
-  using ContractDims = Eigen::IndexPairList<Eigen::type2indexpair<C1, C2>>;
-
-  void operator()(Eigen::SyclDevice const& d, T const* const x_ptr,
-                  T const* const y_ptr, T* const z_ptr, const int batches,
-                  const int m, const int k, const int n) {
-    TensorShape x_shape, y_shape;
-
-    x_shape[0] = batches;
-    y_shape[0] = batches;
-    if (C1 == 1) {
-      x_shape[1] = m;
-      x_shape[2] = k;
-    } else {
-      x_shape[1] = k;
-      x_shape[2] = m;
-    }
-    if (C2 == 1) {
-      y_shape[1] = n;
-      y_shape[2] = k;
-    } else {
-      y_shape[1] = k;
-      y_shape[2] = n;
-    }
-    TensorShape z_shape{batches, m, n};
-
-    ConstTensor in_x{x_ptr, x_shape};
-    ConstTensor in_y{y_ptr, y_shape};
-    Tensor out{z_ptr, z_shape};
-
-    for (int i = 0; i < batches; ++i) {
-      auto x = in_x.template chip<0>(i);
-      auto y = in_y.template chip<0>(i);
-      auto z = out.template chip<0>(i);
-      z.device(d) = x.contract(y, ContractDims{});
-    }
-  }
-};
-/*
-template <typename T, int C1 = 1, int C2 = 1>
-struct BatchMatmul {
-  using TensorType = Eigen::Tensor<T, 2, Eigen::RowMajor, Eigen::DenseIndex>;
-  using Tensor = Eigen::TensorMap<TensorType, Eigen::Aligned>;
-  using TensorShape = Eigen::DSizes<Eigen::DenseIndex, 2>;
-  using ConstTensorType =
-      Eigen::Tensor<T const, 2, Eigen::RowMajor, Eigen::DenseIndex>;
-  using ConstTensor = Eigen::TensorMap<ConstTensorType, Eigen::Aligned>;
-  using ContractDims = Eigen::IndexPairList<Eigen::type2indexpair<C1, C2>>;
-
-  void operator()(Eigen::SyclDevice const& d, T const* const in_x,
-                  T const* const in_y, T* const out, const int batches,
-                  const int m, const int k, const int n) {
-    const int x_size = m * k;
-    const int y_size = k * n;
-    const int z_size = m * n;
-    TensorShape x_shape, y_shape;
-
-    if (C1 == 1) {
-      x_shape[0] = m;
-      x_shape[1] = k;
-    } else {
-      x_shape[0] = k;
-      x_shape[1] = m;
-    }
-    if (C2 == 1) {
-      y_shape[0] = n;
-      y_shape[1] = k;
-    } else {
-      y_shape[0] = k;
-      y_shape[1] = n;
-    }
-    TensorShape z_shape{m, n};
-
-    for (int i = 0; i < batches; ++i) {
-      T const* const x_ptr = in_x + i * x_size;
-      T const* const y_ptr = in_y + i * y_size;
-      T* const z_ptr = out + i * z_size;
-      ConstTensor x{x_ptr, x_shape};
-      ConstTensor y{y_ptr, y_shape};
-      Tensor z{z_ptr, z_shape};
-      z.device(d) = x.contract(y, ContractDims{});
-    }
-  }
-};
-*/
-}  // namespace functor
 
 template <typename T, int M, int N, int R, int S, ConvType CType>
 struct LaunchMatmulWinograd {
   using Index = int;
   static constexpr int A = M + R - 1;
   static constexpr int B = N + S - 1;
+  using InputTransform = functor::ExtractInputTiles<T, M, N, R, S, CType>;
+  using FilterTransform = functor::ExtractKernelTiles<T, M, N, R, S, CType>;
+  using OutputTransform = functor::ExtractOutputTiles<T, M, N, R, S, CType>;
 
   static bool launch(Eigen::SyclDevice const& device, T* const output,
                      T const* const input, T const* const filter,
@@ -134,7 +43,7 @@ struct LaunchMatmulWinograd {
     T* const in_transform =
         static_cast<T*>(device.allocate_temp(in_transform_bytes));
     const Index in_transform_items = n_tiles * params.channels_;
-    launch_transform<functor::ExtractInputTiles<T, M, N, R, S, CType>>(
+    sycl_conv::launch_transform<InputTransform>(
         device, input, in_transform, in_transform_items, params, n_tiles);
 
     size_t const fil_transform_bytes =
@@ -142,21 +51,21 @@ struct LaunchMatmulWinograd {
     T* const fil_transform =
         static_cast<T*>(device.allocate_temp(fil_transform_bytes));
     const Index fil_transform_items = params.features_ * params.channels_;
-    launch_transform<functor::ExtractKernelTiles<T, M, N, R, S, CType>>(
+    sycl_conv::launch_transform<FilterTransform>(
         device, filter, fil_transform, fil_transform_items, params, n_tiles);
 
     size_t const inter_bytes = A * B * n_tiles * params.features_ * sizeof(T);
     T* const intermediate = static_cast<T*>(device.allocate_temp(inter_bytes));
-    functor::BatchMatmul<T, 1, 1>()(device, fil_transform, in_transform,
-                                    intermediate, A * B, params.features_,
-                                    params.channels_, n_tiles);
+    sycl_conv::launch_batch_matmul<false, true>(
+        device, fil_transform, in_transform, intermediate, A * B,
+        params.features_, params.channels_, n_tiles);
 
     device.deallocate_temp(fil_transform);
     device.deallocate_temp(in_transform);
 
     const Index n_out_items = n_tiles * params.features_;
-    launch_transform<functor::ExtractOutputTiles<T, M, N, R, S, CType>>(
-        device, intermediate, output, n_out_items, params, n_tiles);
+    sycl_conv::launch_transform<OutputTransform>(device, intermediate, output,
+                                                 n_out_items, params, n_tiles);
 
     device.deallocate_temp(intermediate);
     return true;
@@ -168,6 +77,9 @@ struct LaunchMatmulWinograd<T, M, N, R, S, ConvType::FilterBackprop> {
   static constexpr int A = M + R - 1;
   static constexpr int B = N + S - 1;
   static constexpr auto CType = ConvType::FilterBackprop;
+  using InputTransform = functor::ExtractInputTiles<T, M, N, R, S, CType>;
+  using FilterTransform = functor::ExtractKernelTiles<T, M, N, R, S, CType>;
+  using OutputTransform = functor::ExtractOutputTiles<T, M, N, R, S, CType>;
 
   static bool launch(Eigen::SyclDevice const& device, T* const output,
                      T const* const input, T const* const filter,
@@ -191,30 +103,31 @@ struct LaunchMatmulWinograd<T, M, N, R, S, ConvType::FilterBackprop> {
     T* const in_transform =
         static_cast<T*>(device.allocate_temp(in_transform_bytes));
     const Index in_transform_items = n_tiles * params.channels_;
-    launch_transform<functor::ExtractInputTiles<T, M, N, R, S, CType>>(
-        device, input, in_transform, in_transform_items, params, n_tile_rows,
-        n_tile_cols);
+    sycl_conv::launch_transform<InputTransform>(device, input, in_transform,
+                                                in_transform_items, params,
+                                                n_tile_rows, n_tile_cols);
 
     size_t const fil_transform_bytes =
         A * B * n_tiles * params.features_ * sizeof(T);
     T* const fil_transform =
         static_cast<T*>(device.allocate_temp(fil_transform_bytes));
     const Index fil_transform_items = params.features_ * n_tiles;
-    launch_transform<functor::ExtractKernelTiles<T, M, N, R, S, CType>>(
+    sycl_conv::launch_transform<FilterTransform>(
         device, filter, fil_transform, fil_transform_items, params, n_tiles);
 
     size_t const n_inter_bytes =
         A * B * params.channels_ * params.features_ * sizeof(T);
-    T* const intermediate = static_cast<T*>(device.allocate_temp(n_inter_bytes));
-    functor::BatchMatmul<T, 0, 0>()(device, in_transform, fil_transform,
-                                    intermediate, A * B, params.channels_,
-                                    n_tiles, params.features_);
+    T* const intermediate =
+        static_cast<T*>(device.allocate_temp(n_inter_bytes));
+    sycl_conv::launch_batch_matmul<true, false>(
+        device, in_transform, fil_transform, intermediate, A * B,
+        params.channels_, n_tiles, params.features_);
 
     device.deallocate_temp(fil_transform);
     device.deallocate_temp(in_transform);
 
     const Index out_transform_items = params.channels_ * params.features_;
-    launch_transform<functor::ExtractOutputTiles<T, M, N, R, S, CType>>(
+    sycl_conv::launch_transform<OutputTransform>(
         device, intermediate, output, out_transform_items, params, n_tiles);
 
     device.deallocate_temp(intermediate);

@@ -399,6 +399,7 @@ struct SYCLConv2DParams {
     return {rend - row, cend - col, offset};
   }
 };
+namespace sycl_conv {
 // Ideally we would use a variadic template to capture the arg parameters to
 // pass to the functor constructor, however there is a bug in gcc 4.8 which
 // prevents the variadic parameter pack from being passed to the cgh lambda. We
@@ -446,5 +447,67 @@ static void launch_transform(Eigen::SyclDevice const& device,
     cgh.parallel_for(cl::sycl::range<1>(n_threads), extract_fun);
   });
 }
+template <bool trans_lhs, bool trans_rhs, typename T, typename Index>
+static void launch_matmul(Eigen::SyclDevice const& device, T const* const lhs,
+                          T const* const rhs, T* const output, T const alpha,
+                          Index const m, Index const k, Index const n) {
+  static constexpr auto lhs_dim = trans_lhs ? 0 : 1;
+  static constexpr auto rhs_dim = trans_rhs ? 1 : 0;
+  using ConstTensorType =
+      Eigen::Tensor<T const, 2, Eigen::RowMajor, Eigen::DenseIndex>;
+  using ConstTensor = Eigen::TensorMap<ConstTensorType, Eigen::Aligned>;
+  using TensorType = Eigen::Tensor<T, 2, Eigen::RowMajor, Eigen::DenseIndex>;
+  using Tensor = Eigen::TensorMap<TensorType, Eigen::Aligned>;
+  using TensorShape = Eigen::DSizes<Eigen::DenseIndex, 2>;
+  using ContractDims =
+      Eigen::IndexPairList<Eigen::type2indexpair<lhs_dim, rhs_dim>>;
+
+  TensorShape const lhs_shape{trans_lhs ? k : m, trans_lhs ? m : k};
+  TensorShape const rhs_shape{trans_rhs ? n : k, trans_rhs ? k : n};
+  TensorShape const out_shape{m, n};
+
+  ConstTensor lhs_tensor{lhs, lhs_shape};
+  ConstTensor rhs_tensor{rhs, rhs_shape};
+  Tensor out_tensor{output, out_shape};
+
+  if (alpha == static_cast<T>(0)) {
+    out_tensor.device(device) = lhs_tensor.contract(rhs_tensor, ContractDims{});
+  } else {
+    out_tensor.device(device) =
+        alpha * out_tensor + lhs_tensor.contract(rhs_tensor, ContractDims{});
+  }
+}
+template <bool trans_lhs, bool trans_rhs, typename T>
+static void launch_batch_matmul(Eigen::SyclDevice const& d,
+                                T const* const x_ptr, T const* const y_ptr,
+                                T* const z_ptr, const int batches, const int m,
+                                const int k, const int n) {
+  static constexpr auto lhs_dim = trans_lhs ? 0 : 1;
+  static constexpr auto rhs_dim = trans_rhs ? 1 : 0;
+  using TensorShape = Eigen::DSizes<Eigen::DenseIndex, 3>;
+  using TensorType = Eigen::Tensor<T, 3, Eigen::RowMajor, Eigen::DenseIndex>;
+  using Tensor = Eigen::TensorMap<TensorType, Eigen::Aligned>;
+  using ConstTensorType =
+      Eigen::Tensor<T const, 3, Eigen::RowMajor, Eigen::DenseIndex>;
+  using ConstTensor = Eigen::TensorMap<ConstTensorType, Eigen::Aligned>;
+  using ContractDims =
+      Eigen::IndexPairList<Eigen::type2indexpair<lhs_dim, rhs_dim>>;
+
+  TensorShape const x_shape{batches, trans_lhs ? k : m, trans_lhs ? m : k};
+  TensorShape const y_shape{batches, trans_rhs ? n : k, trans_rhs ? k : n};
+  TensorShape const z_shape{batches, m, n};
+
+  ConstTensor in_x{x_ptr, x_shape};
+  ConstTensor in_y{y_ptr, y_shape};
+  Tensor out{z_ptr, z_shape};
+
+  for (int i = 0; i < batches; ++i) {
+    auto x = in_x.template chip<0>(i);
+    auto y = in_y.template chip<0>(i);
+    auto z = out.template chip<0>(i);
+    z.device(d) = x.contract(y, ContractDims{});
+  }
+}
+}  // namespace sycl_conv
 }  // namespace tensorflow
 #endif  // TENSORFLOW_KERNELS_CONV_OPS_SYCL_COMMON_H_

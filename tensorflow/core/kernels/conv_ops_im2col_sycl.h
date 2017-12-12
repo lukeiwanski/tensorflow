@@ -12,37 +12,12 @@
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
-template <typename T, typename Index>
-static void launch_matmul(Eigen::SyclDevice const& device, T const* const lhs,
-                          T const* const rhs, T* const output, T const alpha,
-                          Index const m, Index const k, Index const n) {
-  using ConstTensorType =
-      Eigen::Tensor<T const, 2, Eigen::RowMajor, Eigen::DenseIndex>;
-  using ConstTensor = Eigen::TensorMap<ConstTensorType, Eigen::Aligned>;
-  using TensorType = Eigen::Tensor<T, 2, Eigen::RowMajor, Eigen::DenseIndex>;
-  using Tensor = Eigen::TensorMap<TensorType, Eigen::Aligned>;
-  using TensorShape = Eigen::DSizes<Eigen::DenseIndex, 2>;
-  using ContractDims = Eigen::IndexPairList<Eigen::type2indexpair<1, 0>>;
-
-  TensorShape const lhs_shape{m, k};
-  ConstTensor lhs_tensor{lhs, lhs_shape};
-  TensorShape const rhs_shape{k, n};
-  ConstTensor rhs_tensor{rhs, rhs_shape};
-  TensorShape const out_shape{m, n};
-  Tensor out_tensor{output, out_shape};
-
-  if (alpha == static_cast<T>(0)) {
-    out_tensor.device(device) = lhs_tensor.contract(rhs_tensor, ContractDims{});
-  } else {
-    out_tensor.device(device) =
-        alpha * out_tensor + lhs_tensor.contract(rhs_tensor, ContractDims{});
-  }
-}
 template <typename T, ConvType CType>
 struct LaunchIm2Col;
 template <typename T>
 struct LaunchIm2Col<T, ConvType::Forward> {
   using Index = int;
+  using InputTransform = im2col::ExtractInputTiles<T, ConvType::Forward>;
 
   static bool launch(Eigen::SyclDevice const& device, T* const output,
                      T const* const input, T const* const filter,
@@ -113,11 +88,12 @@ struct LaunchIm2Col<T, ConvType::Forward> {
       device.memset(transform, 0, actual_transform_size);
       const Index in_transform_items = images_per_alloc * params.in_rows_ *
                                        params.in_cols_ * params.channels_;
-      launch_transform<im2col::ExtractInputTiles<T, ConvType::Forward>>(
+      sycl_conv::launch_transform<InputTransform>(
           device, input, transform, in_transform_items, kernel_params,
           in_offset, tile_size);
-      launch_matmul(device, transform, filter, output + out_offset,
-                    static_cast<T>(0), n_tiles, tile_size, params.features_);
+      sycl_conv::launch_matmul<false, false>(
+          device, transform, filter, output + out_offset, static_cast<T>(0),
+          n_tiles, tile_size, params.features_);
     }
     // At the moment we have to explicitly wait here to ensure that the device
     // queue is cleared before enqueuing the kernels which use huge buffers so
@@ -131,6 +107,9 @@ struct LaunchIm2Col<T, ConvType::Forward> {
 template <typename T>
 struct LaunchIm2Col<T, ConvType::InputBackprop> {
   using Index = int;
+  static constexpr auto CType = ConvType::InputBackprop;
+  using FilterTransform = im2col::ExtractKernelTiles<T, CType>;
+  using InputTransform = im2col::ExtractInputTiles<T, CType>;
 
   static bool launch(Eigen::SyclDevice const& device, T* const output,
                      T const* const input, T const* const filter,
@@ -176,7 +155,7 @@ struct LaunchIm2Col<T, ConvType::InputBackprop> {
     const Index fil_transform_items = params.window_rows_ *
                                       params.window_cols_ * params.channels_ *
                                       params.features_;
-    launch_transform<im2col::ExtractKernelTiles<T, ConvType::InputBackprop>>(
+    sycl_conv::launch_transform<FilterTransform>(
         device, filter, filter_transform, fil_transform_items, params, 0);
 
     // When the number of input transforms required is greater than one, it is
@@ -208,11 +187,12 @@ struct LaunchIm2Col<T, ConvType::InputBackprop> {
       device.memset(transform, 0, actual_transform_size);
       const Index in_transform_items = images_per_alloc * params.out_rows_ *
                                        params.out_cols_ * params.features_;
-      launch_transform<im2col::ExtractInputTiles<T, ConvType::InputBackprop>>(
+      sycl_conv::launch_transform<InputTransform>(
           device, input, transform, in_transform_items, kernel_params,
           in_offset, tile_size);
-      launch_matmul(device, transform, filter_transform, output + out_offset,
-                    static_cast<T>(0), n_tiles, tile_size, params.channels_);
+      sycl_conv::launch_matmul<false, false>(
+          device, transform, filter_transform, output + out_offset,
+          static_cast<T>(0), n_tiles, tile_size, params.channels_);
       device.synchronize();
     }
     // At the moment we have to explicitly wait here to ensure that the device
@@ -228,6 +208,7 @@ struct LaunchIm2Col<T, ConvType::InputBackprop> {
 template <typename T>
 struct LaunchIm2Col<T, ConvType::FilterBackprop> {
   using Index = int;
+  using InputTransform = im2col::ExtractInputTiles<T, ConvType::FilterBackprop>;
 
   static bool launch(Eigen::SyclDevice const& device, T* const output,
                      T const* const input, T const* const filter,
@@ -303,15 +284,17 @@ struct LaunchIm2Col<T, ConvType::FilterBackprop> {
       device.memset(transform, 0, actual_transform_size);
       const Index in_transform_items = images_per_alloc * params.in_rows_ *
                                        params.in_cols_ * params.channels_;
-      launch_transform<im2col::ExtractInputTiles<T, ConvType::FilterBackprop>>(
+      sycl_conv::launch_transform<InputTransform>(
           device, input, transform, in_transform_items, kernel_params,
           in_offset, tile_size);
       if (i == 0) {
-        launch_matmul(device, transform, filter + out_offset, output,
-                      static_cast<T>(0), n_tiles, tile_size, params.features_);
+        sycl_conv::launch_matmul<false, false>(
+            device, transform, filter + out_offset, output, static_cast<T>(0),
+            n_tiles, tile_size, params.features_);
       } else {
-        launch_matmul(device, transform, filter + out_offset, output,
-                      static_cast<T>(1), n_tiles, tile_size, params.features_);
+        sycl_conv::launch_matmul<false, false>(
+            device, transform, filter + out_offset, output, static_cast<T>(1),
+            n_tiles, tile_size, params.features_);
       }
       device.synchronize();
     }

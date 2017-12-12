@@ -16,14 +16,43 @@
 namespace tensorflow {
 template <typename T, typename backend_type, algorithm Algo, ConvType CType>
 struct Launcher;
-template <typename T, typename backend_type, ConvType CType>
-struct Launcher<T, backend_type, algorithm::matmul, CType> {
+template <typename T, typename backend_type>
+struct Launcher<T, backend_type, algorithm::matmul, ConvType::Forward> {
   static bool launch(backend_type const& backend, T* const output,
                      T const* const input, T const* const filter,
                      SYCLConv2DParams const& params) {
-    // TODO(jwlawson): Add matmul launch
-    LOG(WARNING) << "SYCL conv2d matmul is not implemented yet.";
-    return false;
+    int conv_width = params.batch_ * params.out_rows_ * params.out_cols_;
+
+    sycl_conv::launch_matmul<false, false>(backend, input, filter, output,
+                                           static_cast<T>(0), conv_width,
+                                           params.channels_, params.features_);
+    return true;
+  }
+};
+template <typename T, typename backend_type>
+struct Launcher<T, backend_type, algorithm::matmul, ConvType::InputBackprop> {
+  static bool launch(backend_type const& backend, T* const output,
+                     T const* const input, T const* const filter,
+                     SYCLConv2DParams const& params) {
+    int conv_width = params.batch_ * params.in_rows_ * params.in_cols_;
+
+    sycl_conv::launch_matmul<false, true>(backend, input, filter, output,
+                                          static_cast<T>(0), conv_width,
+                                          params.features_, params.channels_);
+    return true;
+  }
+};
+template <typename T, typename backend_type>
+struct Launcher<T, backend_type, algorithm::matmul, ConvType::FilterBackprop> {
+  static bool launch(backend_type const& backend, T* const output,
+                     T const* const input, T const* const filter,
+                     SYCLConv2DParams const& params) {
+    int conv_width = params.batch_ * params.in_rows_ * params.in_cols_;
+
+    sycl_conv::launch_matmul<true, false>(backend, input, filter, output,
+                                          static_cast<T>(0), params.channels_,
+                                          conv_width, params.features_);
+    return true;
   }
 };
 template <typename T, typename backend_type, ConvType CType>
