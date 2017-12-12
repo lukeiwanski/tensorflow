@@ -102,24 +102,8 @@ struct FusedBatchNorm {
     const T rest_size_adjust =
         static_cast<T>(rest_size) / static_cast<T>(rest_size_minus_one);
 
-#ifdef TENSORFLOW_USE_SYCL
-    Tensor mean_tmp;
-    Tensor variance_tmp;
-    OP_REQUIRES_OK(context, context->allocate_temp(
-                                DataTypeToEnum<T>::value,
-                                TensorShape({depth}),
-                                &mean_tmp));
-    OP_REQUIRES_OK(context, context->allocate_temp(
-                                DataTypeToEnum<T>::value,
-                                TensorShape({depth}),
-                                &variance_tmp));
-
-    auto mean = mean_tmp.flat<T>();
-    auto variance = variance_tmp.flat<T>();
-#else
-    Eigen::Tensor<T, 1, Eigen::RowMajor> mean(depth);
-    Eigen::Tensor<T, 1, Eigen::RowMajor> variance(depth);
-#endif  // TENSORFLOW_USE_SYCL
+    Eigen::Tensor<U, 1, Eigen::RowMajor> mean(depth);
+    Eigen::Tensor<U, 1, Eigen::RowMajor> variance(depth);
 
     if (is_training) {
       mean.device(d) = x_rest_by_depth.mean(reduce_dims);
@@ -511,6 +495,80 @@ DECLARE_GPU_SPEC(float, float);
 DECLARE_GPU_SPEC(Eigen::half, float);
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T, typename U>
+struct FusedBatchNorm<SYCLDevice, T, U> {
+  void operator()(OpKernelContext* context, const Tensor& x_input,
+                  const Tensor& scale_input, const Tensor& offset_input,
+                  const Tensor& estimated_mean_input,
+                  const Tensor& estimated_variance_input, U epsilon,
+                  Tensor* y_output, Tensor* batch_mean_output,
+                  Tensor* batch_var_output, Tensor* saved_mean_output,
+                  Tensor* saved_var_output, TensorFormat tensor_format,
+                  bool is_training) {
+    OP_REQUIRES(context, tensor_format == FORMAT_NHWC,
+                errors::Internal("The SYCL implementation of FusedBatchNorm "
+                                 "only supports NHWC tensor format for now."));
+    typename TTypes<T, 4>::ConstTensor x(x_input.tensor<T, 4>());
+    typename TTypes<U>::ConstVec scale(scale_input.vec<U>());
+    typename TTypes<U>::ConstVec offset(offset_input.vec<U>());
+    typename TTypes<T, 4>::Tensor y(y_output->tensor<T, 4>());
+
+    const SYCLDevice& d = context->eigen_device<SYCLDevice>();
+    const int depth = x.dimension(3);
+    const int size = x.size();
+    const int rest_size = size / depth;
+    Eigen::DSizes<Eigen::Index, 2> rest_by_depth(rest_size, depth);
+
+#if !defined(EIGEN_HAS_INDEX_LIST)
+    Eigen::DSizes<Eigen::Index, 2> one_by_depth(1, depth);
+    Eigen::array<int, 1> reduce_dims({0});
+    Eigen::array<int, 2> bcast_spec({rest_size, 1});
+#else
+    Eigen::IndexList<Eigen::type2index<1>, Eigen::Index> one_by_depth;
+    one_by_depth.set(1, depth);
+    Eigen::IndexList<Eigen::type2index<0> > reduce_dims;
+    Eigen::IndexList<Eigen::Index, Eigen::type2index<1> > bcast_spec;
+    bcast_spec.set(0, rest_size);
+#endif
+
+    auto x_rest_by_depth = x.reshape(rest_by_depth).template cast<U>();
+    if (is_training) {
+      typename TTypes<U>::Vec batch_mean(batch_mean_output->vec<U>());
+      typename TTypes<U>::Vec batch_var(batch_var_output->vec<U>());
+      typename TTypes<U>::Vec saved_mean(saved_mean_output->vec<U>());
+      typename TTypes<U>::Vec saved_var(saved_var_output->vec<U>());
+
+      const int rest_size_minus_one = (rest_size > 1) ? (rest_size - 1) : 1;
+      // This adjustment is for Bessel's correction
+      U rest_size_adjust = static_cast<U>(rest_size) / static_cast<U>(rest_size_minus_one);
+
+      saved_mean.device(d) = x_rest_by_depth.mean(reduce_dims);
+      d.memcpy(batch_mean.data(), saved_mean.data(), depth * sizeof(U));
+      auto x_centered = (x_rest_by_depth - saved_mean.reshape(one_by_depth).broadcast(bcast_spec)).eval();
+      saved_var.device(d) = x_centered.square().mean(reduce_dims);
+      batch_var.device(d) = saved_var * rest_size_adjust;
+
+      auto scaling_factor = ((saved_var + epsilon).rsqrt() * scale).reshape(one_by_depth).broadcast(bcast_spec);
+      auto x_scaled = x_centered * scaling_factor;
+      auto x_shifted = x_scaled + offset.reshape(one_by_depth).broadcast(bcast_spec);
+      y.reshape(rest_by_depth).device(d) = x_shifted.template cast<T>();
+    }
+    else {
+      typename TTypes<U>::ConstVec estimated_mean(estimated_mean_input.vec<U>());
+      typename TTypes<U>::ConstVec estimated_variance(estimated_variance_input.vec<U>());
+
+      auto x_centered = x_rest_by_depth - estimated_mean.reshape(one_by_depth).broadcast(bcast_spec);
+      auto scaling_factor = ((estimated_variance + epsilon).rsqrt() * scale)
+                              .reshape(one_by_depth).broadcast(bcast_spec);
+      auto x_scaled = x_centered * scaling_factor;
+      auto x_shifted = x_scaled + offset.reshape(one_by_depth).broadcast(bcast_spec);
+      y.reshape(rest_by_depth).device(d) = x_shifted.template cast<T>();
+    }
+  }
+};
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 template <typename Device, typename T, typename U>
