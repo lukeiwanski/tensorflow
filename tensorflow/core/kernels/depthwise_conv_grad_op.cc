@@ -39,6 +39,10 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#include "tensorflow/core/kernels/depthwise_conv_op_sycl.h"
+#endif  // TENSORFLOW_USE_SYCL
+
 namespace tensorflow {
 
 // Gradient operations for depthwise convolution.
@@ -590,11 +594,14 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeBackpropInputOp);
 };
 
-#define REGISTER_CPU_KERNEL(T)                                       \
-  REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNativeBackpropInput") \
-                              .Device(DEVICE_CPU)                    \
-                              .TypeConstraint<T>("T"),               \
-                          DepthwiseConv2dNativeBackpropInputOp<CPUDevice, T>);
+#define REGISTER_KERNEL(DEV, T)                  \
+  REGISTER_KERNEL_BUILDER(                       \
+      Name("DepthwiseConv2dNativeBackpropInput") \
+          .Device(DEVICE_##DEV)                  \
+          .HostMemory("input_sizes")             \
+          .TypeConstraint<T>("T"),               \
+      DepthwiseConv2dNativeBackpropInputOp<DEV##Device, T>);
+#define REGISTER_CPU_KERNEL(T) REGISTER_KERNEL(CPU, T)
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
@@ -613,6 +620,14 @@ REGISTER_KERNEL_BUILDER(
         .HostMemory("input_sizes"),
     DepthwiseConv2dNativeBackpropInputOp<GPUDevice, double>);
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(T) REGISTER_KERNEL(SYCL, T)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
+
+#undef REGISTER_KERNEL
 
 // Kernels to compute the gradients of the filters for depthwise convolution.
 
@@ -967,12 +982,14 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeBackpropFilterOp);
 };
 
-#define REGISTER_CPU_KERNEL(T)                    \
+#define REGISTER_KERNEL(DEV, T)                   \
   REGISTER_KERNEL_BUILDER(                        \
       Name("DepthwiseConv2dNativeBackpropFilter") \
-          .Device(DEVICE_CPU)                     \
+          .Device(DEVICE_##DEV)                   \
+          .HostMemory("filter_sizes")             \
           .TypeConstraint<T>("T"),                \
-      DepthwiseConv2dNativeBackpropFilterOp<CPUDevice, T>);
+      DepthwiseConv2dNativeBackpropFilterOp<DEV##Device, T>);
+#define REGISTER_CPU_KERNEL(T) REGISTER_KERNEL(CPU, T)
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
@@ -993,4 +1010,11 @@ REGISTER_KERNEL_BUILDER(
     DepthwiseConv2dNativeBackpropFilterOp<GPUDevice, double>);
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(T) REGISTER_KERNEL(SYCL, T)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
+
+#undef REGISTER_KERNEL
 }  // namespace tensorflow

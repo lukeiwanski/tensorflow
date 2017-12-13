@@ -42,6 +42,11 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#include "tensorflow/core/kernels/depthwise_conv_op_sycl.h"
+#include "tensorflow/core/kernels/conv_ops_sycl.h"
+#endif  // TENSORFLOW_USE_SYCL
+
 namespace tensorflow {
 
 // In depthwise convolution, one input is convolved into depth_multipler
@@ -414,17 +419,19 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
 
   TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeOp);
 };
-
-#define REGISTER_CPU_KERNEL(T)                                                 \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("DepthwiseConv2dNative").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      DepthwiseConv2dNativeOp<CPUDevice, T>);
+#define REGISTER_KERNEL(DEV, T)                         \
+  REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNative") \
+                              .Device(DEVICE_##DEV)     \
+                              .TypeConstraint<T>("T"),  \
+                          DepthwiseConv2dNativeOp<DEV##Device, T>);
+#define REGISTER_CPU_KERNEL(T) REGISTER_KERNEL(CPU, T)
 
 TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 #if !defined(PLATFORM_WINDOWS) || !defined(_DEBUG)
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #endif
+#undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(
@@ -441,4 +448,11 @@ REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNative")
                         DepthwiseConv2dNativeOp<GPUDevice, double>);
 #endif
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(T) REGISTER_KERNEL(SYCL, T)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
+
+#undef REGISTER_KERNEL
 }  // namespace tensorflow
