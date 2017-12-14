@@ -46,7 +46,8 @@ struct DepthwiseConv2DParams {
   inline TF_ATTRIBUTE_ALWAYS_INLINE Index kernel_index(const Index channel,
                                                        const Index multiplier,
                                                        const Index i,
-                                                       const Index j) const {
+                                                       const Index j) const
+      noexcept {
     return (((i * window_cols_) + j) * channels_ + channel) *
                channel_multiplier_ +
            multiplier;
@@ -59,7 +60,8 @@ struct DepthwiseConv2DParams {
   inline TF_ATTRIBUTE_ALWAYS_INLINE Index backprop_index(const Index channel,
                                                          const Index multiplier,
                                                          const Index i,
-                                                         const Index j) const {
+                                                         const Index j) const
+      noexcept {
     const Index mirrored_row = window_rows_ - i - 1;
     const Index mirrored_col = window_cols_ - j - 1;
     return ((mirrored_row * window_cols_ + mirrored_col) * channels_ +
@@ -74,7 +76,7 @@ struct DepthwiseConv2DParams {
    */
   inline TF_ATTRIBUTE_ALWAYS_INLINE Index
   filter_kernel_index(const Index batch, const Index i, const Index j,
-                      const Index feature) const {
+                      const Index feature) const noexcept {
     const Index filter_rows = RoundRatioUpAboveZero(window_rows_, stride_rows_);
     const Index filter_cols = RoundRatioUpAboveZero(window_cols_, stride_cols_);
     return ((batch * filter_rows + i) * filter_cols + j) * out_depth_ + feature;
@@ -87,7 +89,7 @@ struct DepthwiseConv2DParams {
    * is correctly calculated.
    */
   inline TF_ATTRIBUTE_ALWAYS_INLINE SYCL2DWindow
-  input_window_from_output(const Index tile_idx) const {
+  input_window_from_output(const Index tile_idx) const noexcept {
     static_assert(std::is_integral<Index>::value,
                   "Index must be an integral type");
     static_assert(std::is_signed<Index>::value, "Index must be a signed type");
@@ -105,7 +107,7 @@ struct DepthwiseConv2DParams {
     return {rstart, rend, firstr, cstart, cend, firstc, batch};
   }
   inline TF_ATTRIBUTE_ALWAYS_INLINE SYCL2DWindow
-  output_window_from_input_no_dilation(const Index index) const {
+  output_window_from_input_no_dilation(const Index index) const noexcept {
     Index n = index;
     // c is the index in the padded output tensor (ie with lots of extra zeros),
     // but without the first padding. first_padded_c adds this extra padding.
@@ -135,7 +137,7 @@ struct DepthwiseConv2DParams {
     return {rstart, rend, offset_r, cstart, cend, offset_c, n};
   }
   inline TF_ATTRIBUTE_ALWAYS_INLINE SYCL2DKernelWindow
-  kernel_window_from_output(const Index index) const {
+  kernel_window_from_output(const Index index) const noexcept {
     static_assert(std::is_integral<Index>::value,
                   "Index must be an integral type");
     static_assert(std::is_signed<Index>::value, "Index must be a signed type");
@@ -170,14 +172,15 @@ struct DepthwiseConv2D<T, ConvType::Forward> {
   inline TF_ATTRIBUTE_ALWAYS_INLINE DepthwiseConv2D(
       Index n_elems, const DepthwiseConv2DParams& params,
       const read_accessor input, const read_accessor kernel,
-      write_accessor output)
+      write_accessor output) noexcept
       : n_elems_{n_elems},
         p_(params),
         input_accessor_{input},
         kernel_accessor_{kernel},
         output_accessor_{output} {}
 
-  inline TF_ATTRIBUTE_ALWAYS_INLINE void operator()(cl::sycl::item<1> item) {
+  inline TF_ATTRIBUTE_ALWAYS_INLINE void operator()(
+      cl::sycl::item<1> item) noexcept {
     const Index index = item.get(0);
 
     if (index < n_elems_) {
@@ -231,14 +234,15 @@ struct DepthwiseConv2D<T, ConvType::InputBackprop> {
   inline TF_ATTRIBUTE_ALWAYS_INLINE DepthwiseConv2D(
       Index n_elems, const DepthwiseConv2DParams& params,
       const read_accessor input, const read_accessor kernel,
-      write_accessor output)
+      write_accessor output) noexcept
       : n_elems_{n_elems},
         p_(params),
         input_accessor_{input},
         kernel_accessor_{kernel},
         output_accessor_{output} {}
 
-  inline TF_ATTRIBUTE_ALWAYS_INLINE void operator()(cl::sycl::item<1> item) {
+  inline TF_ATTRIBUTE_ALWAYS_INLINE void operator()(
+      cl::sycl::item<1> item) noexcept {
     const Index index = item.get(0);
     if (index < n_elems_) {
       const T* input_data = ConvertToActualTypeSycl(T, input_accessor_);
@@ -278,41 +282,54 @@ struct DepthwiseConv2D<T, ConvType::InputBackprop> {
   const read_accessor kernel_accessor_;
   write_accessor output_accessor_;
 };
-/*
- * The main difference between the two backprop kernels is the way strides are
- * handled. In the filter backprop the input is strided and the kernel is not
- * whereas in the input backprop this is the other way around.
- */
 template <typename T>
 struct DepthwiseConv2D<T, ConvType::FilterBackprop> {
   using Index = int;
   using buffer_data = uint8_t;
   static constexpr auto read_mode = cl::sycl::access::mode::read;
-  static constexpr auto write_mode = cl::sycl::access::mode::discard_write;
+  static constexpr auto d_write_mode = cl::sycl::access::mode::discard_write;
+  static constexpr auto write_mode = cl::sycl::access::mode::write;
+  static constexpr auto read_write_mode = cl::sycl::access::mode::read_write;
   static constexpr auto global_access = cl::sycl::access::target::global_buffer;
+  static constexpr auto local_access = cl::sycl::access::target::local;
+  static constexpr auto local_fence =
+      cl::sycl::access::fence_space::local_space;
   using write_accessor =
-      cl::sycl::accessor<buffer_data, 1, write_mode, global_access>;
+      cl::sycl::accessor<buffer_data, 1, d_write_mode, global_access>;
   using read_accessor =
       cl::sycl::accessor<buffer_data, 1, read_mode, global_access>;
+  using local_accessor =
+      cl::sycl::accessor<T, 1, read_write_mode, local_access>;
 
   inline TF_ATTRIBUTE_ALWAYS_INLINE DepthwiseConv2D(
-      Index n_elems, const DepthwiseConv2DParams& params,
+      Index n_filter_elems, Index n_group_items, Index n_b_items,
+      Index n_k_items, const DepthwiseConv2DParams& params,
       const read_accessor input, const read_accessor kernel,
-      write_accessor output)
-      : n_elems_{n_elems},
+      local_accessor local, write_accessor output) noexcept
+      : n_filter_elems_{n_filter_elems},
+        n_group_items_{n_group_items},
+        n_b_items_{n_b_items},
+        n_k_items_{n_k_items},
         p_(params),
         input_accessor_{input},
         kernel_accessor_{kernel},
+        local_accessor_{local},
         output_accessor_{output} {}
 
-  inline TF_ATTRIBUTE_ALWAYS_INLINE void operator()(cl::sycl::item<1> item) {
-    const Index index = item.get(0);
-    if (index < n_elems_) {
+  inline TF_ATTRIBUTE_ALWAYS_INLINE void operator()(
+      cl::sycl::nd_item<2> item) noexcept {
+    const Index local_idx = item.get_global(0);
+    const Index fil_idx = item.get_global(1);
+    if (local_idx < n_group_items_ && fil_idx < n_filter_elems_) {
       const T* input_data = ConvertToActualTypeSycl(T, input_accessor_);
       const T* kernel_data = ConvertToActualTypeSycl(T, kernel_accessor_);
       T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
+      T* local_data = local_accessor_.get_pointer();
 
-      Index t_idx = index;
+      const Index k_idx = local_idx % n_k_items_;
+      const Index b_idx = local_idx / n_k_items_;
+
+      Index t_idx = fil_idx;
       const Index multiple = t_idx % p_.channel_multiplier_;
       t_idx /= p_.channel_multiplier_;
       const Index channel = t_idx % p_.channels_;
@@ -320,42 +337,73 @@ struct DepthwiseConv2D<T, ConvType::FilterBackprop> {
       const SYCL2DKernelWindow w = p_.kernel_window_from_output(t_idx);
 
       T out_val = static_cast<T>(0);
-      const T* input_data_n = input_data;
-      for (Index b = 0; b < p_.batch_; b++) {
+      const T* input_data_n =
+          input_data + b_idx * p_.in_cols_ * p_.in_rows_ * p_.channels_;
+      for (Index b = b_idx; b < p_.batch_; b += n_b_items_) {
         for (Index r = w.rstart, i = 0; r < w.rend; ++i, r += p_.stride_rows_) {
           if (r >= 0) {
-            for (Index c = w.cstart, j = 0; c < w.cend;
-                 ++j, c += p_.stride_cols_) {
+            for (Index c = w.cstart + (k_idx * p_.stride_cols_), j = k_idx;
+                 c < w.cend;
+                 j += n_k_items_, c += (n_k_items_ * p_.stride_cols_)) {
               if (c >= 0) {
                 const Index idx =
                     (r * p_.in_cols_ + c) * p_.channels_ + channel;
-                const Index k_idx = p_.filter_kernel_index(
+                const Index kern_idx = p_.filter_kernel_index(
                     b, i, j, channel * p_.channel_multiplier_ + multiple);
-                out_val += input_data_n[idx] * kernel_data[k_idx];
+                out_val += input_data_n[idx] * kernel_data[kern_idx];
               }
             }
           }
         }
-        input_data_n += p_.in_cols_ * p_.in_rows_ * p_.channels_;
+        input_data_n += n_b_items_ * p_.in_cols_ * p_.in_rows_ * p_.channels_;
       }
-      output_data[index] = out_val;
+      Index reduction_idx = n_group_items_;
+      bool written = false;
+      while (reduction_idx > 1) {
+        reduction_idx /= 2;
+        if (local_idx >= reduction_idx && !written) {
+          local_data[local_idx - reduction_idx] = out_val;
+          written = true;
+        }
+#if 0
+        item.mem_fence<write_mode>(local_fence);
+#else
+        item.barrier(local_fence);
+#endif
+        if (local_idx < reduction_idx) {
+          out_val += local_data[local_idx];
+        }
+#if 0
+        item.mem_fence<read_mode>(local_fence);
+#else
+        item.barrier(local_fence);
+#endif
+      }
+      if (local_idx == 0) {
+        output_data[fil_idx] = out_val;
+      }
     }
   }
 
  private:
-  const Index n_elems_;
+  const Index n_filter_elems_;
+  const Index n_group_items_;
+  const Index n_b_items_;
+  const Index n_k_items_;
   const DepthwiseConv2DParams p_;
   const read_accessor input_accessor_;
   const read_accessor kernel_accessor_;
+  local_accessor local_accessor_;
   write_accessor output_accessor_;
 };
 template <ConvType CType>
-inline DepthwiseConv2DParams get_kernel_params(DepthwiseConv2DParams params) {
+inline DepthwiseConv2DParams get_kernel_params(
+    DepthwiseConv2DParams params) noexcept {
   return params;
 }
 template <>
 inline DepthwiseConv2DParams get_kernel_params<ConvType::FilterBackprop>(
-    DepthwiseConv2DParams params) {
+    DepthwiseConv2DParams params) noexcept {
   // Map the input dimensions to those expected in the convolution kernel.
   const auto window_rows =
       params.out_rows_ * params.stride_rows_ - (params.stride_rows_ - 1);
@@ -368,21 +416,21 @@ inline DepthwiseConv2DParams get_kernel_params<ConvType::FilterBackprop>(
   return params;
 }
 template <ConvType CType>
-inline size_t get_output_size(DepthwiseConv2DParams const& params);
+inline size_t get_output_size(DepthwiseConv2DParams const& params) noexcept;
 template <>
 inline size_t get_output_size<ConvType::Forward>(
-    DepthwiseConv2DParams const& params) {
+    DepthwiseConv2DParams const& params) noexcept {
   return params.batch_ * params.out_rows_ * params.out_cols_ *
          params.out_depth_;
 }
 template <>
 inline size_t get_output_size<ConvType::InputBackprop>(
-    DepthwiseConv2DParams const& params) {
+    DepthwiseConv2DParams const& params) noexcept {
   return params.batch_ * params.in_rows_ * params.in_cols_ * params.channels_;
 }
 template <>
 inline size_t get_output_size<ConvType::FilterBackprop>(
-    DepthwiseConv2DParams const& params) {
+    DepthwiseConv2DParams const& params) noexcept {
   return params.window_rows_ * params.window_cols_ * params.out_depth_;
 }
 template <typename T, ConvType CType>
@@ -394,7 +442,7 @@ struct LaunchDepthwiseConv2DKernel {
 
   static void launch(Eigen::SyclDevice const& device, T* const output,
                      T const* const input, T const* const filter,
-                     DepthwiseConv2DParams const& params) {
+                     DepthwiseConv2DParams const& params) noexcept {
     const Index output_size = get_output_size<CType>(params);
     const Index workgroup_size = device.maxSyclThreadsPerBlock();
     const Index n_threads =
@@ -417,6 +465,63 @@ struct LaunchDepthwiseConv2DKernel {
     });
   }
 };
+template <typename T>
+struct LaunchDepthwiseConv2DKernel<T, ConvType::FilterBackprop> {
+  static constexpr auto CType = ConvType::FilterBackprop;
+  using Functor = DepthwiseConv2D<T, CType>;
+  static constexpr auto read_mode = Functor::read_mode;
+  static constexpr auto write_mode = Functor::d_write_mode;
+  using local_accessor = typename Functor::local_accessor;
+  using Index = int;
+
+  static void launch(Eigen::SyclDevice const& device, T* const output,
+                     T const* const input, T const* const filter,
+                     DepthwiseConv2DParams const& params) noexcept {
+    const size_t output_size = get_output_size<CType>(params);
+    const Index max_wg_size = device.maxSyclThreadsPerBlock();
+    const Index pow2_max_wg_size = pow2_less_than(max_wg_size);
+    Index pow2_batch = pow2_less_than(params.batch_);
+    Index pow2_out_cols = pow2_less_than(params.out_cols_);
+    bool div_batch = pow2_batch > 1;
+    while (pow2_batch * pow2_out_cols > pow2_max_wg_size) {
+      if (div_batch) {
+        pow2_batch /= 2;
+        div_batch = pow2_out_cols < 2;
+      } else {
+        pow2_out_cols /= 2;
+        div_batch = pow2_batch > 2;
+      }
+    }
+    const size_t workgroup_size = pow2_batch * pow2_out_cols;
+
+    auto input_buffer = device.get_sycl_buffer(input);
+    auto filter_buffer = device.get_sycl_buffer(filter);
+    auto output_buffer = device.get_sycl_buffer(output);
+    DepthwiseConv2DParams kernel_params = get_kernel_params<CType>(params);
+
+    device.sycl_queue().submit([&](cl::sycl::handler& cgh) {
+      auto input_access = input_buffer.template get_access<read_mode>(cgh);
+      auto filter_access = filter_buffer.template get_access<read_mode>(cgh);
+      auto output_access = output_buffer.template get_access<write_mode>(cgh);
+
+      local_accessor local_access{cl::sycl::range<1>{workgroup_size}, cgh};
+
+      Functor conv(output_size, workgroup_size, pow2_batch, pow2_out_cols,
+                   kernel_params, input_access, filter_access, local_access,
+                   output_access);
+
+      cgh.parallel_for(
+          cl::sycl::nd_range<2>{cl::sycl::range<2>{workgroup_size, output_size},
+                                cl::sycl::range<2>{workgroup_size, 1}},
+          conv);
+    });
+  }
+
+ private:
+  static Index pow2_less_than(Index const val) noexcept {
+    return std::exp2(static_cast<int>(std::log2(val)));
+  }
+};
 template <typename T, ConvType CType>
 struct DLauncher final : public LaunchDepthwiseConv2DKernel<T, CType> {};
 }  // namespace sycl_conv
@@ -424,7 +529,7 @@ template <typename T>
 struct LaunchDepthwiseConvOp<SYCLDevice, T> {
   void operator()(OpKernelContext* ctx, const DepthwiseArgs& args,
                   const T* input, const T* depthwise_filter, T* output,
-                  TensorFormat data_format) {
+                  TensorFormat data_format) noexcept {
     OP_REQUIRES(
         ctx, data_format == FORMAT_NHWC,
         errors::Unimplemented(
@@ -453,7 +558,7 @@ template <typename T>
 struct LaunchDepthwiseConvBackpropInputOp<SYCLDevice, T> {
   void operator()(OpKernelContext* ctx, const DepthwiseArgs& args,
                   const T* out_backprop, const T* depthwise_filter,
-                  T* in_backprop, TensorFormat data_format) {
+                  T* in_backprop, TensorFormat data_format) noexcept {
     OP_REQUIRES(
         ctx, data_format == FORMAT_NHWC,
         errors::Unimplemented(
@@ -482,7 +587,7 @@ template <typename T>
 struct LaunchDepthwiseConvBackpropFilterOp<SYCLDevice, T> {
   void operator()(OpKernelContext* ctx, const DepthwiseArgs& args,
                   const T* out_backprop, const T* input, T* filter_backprop,
-                  TensorFormat data_format) {
+                  TensorFormat data_format) noexcept {
     OP_REQUIRES(
         ctx, data_format == FORMAT_NHWC,
         errors::Unimplemented(
