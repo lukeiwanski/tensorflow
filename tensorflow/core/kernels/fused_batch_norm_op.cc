@@ -546,7 +546,7 @@ struct FusedBatchNorm<SYCLDevice, T, U> {
 
       saved_mean.device(d) = x_rest_by_depth.mean(reduce_dims);
       d.memcpy(batch_mean.data(), saved_mean.data(), depth * sizeof(U));
-      auto x_centered = (x_rest_by_depth - saved_mean.reshape(one_by_depth).broadcast(bcast_spec)).eval();
+      auto x_centered = x_rest_by_depth - saved_mean.reshape(one_by_depth).broadcast(bcast_spec);
       saved_var.device(d) = x_centered.square().mean(reduce_dims);
       batch_var.device(d) = saved_var * rest_size_adjust;
 
