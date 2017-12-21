@@ -475,6 +475,7 @@ size_t GraphView::NodeItemBytes(const Node* n) {
       + num_inputs * sizeof(uint8)                 // input_type[num_inputs]
       + num_outputs * sizeof(uint8);               // output_type[num_outputs]
   static constexpr size_t kItemAlignment = sizeof(NodeItem*);
+#if !(defined(TENSORFLOW_USE_SYCL) && defined(__SYCL_DEVICE_ONLY__))
   static_assert(kItemAlignment % alignof(NodeItem) == 0,
                 "NodeItem must be aligned with kItemAlignment");
   static_assert(kItemAlignment % alignof(EdgeInfo) == 0,
@@ -487,6 +488,7 @@ size_t GraphView::NodeItemBytes(const Node* n) {
                 "NodeItem must be aligned with AllocatorAttributes");
   static_assert(sizeof(EdgeInfo) % alignof(AllocatorAttributes) == 0,
                 "EdgeInfo must be aligned with AllocatorAttributes");
+#endif
   const size_t bytes =
       ((raw_bytes + kItemAlignment - 1) / kItemAlignment) * kItemAlignment;
   return bytes;
