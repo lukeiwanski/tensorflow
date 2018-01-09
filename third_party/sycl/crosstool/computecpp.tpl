@@ -10,6 +10,8 @@ from subprocess import call, Popen, PIPE, check_output
 CPU_CXX_COMPILER = ('%{host_cxx_compiler}')
 CPU_C_COMPILER = ('%{host_c_compiler}')
 COMPUTECPP_ROOT = ('%{computecpp_root}')
+DOUBLE_SUPPORT = ('%{double_support}')
+HALF_SUPPORT = ('%{half_support}')
 
 COMPUTECPP_DRIVER = "%s/bin/compute++" % COMPUTECPP_ROOT
 COMPUTECPP_INCLUDE = "%s/include" % COMPUTECPP_ROOT
@@ -79,6 +81,13 @@ def checkComputeCppIsSupported():
 def useDriver(compiler_flags):
   output_file_index = compiler_flags.index('-o') + 1
   output_file_name = compiler_flags[output_file_index]
+
+  # Check whether we should disable double or half support
+  if DOUBLE_SUPPORT == "0":
+    compiler_flags += ['-DTENSORFLOW_SYCL_NO_DOUBLE=1']
+  if HALF_SUPPORT == "0":
+    compiler_flags += ['-DTENSORFLOW_SYCL_NO_HALF=1']
+
   if output_file_index == 1:
     # we are linking
     return call([CPU_CXX_COMPILER] + compiler_flags)

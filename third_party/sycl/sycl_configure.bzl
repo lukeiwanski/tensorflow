@@ -8,6 +8,8 @@
   * TRISYCL_INCLUDE_DIR: The path to the include directory of triSYCL.
                          (if using triSYCL instead of ComputeCPP)
   * PYTHON_LIB_PATH: The path to the python lib
+  * TF_USE_DOUBLE_SYCL: boolean value representing double support
+  * TF_USE_HALF_SYCL: boolean value representing half support
 """
 
 _HOST_CXX_COMPILER = "HOST_CXX_COMPILER"
@@ -15,6 +17,8 @@ _HOST_C_COMPILER= "HOST_C_COMPILER"
 _COMPUTECPP_TOOLKIT_PATH = "COMPUTECPP_TOOLKIT_PATH"
 _TRISYCL_INCLUDE_DIR = "TRISYCL_INCLUDE_DIR"
 _PYTHON_LIB_PATH = "PYTHON_LIB_PATH"
+_DOUBLE_SUPPORT = "TF_USE_DOUBLE_SYCL"
+_HALF_SUPPORT = "TF_USE_HALF_SYCL"
 
 def _enable_sycl(repository_ctx):
   if "TF_NEED_OPENCL_SYCL" in repository_ctx.os.environ:
@@ -24,6 +28,16 @@ def _enable_sycl(repository_ctx):
 
 def _enable_compute_cpp(repository_ctx):
   return _COMPUTECPP_TOOLKIT_PATH in repository_ctx.os.environ
+
+def _enable_double(repository_ctx):
+  if _DOUBLE_SUPPORT in repository_ctx.os.environ:
+    return repository_ctx.os.environ[_DOUBLE_SUPPORT]
+  return "0"
+
+def _enable_half(repository_ctx):
+  if _HALF_SUPPORT in repository_ctx.os.environ:
+    return repository_ctx.os.environ[_HALF_SUPPORT]
+  return "0"
 
 def auto_configure_fail(msg):
   """Output failure message when auto configuration fails."""
@@ -195,6 +209,8 @@ def _sycl_autoconf_imp(repository_ctx):
         "%{host_cxx_compiler}" : find_cc(repository_ctx),
         "%{host_c_compiler}" : find_c(repository_ctx),
         "%{computecpp_root}"  : computecpp_root,
+        "%{double_support}" : _enable_double(repository_ctx),
+        "%{half_support}" : _enable_half(repository_ctx),
       })
 
       _check_dir(repository_ctx, computecpp_root)
