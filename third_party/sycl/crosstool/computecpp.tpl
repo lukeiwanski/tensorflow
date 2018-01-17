@@ -66,16 +66,6 @@ def get_device_compiler_flags(compiler_flags):
   ]
   return compiler_flags + computecpp_flags
 
-def checkComputeCppIsSupported():
-  outputList = check_output([COMPUTECPP_DRIVER, '--version']).decode('utf-8').split(" ")
-  ccpp_version_idx = outputList.index('Device') - 1
-  cpp_version = outputList[ccpp_version_idx];
-  cppVersionList = cpp_version.split(".")
-  if int(cppVersionList[0]) == 0 and int(cppVersionList[1]) < 5:
-    print("Error: ComputeCpp {} is not compatible with the current version of Tensorflow, "
-          "please update to the latest version of ComputeCpp".format(cpp_version), file=sys.stderr)
-    sys.exit(1)
-
 def useDriver(compiler_flags):
   output_file_index = compiler_flags.index('-o') + 1
   output_file_name = compiler_flags[output_file_index]
@@ -93,29 +83,12 @@ def useDriver(compiler_flags):
     return call([CPU_CXX_COMPILER] + compiler_flags)
 
   filename, file_extension = os.path.splitext(output_file_name)
-
   computecpp_device_compiler_flags = get_device_compiler_flags(compiler_flags)
-
   x = call([COMPUTECPP_DRIVER] + computecpp_device_compiler_flags)
-
-  # FIXME(lukeiwanski): throw the sycl line from that dep file
-  # that will be fixed in next driver
-  dep_file_index = compiler_flags.index('-MF') + 1
-  dep_file_name = compiler_flags[dep_file_index]
-
-  f = open(dep_file_name,"r+")
-  d = f.readlines()
-  f.seek(0)
-  for i in d:
-      if ".sycl" not in i:
-          f.write(i)
-  f.truncate()
-  f.close()
 
   return x
 
 def main():
-  checkComputeCppIsSupported()
   return useDriver(sys.argv[1:])
 
 if __name__ == '__main__':

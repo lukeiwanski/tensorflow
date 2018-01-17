@@ -6,7 +6,7 @@
   * HOST_C_COMPILER:    The host C compiler
   * COMPUTECPP_TOOLKIT_PATH: The path to the ComputeCpp toolkit.
   * TRISYCL_INCLUDE_DIR: The path to the include directory of triSYCL.
-                         (if using triSYCL instead of ComputeCPP)
+                         (if using triSYCL instead of ComputeCpp)
   * PYTHON_LIB_PATH: The path to the python lib
 """
 
@@ -30,7 +30,6 @@ def auto_configure_fail(msg):
   red = "\033[0;31m"
   no_color = "\033[0m"
   fail("\n%sAuto-Configuration Error:%s %s\n" % (red, no_color, msg))
-# END cc_configure common functions (see TODO above).
 
 def find_c(repository_ctx):
   """Find host C compiler."""
@@ -175,8 +174,17 @@ def _create_dummy_repository(repository_ctx):
   repository_ctx.file("crosstool/BUILD", _DUMMY_CROSSTOOL_BUILD_FILE)
 
 
-def _sycl_autoconf_imp(repository_ctx):
+def _sycl_autoconf_impl(repository_ctx):
   """Implementation of the sycl_autoconf rule."""
+  # ARM toolchain bits
+  if "CROSSTOOL_PYTHON_INCLUDE_PATH" in repository_ctx.os.environ:
+    python_include_path = repository_ctx.os.environ["CROSSTOOL_PYTHON_INCLUDE_PATH"]
+  else:
+    python_include_path = "/usr/include/python2.7"
+  gcc_toolchain_path = repository_ctx.os.environ["ARM_TOOLCHAIN"]
+  gcc_toolchain_version = repository_ctx.os.environ["ARM_TOOLCHAIN_VERSION"]
+
+  # SYCL toolchain bits
   if not _enable_sycl(repository_ctx):
     _create_dummy_repository(repository_ctx)
   else:
@@ -201,6 +209,9 @@ def _sycl_autoconf_imp(repository_ctx):
 
       _tpl(repository_ctx, "crosstool:CROSSTOOL",
       {
+        "%{ARM_COMPILER_PATH}%": gcc_toolchain_path,
+        "%{VERSION}%" : gcc_toolchain_version,
+        "%{PYTHON_INCLUDE_PATH}%": python_include_path,
         "%{sycl_include_dir}" : computecpp_root,
         "%{sycl_impl}" : "computecpp",
         "%{c++_std}" : "-std=c++11",
@@ -237,7 +248,7 @@ def _sycl_autoconf_imp(repository_ctx):
 
 
 sycl_configure = repository_rule(
-  implementation = _sycl_autoconf_imp,
+  implementation = _sycl_autoconf_impl,
   local = True,
 )
 """Detects and configures the SYCL toolchain.
