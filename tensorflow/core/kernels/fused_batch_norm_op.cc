@@ -775,17 +775,9 @@ struct FusedBatchNorm<SYCLDevice, T, U> {
     typename TTypes<T, 4>::ConstTensor x(x_input.tensor<T, 4>());
     typename TTypes<U>::ConstVec scale(scale_input.vec<U>());
     typename TTypes<U>::ConstVec offset(offset_input.vec<U>());
-    typename TTypes<U>::ConstVec estimated_mean(estimated_mean_input.vec<U>());
-    typename TTypes<U>::ConstVec estimated_variance(
-        estimated_variance_input.vec<U>());
     typename TTypes<T, 4>::Tensor y(y_output->tensor<T, 4>());
-    typename TTypes<U>::Vec batch_mean(batch_mean_output->vec<U>());
-    typename TTypes<U>::Vec batch_var(batch_var_output->vec<U>());
-    typename TTypes<U>::Vec saved_mean(saved_mean_output->vec<U>());
-    typename TTypes<U>::Vec saved_var(saved_var_output->vec<U>());
 
     const SYCLDevice& d = context->eigen_device<SYCLDevice>();
-
     const int depth = x.dimension(3);
     const int size = x.size();
     const int rest_size = size / depth;
@@ -804,54 +796,38 @@ struct FusedBatchNorm<SYCLDevice, T, U> {
 #endif
 
     auto x_rest_by_depth = x.reshape(rest_by_depth).template cast<U>();
-    const int rest_size_minus_one = (rest_size > 1) ? (rest_size - 1) : 1;
-    U rest_size_inv = static_cast<U>(1.0f / static_cast<U>(rest_size));
-    // This adjustment is for Bessel's correction
-    U rest_size_adjust =
-        static_cast<U>(rest_size) / static_cast<U>(rest_size_minus_one);
-
-    Tensor mean_tmp;
-    Tensor variance_tmp;
-    OP_REQUIRES_OK(context, context->allocate_temp(
-                               DataTypeToEnum<U>::value,
-                               TensorShape({depth}),
-                               &mean_tmp));
-    OP_REQUIRES_OK(context, context->allocate_temp(
-                               DataTypeToEnum<U>::value,
-                               TensorShape({depth}),
-                               &variance_tmp));
-
-    auto mean = mean_tmp.flat<U>();
-    auto variance = variance_tmp.flat<U>();
-
     if (is_training) {
-      mean.device(d) = (x_rest_by_depth.sum(reduce_dims) * rest_size_inv);
-      batch_mean.device(d) = mean;
-      saved_mean.device(d) = mean;
-    } else {
-      mean.device(d) = estimated_mean;
+      typename TTypes<U>::Vec batch_mean(batch_mean_output->vec<U>());
+      typename TTypes<U>::Vec batch_var(batch_var_output->vec<U>());
+      typename TTypes<U>::Vec saved_mean(saved_mean_output->vec<U>());
+      typename TTypes<U>::Vec saved_var(saved_var_output->vec<U>());
+
+      const int rest_size_minus_one = (rest_size > 1) ? (rest_size - 1) : 1;
+      // This adjustment is for Bessel's correction
+      U rest_size_adjust = static_cast<U>(rest_size) / static_cast<U>(rest_size_minus_one);
+
+      saved_mean.device(d) = x_rest_by_depth.mean(reduce_dims);
+      d.memcpy(batch_mean.data(), saved_mean.data(), depth * sizeof(U));
+      auto x_centered = (x_rest_by_depth - saved_mean.reshape(one_by_depth).broadcast(bcast_spec));
+      saved_var.device(d) = x_centered.square().mean(reduce_dims);
+      batch_var.device(d) = saved_var * rest_size_adjust;
+
+      auto scaling_factor = ((saved_var + epsilon).rsqrt() * scale).reshape(one_by_depth).broadcast(bcast_spec);
+      auto x_scaled = x_centered * scaling_factor;
+      auto x_shifted = x_scaled + offset.reshape(one_by_depth).broadcast(bcast_spec);
+      y.reshape(rest_by_depth).device(d) = x_shifted.template cast<T>();
     }
+    else {
+      typename TTypes<U>::ConstVec estimated_mean(estimated_mean_input.vec<U>());
+      typename TTypes<U>::ConstVec estimated_variance(estimated_variance_input.vec<U>());
 
-    auto x_centered =
-        x_rest_by_depth - mean.reshape(one_by_depth).broadcast(bcast_spec);
-
-    if (is_training) {
-      variance.device(d) = x_centered.square().sum(reduce_dims) * rest_size_inv;
-      batch_var.device(d) = variance * rest_size_adjust;
-      saved_var.device(d) = variance;
-    } else {
-      variance.device(d) = estimated_variance;
+      auto x_centered = x_rest_by_depth - estimated_mean.reshape(one_by_depth).broadcast(bcast_spec);
+      auto scaling_factor = ((estimated_variance + epsilon).rsqrt() * scale)
+                              .reshape(one_by_depth).broadcast(bcast_spec);
+      auto x_scaled = x_centered * scaling_factor;
+      auto x_shifted = x_scaled + offset.reshape(one_by_depth).broadcast(bcast_spec);
+      y.reshape(rest_by_depth).device(d) = x_shifted.template cast<T>();
     }
-
-    auto scaling_factor = ((variance + epsilon).rsqrt() * scale)
-                              .eval()
-                              .reshape(one_by_depth)
-                              .broadcast(bcast_spec);
-    auto x_scaled = x_centered * scaling_factor;
-    auto x_shifted =
-        x_scaled + offset.reshape(one_by_depth).broadcast(bcast_spec);
-
-    y.reshape(rest_by_depth).device(d) = x_shifted.template cast<T>();
   }
 };
 
