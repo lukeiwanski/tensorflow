@@ -34,7 +34,7 @@ toolchain {
   tool_path { name: "compat-ld" path: "/usr/bin/ld" }
   tool_path { name: "cpp" path: "/usr/bin/cpp" }
   tool_path { name: "dwp" path: "/usr/bin/dwp" }
-  tool_path { name: "gcc" path: "/usr/bin/gcc" }
+  tool_path { name: "gcc" path: "%{COMPUTECPP_ROOT_DIR}%/bin/compute" }
   tool_path { name: "g++" path: "%{COMPUTECPP_ROOT_DIR}%/bin/compute++" }
   cxx_flag: "-std=c++11"
   linker_flag: "-Wl,-no-as-needed"
@@ -76,7 +76,8 @@ toolchain {
   cxx_flag: "-cl-fp32-correctly-rounded-divide-sqrt"
   cxx_flag: "-Xclang"
   cxx_flag: "-cl-mad-enable"
-  cxx_flag: "-sycl-spirv"
+  cxx_flag: "-sycl-target"
+  cxx_flag: "spirv"
   cxx_flag: "-DTENSORFLOW_USE_SYCL=1"
   cxx_flag: "-DEIGEN_USE_SYCL=1"
   cxx_flag: "-DEIGEN_HAS_C99_MATH=1"
