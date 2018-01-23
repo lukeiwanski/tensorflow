@@ -51,7 +51,7 @@ toolchain {
   cxx_builtin_include_directory: "/usr/local/include"
   cxx_builtin_include_directory: "/usr/include"
 
-  cxx_builtin_include_directory: "%{COMPUTECPP_ROOT_DIR}%/include"
+  cxx_builtin_include_directory: "%{COMPUTECPP_ROOT_DIR}%"
   cxx_builtin_include_directory: "%{python_lib_path}"
 
   tool_path { name: "gcov" path: "/usr/bin/gcov" }
@@ -66,6 +66,8 @@ toolchain {
   objcopy_embed_flag: "binary"
   tool_path { name: "objdump" path: "/usr/bin/objdump" }
   tool_path { name: "strip" path: "/usr/bin/strip" }
+  cxx_flag: "-Wno-unused-variable"
+  cxx_flag: "-Wno-unused-const-variable"
   cxx_flag: "-std=c++11"
   cxx_flag: "-fsycl-ih-last"
   cxx_flag: "-sycl-driver"
@@ -77,11 +79,13 @@ toolchain {
   cxx_flag: "-Xclang"
   cxx_flag: "-cl-mad-enable"
   cxx_flag: "-sycl-target"
-  cxx_flag: "spirv"
+  cxx_flag: "spirv64"
   cxx_flag: "-DTENSORFLOW_USE_SYCL=1"
   cxx_flag: "-DEIGEN_USE_SYCL=1"
   cxx_flag: "-DEIGEN_HAS_C99_MATH=1"
   cxx_flag: "-DEIGEN_HAS_CXX11_MATH=1"
+  cxx_flag: "-I%{COMPUTECPP_ROOT_DIR}%/include"
+  cxx_flag: "-I%{PYTHON_INCLUDE_PATH}%"
 
   # Make C++ compilation deterministic. Use linkstamping instead of these
   # compiler symbols.
