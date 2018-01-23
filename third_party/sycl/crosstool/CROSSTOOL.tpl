@@ -10,10 +10,6 @@ default_toolchain {
   cpu: "armeabi"
   toolchain_identifier: "arm-linux-gnueabihf"
 }
-default_toolchain {
-  cpu: "arm"
-  toolchain_identifier: "local_linux"
-}
 
 toolchain {
   abi_version: "local"
@@ -38,7 +34,8 @@ toolchain {
   tool_path { name: "compat-ld" path: "/usr/bin/ld" }
   tool_path { name: "cpp" path: "/usr/bin/cpp" }
   tool_path { name: "dwp" path: "/usr/bin/dwp" }
-  tool_path { name: "gcc" path: "computecpp" }
+  tool_path { name: "gcc" path: "/usr/bin/gcc" }
+  tool_path { name: "g++" path: "%{COMPUTECPP_ROOT_DIR}%/bin/compute++" }
   cxx_flag: "-std=c++11"
   linker_flag: "-Wl,-no-as-needed"
   linker_flag: "-lstdc++"
@@ -54,7 +51,7 @@ toolchain {
   cxx_builtin_include_directory: "/usr/local/include"
   cxx_builtin_include_directory: "/usr/include"
 
-  cxx_builtin_include_directory: "%{sycl_include_dir}"
+  cxx_builtin_include_directory: "%{COMPUTECPP_ROOT_DIR}%/include"
   cxx_builtin_include_directory: "%{python_lib_path}"
 
   tool_path { name: "gcov" path: "/usr/bin/gcov" }
@@ -69,6 +66,21 @@ toolchain {
   objcopy_embed_flag: "binary"
   tool_path { name: "objdump" path: "/usr/bin/objdump" }
   tool_path { name: "strip" path: "/usr/bin/strip" }
+  cxx_flag: "-std=c++11"
+  cxx_flag: "-fsycl-ih-last"
+  cxx_flag: "-sycl-driver"
+  cxx_flag: "-no-serial-memop"
+  cxx_flag: "-Xclang"
+  cxx_flag: "-cl-denorms-are-zero"
+  cxx_flag: "-Xclang"
+  cxx_flag: "-cl-fp32-correctly-rounded-divide-sqrt"
+  cxx_flag: "-Xclang"
+  cxx_flag: "-cl-mad-enable"
+  cxx_flag: "-sycl-spirv"
+  cxx_flag: "-DTENSORFLOW_USE_SYCL=1"
+  cxx_flag: "-DEIGEN_USE_SYCL=1"
+  cxx_flag: "-DEIGEN_HAS_C99_MATH=1"
+  cxx_flag: "-DEIGEN_HAS_CXX11_MATH=1"
 
   # Make C++ compilation deterministic. Use linkstamping instead of these
   # compiler symbols.
@@ -139,8 +151,7 @@ toolchain {
   tool_path { name: "compat-ld" path: "/bin/false" }
   tool_path { name: "cpp" path: "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-cpp" }
   tool_path { name: "dwp" path: "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-dwp" }
-  tool_path { name: "gcc" path: computecpp }
-  tool_path { name: "g++" path: compute++ }
+  tool_path { name: "gcc" path: "%{COMPUTECPP_ROOT_DIR}%/bin/compute++" }
   tool_path { name: "gcov" path: "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-gcov" }
   tool_path { name: "ld" path: "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-ld" }
   tool_path { name: "nm" path: "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-nm" }
@@ -157,12 +168,22 @@ toolchain {
   cxx_builtin_include_directory: "/usr/include"
   cxx_flag: "-std=c++11"
   cxx_flag: "-isystem"
-  # Investigate this
-  cxx_flag: "/usr/include/arm-linux-gnueabihf"
-  cxx_flag: "-isystem"
   cxx_flag: "%{PYTHON_INCLUDE_PATH}%"
-  cxx_flag: "-isystem"
-  cxx_flag: "/usr/include/"
+  cxx_flag: "-target arm-linux-gnueabihf"
+  cxx_flag: "-fsycl-ih-last"
+  cxx_flag: "-sycl-driver"
+  cxx_flag: "-no-serial-memop"
+  cxx_flag: "-Xclang"
+  cxx_flag: "-cl-denorms-are-zero"
+  cxx_flag: "-Xclang"
+  cxx_flag: "-cl-fp32-correctly-rounded-divide-sqrt"
+  cxx_flag: "-Xclang"
+  cxx_flag: "-cl-mad-enable"
+  cxx_flag: "-sycl-spirv"
+  cxx_flag: "-DTENSORFLOW_USE_SYCL=1"
+  cxx_flag: "-DEIGEN_USE_SYCL=1"
+  cxx_flag: "-DEIGEN_HAS_C99_MATH=1"
+  cxx_flag: "-DEIGEN_HAS_CXX11_MATH=1"
   linker_flag: "-lstdc++"
 
   unfiltered_cxx_flag: "-Wno-builtin-macro-redefined"

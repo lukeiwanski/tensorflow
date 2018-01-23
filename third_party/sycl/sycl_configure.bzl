@@ -198,13 +198,6 @@ def _sycl_autoconf_impl(repository_ctx):
     if _enable_compute_cpp(repository_ctx):
       computecpp_root = find_computecpp_root(repository_ctx);
 
-      _tpl(repository_ctx, "crosstool:computecpp",
-      {
-        "%{host_cxx_compiler}" : find_cc(repository_ctx),
-        "%{host_c_compiler}" : find_c(repository_ctx),
-        "%{computecpp_root}"  : computecpp_root,
-      })
-
       _check_dir(repository_ctx, computecpp_root)
 
       _tpl(repository_ctx, "crosstool:CROSSTOOL",
@@ -212,9 +205,7 @@ def _sycl_autoconf_impl(repository_ctx):
         "%{ARM_COMPILER_PATH}%": gcc_toolchain_path,
         "%{VERSION}%" : gcc_toolchain_version,
         "%{PYTHON_INCLUDE_PATH}%": python_include_path,
-        "%{sycl_include_dir}" : computecpp_root,
-        "%{sycl_impl}" : "computecpp",
-        "%{c++_std}" : "-std=c++11",
+        "%{COMPUTECPP_ROOT_DIR}%"  : computecpp_root,
         "%{python_lib_path}" : find_python_lib(repository_ctx),
       })
 
