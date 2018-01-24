@@ -182,7 +182,9 @@ def _sycl_autoconf_impl(repository_ctx):
   else:
     python_include_path = "/usr/include/python2.7"
   gcc_toolchain_path = repository_ctx.os.environ["ARM_TOOLCHAIN"]
+  gcc_toolchain_name = repository_ctx.os.environ["ARM_TOOLCHAIN_NAME"]
   gcc_toolchain_version = repository_ctx.os.environ["ARM_TOOLCHAIN_VERSION"]
+  #spir_type = repository_ctx.os.environ["ARM_BITCODE_TARGET"]
 
   # SYCL toolchain bits
   if not _enable_sycl(repository_ctx):
@@ -202,9 +204,10 @@ def _sycl_autoconf_impl(repository_ctx):
 
       _tpl(repository_ctx, "crosstool:CROSSTOOL",
       {
-        "%{ARM_COMPILER_PATH}%": gcc_toolchain_path,
+        "%{ARM_COMPILER_PATH}%" : gcc_toolchain_path,
         "%{VERSION}%" : gcc_toolchain_version,
-        "%{PYTHON_INCLUDE_PATH}%": python_include_path,
+        "%{ARM_TARGET}%" : gcc_toolchain_name,
+        "%{PYTHON_INCLUDE_PATH}%" : python_include_path,
         "%{COMPUTECPP_ROOT_DIR}%"  : computecpp_root,
         "%{python_lib_path}" : find_python_lib(repository_ctx),
       })

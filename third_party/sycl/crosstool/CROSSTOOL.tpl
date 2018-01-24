@@ -7,8 +7,12 @@ default_toolchain {
   toolchain_identifier: "local_linux"
 }
 default_toolchain {
-  cpu: "armeabi"
-  toolchain_identifier: "arm-linux-gnueabihf"
+  cpu: "aarch64"
+  toolchain_identifier: "%{ARM_TARGET}%"
+}
+default_toolchain {
+  cpu: "arm"
+  toolchain_identifier: "local_linux"
 }
 
 toolchain {
@@ -135,11 +139,11 @@ toolchain {
 }
 
 toolchain {
-  abi_version: "armeabi"
-  abi_libc_version: "armeabi"
+  abi_version: "aarch64"
+  abi_libc_version: "aarch64"
   builtin_sysroot: ""
   compiler: "compiler"
-  host_system_name: "armeabi"
+  host_system_name: "aarch64"
   needsPic: true
   supports_gold_linker: false
   supports_incremental_linker: false
@@ -147,34 +151,36 @@ toolchain {
   supports_interface_shared_objects: false
   supports_normalizing_ar: false
   supports_start_end_lib: false
-  target_libc: "armeabi"
-  target_cpu: "armeabi"
-  target_system_name: "armeabi"
-  toolchain_identifier: "arm-linux-gnueabihf"
+  target_libc: "aarch64"
+  target_cpu: "aarch64"
+  target_system_name: "aarch64"
+  toolchain_identifier: "%{ARM_TARGET}%"
 
-  tool_path { name: "ar" path: "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-ar" }
+  tool_path { name: "ar" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-ar" }
   tool_path { name: "compat-ld" path: "/bin/false" }
-  tool_path { name: "cpp" path: "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-cpp" }
-  tool_path { name: "dwp" path: "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-dwp" }
-  tool_path { name: "gcc" path: "%{COMPUTECPP_ROOT_DIR}%/bin/compute++" }
-  tool_path { name: "gcov" path: "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-gcov" }
-  tool_path { name: "ld" path: "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-ld" }
-  tool_path { name: "nm" path: "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-nm" }
-  tool_path { name: "objcopy" path: "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-objcopy" }
-  tool_path { name: "objdump" path: "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-objdump" }
-  tool_path { name: "strip" path: "%{ARM_COMPILER_PATH}%/bin/arm-linux-gnueabihf-strip" }
+  tool_path { name: "cpp" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-cpp" }
+  tool_path { name: "dwp" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-dwp" }
+  tool_path { name: "gcc" path: "%{COMPUTECPP_ROOT_DIR}%/bin/compute" }
+  tool_path { name: "g++" path: "%{COMPUTECPP_ROOT_DIR}%/bin/compute++" }
+  tool_path { name: "gcov" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-gcov" }
+  tool_path { name: "ld" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-ld" }
+  tool_path { name: "nm" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-nm" }
+  tool_path { name: "objcopy" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-objcopy" }
+  tool_path { name: "objdump" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-objdump" }
+  tool_path { name: "strip" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-strip" }
 
-  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/arm-linux-gnueabihf/include/c++/%{VERSION}%"
-  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/arm-linux-gnueabihf/sysroot/usr/include/"
-  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/arm-linux-gnueabihf/libc/usr/include/"
-  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/lib/gcc/arm-linux-gnueabihf/%{VERSION}%/include"
-  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/lib/gcc/arm-linux-gnueabihf/%{VERSION}%/include-fixed"
+  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/include/c++/%{VERSION}%"
+  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/sysroot/usr/include/"
+  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/libc/usr/include/"
+  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/lib/gcc/%{ARM_TARGET}%/%{VERSION}%/include"
+  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/lib/gcc/%{ARM_TARGET}%/%{VERSION}%/include-fixed"
   cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/local_include"
-  cxx_builtin_include_directory: "/usr/include"
+
+  cxx_flag: "-target"
+  cxx_flag: "%{ARM_TARGET}%"
   cxx_flag: "-std=c++11"
   cxx_flag: "-isystem"
   cxx_flag: "%{PYTHON_INCLUDE_PATH}%"
-  cxx_flag: "-target arm-linux-gnueabihf"
   cxx_flag: "-fsycl-ih-last"
   cxx_flag: "-sycl-driver"
   cxx_flag: "-no-serial-memop"
@@ -184,7 +190,8 @@ toolchain {
   cxx_flag: "-cl-fp32-correctly-rounded-divide-sqrt"
   cxx_flag: "-Xclang"
   cxx_flag: "-cl-mad-enable"
-  cxx_flag: "-sycl-spirv"
+  cxx_flag: "-sycl-target"
+  cxx_flag: "spirv64"
   cxx_flag: "-DTENSORFLOW_USE_SYCL=1"
   cxx_flag: "-DEIGEN_USE_SYCL=1"
   cxx_flag: "-DEIGEN_HAS_C99_MATH=1"
@@ -208,6 +215,10 @@ toolchain {
   linker_flag: "-Wl,--build-id=md5"
   linker_flag: "-Wl,--hash-style=gnu"
 
+  compilation_mode_flags {
+    mode: FASTBUILD
+    compiler_flag: "-O0"
+  }
   compilation_mode_flags {
     mode: DBG
     # Enable debug symbols.
