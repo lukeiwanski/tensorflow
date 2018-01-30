@@ -79,7 +79,6 @@ def find_python_lib(repository_ctx):
     return repository_ctx.os.environ[_PYTHON_LIB_PATH].strip()
   fail("Environment variable PYTHON_LIB_PATH was not specified re-run ./configure")
 
-
 def _check_lib(repository_ctx, toolkit_path, lib):
   """Checks if lib exists under sycl_toolkit_path or fail if it doesn't.
 
@@ -184,6 +183,7 @@ def _sycl_autoconf_impl(repository_ctx):
   gcc_toolchain_path = repository_ctx.os.environ["ARM_TOOLCHAIN"]
   gcc_toolchain_name = repository_ctx.os.environ["ARM_TOOLCHAIN_NAME"]
   gcc_toolchain_version = repository_ctx.os.environ["ARM_TOOLCHAIN_VERSION"]
+  opencl_includes = repository_ctx.os.environ["OPENCL_INCLUDES"]
   #spir_type = repository_ctx.os.environ["ARM_BITCODE_TARGET"]
 
   # SYCL toolchain bits
@@ -209,6 +209,7 @@ def _sycl_autoconf_impl(repository_ctx):
         "%{ARM_TARGET}%" : gcc_toolchain_name,
         "%{PYTHON_INCLUDE_PATH}%" : python_include_path,
         "%{COMPUTECPP_ROOT_DIR}%"  : computecpp_root,
+        "%{OPENCL_INCLUDE_DIR}%" : opencl_includes,
         "%{python_lib_path}" : find_python_lib(repository_ctx),
       })
 

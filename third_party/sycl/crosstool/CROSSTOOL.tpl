@@ -7,7 +7,7 @@ default_toolchain {
   toolchain_identifier: "local_linux"
 }
 default_toolchain {
-  cpu: "aarch64"
+  cpu: "armeabi"
   toolchain_identifier: "%{ARM_TARGET}%"
 }
 default_toolchain {
@@ -139,11 +139,11 @@ toolchain {
 }
 
 toolchain {
-  abi_version: "aarch64"
-  abi_libc_version: "aarch64"
+  abi_version: "armeabi"
+  abi_libc_version: "armeabi"
   builtin_sysroot: ""
   compiler: "compiler"
-  host_system_name: "aarch64"
+  host_system_name: "armeabi"
   needsPic: true
   supports_gold_linker: false
   supports_incremental_linker: false
@@ -151,16 +151,16 @@ toolchain {
   supports_interface_shared_objects: false
   supports_normalizing_ar: false
   supports_start_end_lib: false
-  target_libc: "aarch64"
-  target_cpu: "aarch64"
-  target_system_name: "aarch64"
+  target_libc: "armeabi"
+  target_cpu: "armeabi"
+  target_system_name: "armeabi"
   toolchain_identifier: "%{ARM_TARGET}%"
 
   tool_path { name: "ar" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-ar" }
   tool_path { name: "compat-ld" path: "/bin/false" }
   tool_path { name: "cpp" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-cpp" }
   tool_path { name: "dwp" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-dwp" }
-  tool_path { name: "gcc" path: "%{COMPUTECPP_ROOT_DIR}%/bin/compute" }
+  tool_path { name: "gcc" path: "%{COMPUTECPP_ROOT_DIR}%/bin/compute-script" }
   tool_path { name: "g++" path: "%{COMPUTECPP_ROOT_DIR}%/bin/compute++" }
   tool_path { name: "gcov" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-gcov" }
   tool_path { name: "ld" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-ld" }
@@ -170,17 +170,43 @@ toolchain {
   tool_path { name: "strip" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-strip" }
 
   cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/include/c++/%{VERSION}%"
-  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/sysroot/usr/include/"
-  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/libc/usr/include/"
+  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/include/c++/%{VERSION}%/%{ARM_TARGET}%"
+  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/include/c++/%{VERSION}%/backward"
   cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/lib/gcc/%{ARM_TARGET}%/%{VERSION}%/include"
   cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/lib/gcc/%{ARM_TARGET}%/%{VERSION}%/include-fixed"
-  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/local_include"
+  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/include"
+  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/libc/usr/include/%{ARM_TARGET}%"
+  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/libc/usr/include"
+  cxx_builtin_include_directory: "%{COMPUTECPP_ROOT_DIR}%"
+  cxx_builtin_include_directory: "%{OPENCL_INCLUDE_DIR}%"
+  cxx_builtin_include_directory: "%{python_lib_path}%"
+  cxx_builtin_include_directory: "%{PYTHON_INCLUDE_PATH}%"
 
   cxx_flag: "-target"
   cxx_flag: "%{ARM_TARGET}%"
   cxx_flag: "-std=c++11"
   cxx_flag: "-isystem"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/include/c++/%{VERSION}%"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/include/c++/%{VERSION}%/%{ARM_TARGET}%"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/include/c++/%{VERSION}%/backward"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/lib/gcc/%{ARM_TARGET}%/%{VERSION}%/include"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/lib/gcc/%{ARM_TARGET}%/%{VERSION}%/include-fixed"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/include"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/libc/usr/include/%{ARM_TARGET}%"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/libc/usr/include"
+  cxx_flag: "-isystem"
   cxx_flag: "%{PYTHON_INCLUDE_PATH}%"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{COMPUTECPP_ROOT_DIR}%/include"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{OPENCL_INCLUDE_DIR}%"
   cxx_flag: "-fsycl-ih-last"
   cxx_flag: "-sycl-driver"
   cxx_flag: "-no-serial-memop"
@@ -191,11 +217,13 @@ toolchain {
   cxx_flag: "-Xclang"
   cxx_flag: "-cl-mad-enable"
   cxx_flag: "-sycl-target"
-  cxx_flag: "spirv64"
+  cxx_flag: "spirv"
   cxx_flag: "-DTENSORFLOW_USE_SYCL=1"
   cxx_flag: "-DEIGEN_USE_SYCL=1"
   cxx_flag: "-DEIGEN_HAS_C99_MATH=1"
   cxx_flag: "-DEIGEN_HAS_CXX11_MATH=1"
+  cxx_flag: "--gcc-toolchain=%{ARM_COMPILER_PATH}%"
+  cxx_flag: "-nostdinc"
   linker_flag: "-lstdc++"
 
   unfiltered_cxx_flag: "-Wno-builtin-macro-redefined"
@@ -203,7 +231,6 @@ toolchain {
   unfiltered_cxx_flag: "-D__TIMESTAMP__=\"redacted\""
   unfiltered_cxx_flag: "-D__TIME__=\"redacted\""
   unfiltered_cxx_flag: "-no-canonical-prefixes"
-  unfiltered_cxx_flag: "-fno-canonical-system-headers"
 
   compiler_flag: "-U_FORTIFY_SOURCE"
   compiler_flag: "-D_FORTIFY_SOURCE=1"
@@ -211,7 +238,6 @@ toolchain {
 
   linker_flag: "-Wl,-z,relro,-z,now"
   linker_flag: "-no-canonical-prefixes"
-  linker_flag: "-pass-exit-codes"
   linker_flag: "-Wl,--build-id=md5"
   linker_flag: "-Wl,--hash-style=gnu"
 
