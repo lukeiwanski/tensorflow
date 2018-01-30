@@ -40,7 +40,7 @@ REGISTER(BinaryOp, SYCL, "Minimum", functor::minimum, int64);
 REGISTER_KERNEL_BUILDER(Name("Minimum")                           \
                             .Device(DEVICE_SYCL)                  \
                             .TypeConstraint<type>("T"),           \
-                        UnaryOp<SYCLDevice, functor::minimum<type>>);
+                        BinaryOp<SYCLDevice, functor::minimum<type>>);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
 #undef REGISTER_SYCL_CWISE_KERNEL
 REGISTER_KERNEL_BUILDER(Name("Minimum")
