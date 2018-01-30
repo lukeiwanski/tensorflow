@@ -157,8 +157,7 @@ TF_CALL_double(REGISTER_GPU);
   REGISTER_KERNEL_BUILDER(Name("HSVToRGB").Device(DEVICE_SYCL) \
                               .TypeConstraint<T>("T"),         \
                           HSVToRGBOp<SYCLDevice, T>);
-TF_CALL_float(REGISTER_SYCL);
-TF_CALL_double(REGISTER_SYCL);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
 #endif
 
 }  // namespace tensorflow

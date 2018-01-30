@@ -23,6 +23,12 @@ REGISTER3(UnaryOp, GPU, "IsNan", functor::isnan, float, Eigen::half, double);
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER2(UnaryOp, SYCL, "IsNan", functor::isnan, float, double);
+#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
+REGISTER_KERNEL_BUILDER(Name("IsNan")                             \
+                            .Device(DEVICE_SYCL)                  \
+                            .TypeConstraint<type>("T"),           \
+                        UnaryOp<SYCLDevice, functor::isnan<type>>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
+#undef REGISTER_SYCL_CWISE_KERNEL
 #endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

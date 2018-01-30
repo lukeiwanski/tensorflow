@@ -211,8 +211,7 @@ TF_CALL_float(REGISTER_GPU_KERNEL);
                               .TypeConstraint<T>("T"),             \
                           BatchNormOp<SYCLDevice, T>);
 
-TF_CALL_float(REGISTER_KERNEL);
-TF_CALL_double(REGISTER_KERNEL);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 #endif  // TENSORFLOW_USE_SYCL
 
@@ -270,8 +269,7 @@ TF_CALL_float(REGISTER_GPU_KERNEL);
                               .TypeConstraint<T>("T"),                 \
                           BatchNormGradOp<SYCLDevice, T>);
 
-TF_CALL_float(REGISTER_KERNEL);
-TF_CALL_double(REGISTER_KERNEL);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
 #endif  // TENSORFLOW_USE_SYCL

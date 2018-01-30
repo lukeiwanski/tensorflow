@@ -22,4 +22,15 @@ REGISTER6(BinaryOp, CPU, "NotEqual", functor::not_equal_to, float, Eigen::half,
 REGISTER4(BinaryOp, GPU, "NotEqual", functor::not_equal_to, float, Eigen::half,
           double, uint8);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER(BinaryOp, SYCL, "NotEqual", functor::not_equal_to, uint8);
+#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
+REGISTER_KERNEL_BUILDER(Name("NotEqual")                          \
+                            .Device(DEVICE_SYCL)                  \
+                            .TypeConstraint<type>("T"),           \
+                        BinaryOp<SYCLDevice, functor::not_equal_to<type>>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
+#undef REGISTER_SYCL_CWISE_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

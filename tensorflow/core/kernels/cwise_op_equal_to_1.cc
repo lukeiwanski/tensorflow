@@ -47,7 +47,14 @@ REGISTER_KERNEL_BUILDER(Name("Equal")
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER5(BinaryOp, SYCL, "Equal", functor::equal_to, float, double, uint8,
+#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
+REGISTER_KERNEL_BUILDER(Name("Equal")                             \
+                            .Device(DEVICE_SYCL)                  \
+                            .TypeConstraint<type>("T"),           \
+                        BinaryOp<SYCLDevice, functor::equal_to<type>>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
+#undef REGISTER_SYCL_CWISE_KERNEL
+REGISTER3(BinaryOp, SYCL, "Equal", functor::equal_to, uint8,
           int8, int16);
 REGISTER_KERNEL_BUILDER(Name("Equal")
                             .Device(DEVICE_SYCL)
@@ -56,12 +63,13 @@ REGISTER_KERNEL_BUILDER(Name("Equal")
                             .HostMemory("z")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::equal_to<int32>>);
-REGISTER_KERNEL_BUILDER(
-    Name("ApproximateEqual").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
-    ApproximateEqualOp<SYCLDevice, float>);
-REGISTER_KERNEL_BUILDER(
-    Name("ApproximateEqual").Device(DEVICE_SYCL).TypeConstraint<double>("T"),
-    ApproximateEqualOp<SYCLDevice, double>);
+#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
+REGISTER_KERNEL_BUILDER(Name("ApproximateEqual")                  \
+                            .Device(DEVICE_SYCL)                  \
+                            .TypeConstraint<type>("T"),           \
+                        ApproximateEqualOp<SYCLDevice, float>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
+#undef REGISTER_SYCL_CWISE_KERNEL
 #endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

@@ -24,6 +24,12 @@ REGISTER4(BinaryOp, GPU, "Pow", functor::pow, float, Eigen::half, double,
           int64);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER2(BinaryOp, SYCL, "Pow", functor::pow, float, double);
+#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
+REGISTER_KERNEL_BUILDER(Name("Pow")                               \
+                            .Device(DEVICE_SYCL)                  \
+                            .TypeConstraint<type>("T"),           \
+                        BinaryOp<SYCLDevice, functor::pow<type>>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
+#undef REGISTER_SYCL_CWISE_KERNEL
 #endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

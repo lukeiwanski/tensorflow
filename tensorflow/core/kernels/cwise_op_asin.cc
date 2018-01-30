@@ -22,7 +22,13 @@ REGISTER2(UnaryOp, CPU, "Asin", functor::asin, float, double);
 REGISTER2(UnaryOp, GPU, "Asin", functor::asin, float, double);
 #endif
 
-#if TENSORFLOW_USE_SYCL
-REGISTER2(UnaryOp, SYCL, "Asin", functor::asin, float, double);
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
+REGISTER_KERNEL_BUILDER(Name("Asin")                              \
+                            .Device(DEVICE_SYCL)                  \
+                            .TypeConstraint<type>("T"),           \
+                        UnaryOp<SYCLDevice, functor::asin<type>>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
+#undef REGISTER_SYCL_CWISE_KERNEL
 #endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

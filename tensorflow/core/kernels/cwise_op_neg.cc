@@ -20,7 +20,14 @@ REGISTER7(UnaryOp, CPU, "Neg", functor::neg, float, Eigen::half, double, int32,
           complex64, int64, complex128);
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER3(UnaryOp, SYCL, "Neg", functor::neg, float, double, int64);
+REGISTER(UnaryOp, SYCL, "Neg", functor::neg, int64);
+#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
+REGISTER_KERNEL_BUILDER(Name("Neg")                               \
+                            .Device(DEVICE_SYCL)                  \
+                            .TypeConstraint<type>("T"),           \
+                        UnaryOp<SYCLDevice, functor::neg<type>>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
+#undef REGISTER_SYCL_CWISE_KERNEL
 REGISTER_KERNEL_BUILDER(Name("Neg")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")

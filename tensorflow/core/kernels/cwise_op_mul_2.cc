@@ -30,6 +30,10 @@ REGISTER6(BinaryOp, GPU, "Mul", functor::mul, int8, uint16, int16, int64,
 
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER4(BinaryOp, SYCL, "Mul", functor::mul, int8, uint16, int16, int64);
+#endif  // TENSORFLOW_USE_SYCL
+
 #endif  // !defined(__ANDROID_TYPES_SLIM__)
 
 }  // namespace tensorflow

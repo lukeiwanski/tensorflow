@@ -45,9 +45,22 @@ REGISTER_KERNEL_BUILDER(Name("AddV2")
 #endif
 
 
-#if TENSORFLOW_USE_SYCL
-REGISTER2(BinaryOp, SYCL, "Add", functor::add, float, double);
-REGISTER2(BinaryOp, SYCL, "AddV2", functor::add, float, double);
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
+REGISTER_KERNEL_BUILDER(Name("Add")                               \
+                            .Device(DEVICE_SYCL)                  \
+                            .TypeConstraint<type>("T"),           \
+                        BinaryOp<SYCLDevice, functor::add<type>>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
+#undef REGISTER_SYCL_CWISE_KERNEL
+
+#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
+REGISTER_KERNEL_BUILDER(Name("AddV2")                             \
+                            .Device(DEVICE_SYCL)                  \
+                            .TypeConstraint<type>("T"),           \
+                        BinaryOp<SYCLDevice, functor::add<type>>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
+#undef REGISTER_SYCL_CWISE_KERNEL
 
 REGISTER_KERNEL_BUILDER(Name("Add")
                             .Device(DEVICE_SYCL)

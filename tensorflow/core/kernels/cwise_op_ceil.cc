@@ -22,7 +22,13 @@ REGISTER3(UnaryOp, CPU, "Ceil", functor::ceil, float, Eigen::half, double);
 REGISTER3(UnaryOp, GPU, "Ceil", functor::ceil, float, Eigen::half, double);
 #endif
 
-#if TENSORFLOW_USE_SYCL
-REGISTER2(UnaryOp, SYCL, "Ceil", functor::ceil, float, double);
-#endif // TENSORFLOW_USE_SYCL
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
+REGISTER_KERNEL_BUILDER(Name("Ceil")                              \
+                            .Device(DEVICE_SYCL)                  \
+                            .TypeConstraint<type>("T"),           \
+                        UnaryOp<SYCLDevice, functor::ceil<type>>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
+#undef REGISTER_SYCL_CWISE_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

@@ -810,7 +810,7 @@ TF_CALL_float(REGISTER_CPU);
           T, Im2ColConvFunctor<SYCLDevice, T, T, T, FastGemmFunctor<SYCLDevice, T, T, T>>>);
 
 #if defined(USE_GEMM_FOR_CONV)
-TF_CALL_float(REGISTER_SYCL);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
 #undef REGISTER_SYCL
 #endif  // USE_GEMM_FOR_CONV
 #endif  // TENSORFLOW_USE_SYCL

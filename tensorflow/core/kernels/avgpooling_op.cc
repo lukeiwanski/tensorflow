@@ -372,9 +372,14 @@ class AvgPoolingOp<SYCLDevice, T> : public UnaryOp<T> {
   Padding padding_;
   TensorFormat data_format_;
 };
-REGISTER_KERNEL_BUILDER(
-    Name("AvgPool").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
-    AvgPoolingOp<SYCLDevice, float>);
+
+#define REGISTER_AVGPOOL_SYCL(type)                                       \
+REGISTER_KERNEL_BUILDER(Name("AvgPool")                                   \
+                            .Device(DEVICE_SYCL)                          \
+                            .TypeConstraint<type>("T")                    \
+                        AvgPoolingOp<SYCLDevice, type>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_AVGPOOL_SYCL)
+#undef REGISTER_AVGPOOL_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
 // The operation to compute AvgPool gradients.
@@ -928,11 +933,14 @@ class AvgPoolingGradOp<SYCLDevice, T> : public OpKernel {
   TensorFormat data_format_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<float>("T")
-                            .HostMemory("orig_input_shape"),
-                        AvgPoolingGradOp<SYCLDevice, float>);
+#define REGISTER_AVGPOOLGRAD_SYCL(type)                                   \
+REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")                               \
+                            .Device(DEVICE_SYCL)                          \
+                            .TypeConstraint<type>("T")                    \
+                            .HostMemory("orig_input_shape")               \
+                        AvgPoolingGradOp<SYCLDevice, type>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_AVGPOOLGRAD_SYCL)
+#undef REGISTER_AVGPOOLGRAD_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

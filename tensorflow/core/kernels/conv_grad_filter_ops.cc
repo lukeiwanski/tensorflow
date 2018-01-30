@@ -1069,8 +1069,7 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")
                               .HostMemory("filter_sizes"), \
                           Conv2DSlowBackpropFilterOp<SYCLDevice, T>);
 
-//TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS)
-TF_CALL_float(REGISTER_SYCL_KERNELS)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS)
 #undef REGISTER_SYCL_KERNELS
 #endif  // TENSORFLOW_USE_SYCL
 

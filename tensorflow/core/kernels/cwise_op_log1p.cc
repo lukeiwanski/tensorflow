@@ -24,6 +24,13 @@ REGISTER3(UnaryOp, GPU, "Log1p", functor::log1p, float, Eigen::half, double);
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
+REGISTER_KERNEL_BUILDER(Name("Log1p")                             \
+                            .Device(DEVICE_SYCL)                  \
+                            .TypeConstraint<type>("T"),           \
+                        UnaryOp<SYCLDevice, functor::log1p<type>>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
+#undef REGISTER_SYCL_CWISE_KERNEL
 REGISTER2(UnaryOp, SYCL, "Log1p", functor::log1p, float, double);
 #endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

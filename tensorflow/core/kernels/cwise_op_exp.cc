@@ -24,7 +24,13 @@ REGISTER5(UnaryOp, GPU, "Exp", functor::exp, float, Eigen::half, double,
           complex64, complex128);
 #endif
 
-#if TENSORFLOW_USE_SYCL
-REGISTER2(UnaryOp, SYCL, "Exp", functor::exp, float, double);
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
+REGISTER_KERNEL_BUILDER(Name("Exp")                               \
+                            .Device(DEVICE_SYCL)                  \
+                            .TypeConstraint<type>("T"),           \
+                        UnaryOp<SYCLDevice, functor::exp<type>>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
+#undef REGISTER_SYCL_CWISE_KERNEL
 #endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

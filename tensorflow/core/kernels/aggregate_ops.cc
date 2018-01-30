@@ -245,8 +245,9 @@ REGISTER_KERNEL_BUILDER(Name("AddN")
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_ADDN(float, SYCL);
-REGISTER_ADDN(double, SYCL);
+#define REGISTER_ADDN_SYCL(type) REGISTER_ADDN(type, SYCL)
+
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_ADDN_SYCL);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -257,6 +258,7 @@ REGISTER_KERNEL_BUILDER(Name("AddN")
                             .HostMemory("inputs")
                             .HostMemory("sum"),
                         AddNOp<CPUDevice, int32>);
+#undef REGISTER_ADDN_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_ADDN

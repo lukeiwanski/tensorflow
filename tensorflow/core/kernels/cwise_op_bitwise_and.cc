@@ -19,7 +19,7 @@ namespace tensorflow {
 REGISTER8(BinaryOp, CPU, "BitwiseAnd", functor::bitwise_and, int8, int16, int32,
           int64, uint8, uint16, uint32, uint64);
 
-#if TENSORFLOW_USE_SYCL
+#ifdef TENSORFLOW_USE_SYCL
 REGISTER8(BinaryOp, SYCL, "BitwiseAnd", functor::bitwise_and, int8, int16, int32,
           int64, uint8, uint16, uint32, uint64);
 #endif  // TENSORFLOW_USE_SYCL
