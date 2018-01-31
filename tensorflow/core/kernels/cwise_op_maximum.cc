@@ -40,7 +40,7 @@ REGISTER(BinaryOp, SYCL, "Maximum", functor::maximum, int64);
 REGISTER_KERNEL_BUILDER(Name("Maximum")                           \
                             .Device(DEVICE_SYCL)                  \
                             .TypeConstraint<type>("T"),           \
-                        UnaryOp<SYCLDevice, functor::maximum<type>>);
+                        BinaryOp<SYCLDevice, functor::maximum<type>>);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
 #undef REGISTER_SYCL_CWISE_KERNEL
 REGISTER_KERNEL_BUILDER(Name("Maximum")
