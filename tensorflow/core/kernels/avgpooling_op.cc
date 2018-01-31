@@ -376,9 +376,9 @@ class AvgPoolingOp<SYCLDevice, T> : public UnaryOp<T> {
 #define REGISTER_AVGPOOL_SYCL(type)                                       \
 REGISTER_KERNEL_BUILDER(Name("AvgPool")                                   \
                             .Device(DEVICE_SYCL)                          \
-                            .TypeConstraint<type>("T")                    \
+                            .TypeConstraint<type>("T"),                   \
                         AvgPoolingOp<SYCLDevice, type>);
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_AVGPOOL_SYCL)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_AVGPOOL_SYCL);
 #undef REGISTER_AVGPOOL_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
@@ -937,9 +937,9 @@ class AvgPoolingGradOp<SYCLDevice, T> : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")                               \
                             .Device(DEVICE_SYCL)                          \
                             .TypeConstraint<type>("T")                    \
-                            .HostMemory("orig_input_shape")               \
+                            .HostMemory("orig_input_shape"),              \
                         AvgPoolingGradOp<SYCLDevice, type>);
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_AVGPOOLGRAD_SYCL)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_AVGPOOLGRAD_SYCL);
 #undef REGISTER_AVGPOOLGRAD_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
