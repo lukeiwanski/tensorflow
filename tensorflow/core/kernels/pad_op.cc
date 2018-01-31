@@ -317,7 +317,7 @@ REGISTER_KERNEL_BUILDER(Name("PadV2")
                               .HostMemory("constant_values"),     \
                           PadOp<SYCLDevice, T, int64>)
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNEL);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
 REGISTER_KERNEL_BUILDER(Name("Pad")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")

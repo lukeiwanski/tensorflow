@@ -174,8 +174,7 @@ struct TileFunctor<SYCLDevice, T> {
   template struct Tile<SYCLDevice, T, int64>;
 
 TF_CALL_bool(DEFINE_TYPE);
-TF_CALL_float(DEFINE_TYPE);
-TF_CALL_double(DEFINE_TYPE);
+TF_CALL_SYCL_NUMBER_TYPES(DEFINE_TYPE);
 TF_CALL_uint8(DEFINE_TYPE);
 TF_CALL_int32(DEFINE_TYPE);
 TF_CALL_int16(DEFINE_TYPE);

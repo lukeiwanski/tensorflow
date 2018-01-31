@@ -376,7 +376,7 @@ REGISTER_GPU_HOST_KERNEL(bool);
                               .TypeConstraint<type>("T"), \
                           StackPushOp<SYCLDevice>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
 
 #define REGISTER_SYCL_HOST_KERNEL(type)                   \
   REGISTER_KERNEL_BUILDER(Name("StackPush")               \
@@ -483,7 +483,7 @@ REGISTER_GPU_HOST_KERNEL(bool);
                               .TypeConstraint<type>("elem_type"), \
                           StackPopOp)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
 
 #define REGISTER_SYCL_HOST_KERNEL(type)                           \
   REGISTER_KERNEL_BUILDER(Name("StackPop")                        \

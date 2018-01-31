@@ -205,8 +205,7 @@ REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
       Name("_ArrayToList").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
       PassOn);
 
-REGISTER_SYCL_KERNELS(float);
-REGISTER_SYCL_KERNELS(double);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS);
 
 #undef REGISTER_SYCL_KERNELS
 

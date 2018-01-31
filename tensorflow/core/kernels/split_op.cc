@@ -390,7 +390,7 @@ REGISTER_GPU(bfloat16);
                               .HostMemory("split_dim"),   \
                           SplitOpSYCL<type>)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_SYCL);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
 TF_CALL_complex64(REGISTER_SYCL);
 TF_CALL_complex128(REGISTER_SYCL);
 #undef REGISTER_SYCL

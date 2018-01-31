@@ -507,7 +507,7 @@ REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")
                               .HostMemory("strides"),             \
                           StridedSliceAssignOp<SYCLDevice, type>)
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
 
 REGISTER_KERNEL_BUILDER(Name("StridedSlice")
                             .Device(DEVICE_SYCL)

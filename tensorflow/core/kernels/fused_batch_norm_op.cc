@@ -918,25 +918,27 @@ struct FusedBatchNormGrad<SYCLDevice, T, U> {
 };
 
 }  // namespace functor
-REGISTER_KERNEL_BUILDER(
-    Name("FusedBatchNorm").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
-    FusedBatchNormOp<SYCLDevice, float, float>);
 
-REGISTER_KERNEL_BUILDER(
-    Name("FusedBatchNormGrad").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
-    FusedBatchNormGradOp<SYCLDevice, float, float>);
+#define REGISTER_SYCL_FUSEDBATCH(type)                                         \
+REGISTER_KERNEL_BUILDER(                                                       \
+    Name("FusedBatchNorm").Device(DEVICE_SYCL).TypeConstraint<type>("T"),      \
+    FusedBatchNormOp<SYCLDevice, type, type>);                                 \
+REGISTER_KERNEL_BUILDER(                                                       \
+    Name("FusedBatchNormGrad").Device(DEVICE_SYCL).TypeConstraint<type>("T"),  \
+    FusedBatchNormGradOp<SYCLDevice, type, type>);                             \
+REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV2")                               \
+                            .Device(DEVICE_SYCL)                               \
+                            .TypeConstraint<type>("T")                         \
+                            .TypeConstraint<type>("U"),                        \
+                        FusedBatchNormOp<SYCLDevice, type, type>);             \
+REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV2")                           \
+                            .Device(DEVICE_SYCL)                               \
+                            .TypeConstraint<type>("T")                         \
+                            .TypeConstraint<type>("U"),                        \
+                        FusedBatchNormGradOp<SYCLDevice, type, type>);
 
-REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV2")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<float>("T")
-                            .TypeConstraint<float>("U"),
-                        FusedBatchNormOp<SYCLDevice, float, float>);
-
-REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV2")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<float>("T")
-                            .TypeConstraint<float>("U"),
-                        FusedBatchNormGradOp<SYCLDevice, float, float>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_FUSEDBATCH);
+#undef REGISTER_SYCL_FUSEDBATCH
 #endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

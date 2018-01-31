@@ -96,8 +96,7 @@ REGISTER_KERNEL_BUILDER(
                               .HostMemory("reduction_indices"),            \
                           ReductionOp<SYCLDevice, type, int64,             \
                                       Eigen::internal::MinReducer<type>>);
-REGISTER_SYCL_KERNELS(float);
-REGISTER_SYCL_KERNELS(double);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS);
 
 REGISTER_KERNEL_BUILDER(
     Name("Min")

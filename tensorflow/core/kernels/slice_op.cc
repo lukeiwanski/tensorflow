@@ -556,7 +556,7 @@ namespace functor {
   DECLARE_SYCL_SPEC(T, 6); \
   DECLARE_SYCL_SPEC(T, 7);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_FOR_N);
+TF_CALL_SYCL_NUMBER_TYPES(DECLARE_FOR_N);
 DECLARE_FOR_N(int32);
 DECLARE_FOR_N(bool);
 
@@ -573,7 +573,7 @@ DECLARE_FOR_N(bool);
                               .TypeConstraint<int32>("Index"), \
                           SliceOp<SYCLDevice, type>)
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
 
 REGISTER_KERNEL_BUILDER(Name("Slice")
                             .Device(DEVICE_SYCL)

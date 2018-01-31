@@ -169,7 +169,7 @@ REGISTER_KERNEL_BUILDER(Name("Unpack")
       Name("Unpack").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
       UnpackOp<SYCLDevice, type>)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_SYCL);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
 
 REGISTER_KERNEL_BUILDER(Name("Unpack")
                             .Device(DEVICE_SYCL)

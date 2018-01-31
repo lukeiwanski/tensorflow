@@ -48,8 +48,7 @@ REGISTER_KERNEL(Eigen::half);
       Name("L2Loss").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
       L2LossOp<SYCLDevice, T>);
 
-REGISTER_SYCL_KERNEL(float);
-REGISTER_SYCL_KERNEL(double);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
 #undef REGISTER_SYCL_KERNEL
 #endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

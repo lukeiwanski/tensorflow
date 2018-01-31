@@ -94,11 +94,14 @@ TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("Softmax").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
-    SoftmaxOp<SYCLDevice, float>);
-REGISTER_KERNEL_BUILDER(
-    Name("Softmax").Device(DEVICE_SYCL).TypeConstraint<double>("T"),
-    SoftmaxOp<SYCLDevice, double>);
+#define REGISTER_SYCL(type)                                         \
+REGISTER_KERNEL_BUILDER(                                            \
+    Name("Softmax").Device(DEVICE_SYCL).TypeConstraint<type>("T"),  \
+    SoftmaxOp<SYCLDevice, type>);                                   \
+REGISTER_KERNEL_BUILDER(                                            \
+    Name("Softmax").Device(DEVICE_SYCL).TypeConstraint<type>("T"),  \
+    SoftmaxOp<SYCLDevice, type>);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
+#undef REGISTER_SYCL
 #endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

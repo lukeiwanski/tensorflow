@@ -181,7 +181,9 @@ REGISTER_KERNEL_BUILDER(Name("Pack")
       Name("Pack").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
       PackOp<SYCLDevice, type>)
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
+TF_CALL_int64(REGISTER_SYCL);
+REGISTER_SYCL(bool);
 REGISTER_KERNEL_BUILDER(Name("Pack")
                             .Device(DEVICE_SYCL)
                             .HostMemory("values")
