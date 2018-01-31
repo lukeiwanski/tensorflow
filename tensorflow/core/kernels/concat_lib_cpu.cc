@@ -105,6 +105,8 @@ void ConcatSYCL(const Eigen::SyclDevice& d,
      Tensor* output, typename TTypes<T, 2>::Matrix* output_flat);
 
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL)
+TF_CALL_int64(REGISTER_SYCL);
+TF_CALL_bool(REGISTER_SYCL);
 
 #undef REGISTER_SYCL
 #endif // TENSORFLOW_USE_SYCL
