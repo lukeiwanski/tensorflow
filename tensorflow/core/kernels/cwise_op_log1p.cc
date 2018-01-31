@@ -31,6 +31,5 @@ REGISTER_KERNEL_BUILDER(Name("Log1p")                             \
                         UnaryOp<SYCLDevice, functor::log1p<type>>);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
 #undef REGISTER_SYCL_CWISE_KERNEL
-REGISTER2(UnaryOp, SYCL, "Log1p", functor::log1p, float, double);
 #endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
