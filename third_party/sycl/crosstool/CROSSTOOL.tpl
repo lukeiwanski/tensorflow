@@ -160,7 +160,7 @@ toolchain {
   tool_path { name: "compat-ld" path: "/bin/false" }
   tool_path { name: "cpp" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-cpp" }
   tool_path { name: "dwp" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-dwp" }
-  tool_path { name: "gcc" path: "%{COMPUTECPP_ROOT_DIR}%/bin/compute-script" }
+  tool_path { name: "gcc" path: "compute-script" }
   tool_path { name: "g++" path: "%{COMPUTECPP_ROOT_DIR}%/bin/compute++" }
   tool_path { name: "gcov" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-gcov" }
   tool_path { name: "ld" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-ld" }
@@ -169,14 +169,7 @@ toolchain {
   tool_path { name: "objdump" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-objdump" }
   tool_path { name: "strip" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-strip" }
 
-  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/include/c++/%{VERSION}%"
-  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/include/c++/%{VERSION}%/%{ARM_TARGET}%"
-  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/include/c++/%{VERSION}%/backward"
-  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/lib/gcc/%{ARM_TARGET}%/%{VERSION}%/include"
-  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/lib/gcc/%{ARM_TARGET}%/%{VERSION}%/include-fixed"
-  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/include"
-  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/libc/usr/include/%{ARM_TARGET}%"
-  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/libc/usr/include"
+  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%"
   cxx_builtin_include_directory: "%{COMPUTECPP_ROOT_DIR}%"
   cxx_builtin_include_directory: "%{OPENCL_INCLUDE_DIR}%"
   cxx_builtin_include_directory: "%{python_lib_path}%"
@@ -185,22 +178,6 @@ toolchain {
   cxx_flag: "-target"
   cxx_flag: "%{ARM_TARGET}%"
   cxx_flag: "-std=c++11"
-  cxx_flag: "-isystem"
-  cxx_flag: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/include/c++/%{VERSION}%"
-  cxx_flag: "-isystem"
-  cxx_flag: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/include/c++/%{VERSION}%/%{ARM_TARGET}%"
-  cxx_flag: "-isystem"
-  cxx_flag: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/include/c++/%{VERSION}%/backward"
-  cxx_flag: "-isystem"
-  cxx_flag: "%{ARM_COMPILER_PATH}%/lib/gcc/%{ARM_TARGET}%/%{VERSION}%/include"
-  cxx_flag: "-isystem"
-  cxx_flag: "%{ARM_COMPILER_PATH}%/lib/gcc/%{ARM_TARGET}%/%{VERSION}%/include-fixed"
-  cxx_flag: "-isystem"
-  cxx_flag: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/include"
-  cxx_flag: "-isystem"
-  cxx_flag: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/libc/usr/include/%{ARM_TARGET}%"
-  cxx_flag: "-isystem"
-  cxx_flag: "%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/libc/usr/include"
   cxx_flag: "-isystem"
   cxx_flag: "%{PYTHON_INCLUDE_PATH}%"
   cxx_flag: "-isystem"
@@ -223,7 +200,7 @@ toolchain {
   cxx_flag: "-DEIGEN_HAS_C99_MATH=1"
   cxx_flag: "-DEIGEN_HAS_CXX11_MATH=1"
   cxx_flag: "--gcc-toolchain=%{ARM_COMPILER_PATH}%"
-  cxx_flag: "-nostdinc"
+  cxx_flag: "--sysroot=%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/libc"
   linker_flag: "-lstdc++"
 
   unfiltered_cxx_flag: "-Wno-builtin-macro-redefined"

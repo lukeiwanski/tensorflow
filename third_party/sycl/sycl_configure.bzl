@@ -205,7 +205,16 @@ def _sycl_autoconf_impl(repository_ctx):
       _tpl(repository_ctx, "crosstool:CROSSTOOL",
       {
         "%{ARM_COMPILER_PATH}%" : gcc_toolchain_path,
-        "%{VERSION}%" : gcc_toolchain_version,
+        "%{ARM_TARGET}%" : gcc_toolchain_name,
+        "%{PYTHON_INCLUDE_PATH}%" : python_include_path,
+        "%{COMPUTECPP_ROOT_DIR}%"  : computecpp_root,
+        "%{OPENCL_INCLUDE_DIR}%" : opencl_includes,
+        "%{python_lib_path}" : find_python_lib(repository_ctx),
+      })
+
+      _tpl(repository_ctx, "crosstool:compute-script",
+      {
+        "%{ARM_COMPILER_PATH}%" : gcc_toolchain_path,
         "%{ARM_TARGET}%" : gcc_toolchain_name,
         "%{PYTHON_INCLUDE_PATH}%" : python_include_path,
         "%{COMPUTECPP_ROOT_DIR}%"  : computecpp_root,
