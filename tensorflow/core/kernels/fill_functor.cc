@@ -64,10 +64,8 @@ void SetZeroFunctor<Eigen::SyclDevice, T>::operator()(
 
 #define DEFINE_SETZERO_SYCL(T) \
   template struct SetZeroFunctor<Eigen::SyclDevice, T>;
+TF_CALL_SYCL_NUMBER_TYPES(DEFINE_SETZERO_SYCL);
 DEFINE_SETZERO_SYCL(bool);
-DEFINE_SETZERO_SYCL(Eigen::half);
-DEFINE_SETZERO_SYCL(float);
-DEFINE_SETZERO_SYCL(double);
 DEFINE_SETZERO_SYCL(uint8);
 DEFINE_SETZERO_SYCL(int8);
 DEFINE_SETZERO_SYCL(uint16);
@@ -109,9 +107,8 @@ void SetOneFunctor<Eigen::SyclDevice, T>::operator()(
 
 #define DEFINE_SETONE_SYCL(T) \
   template struct SetOneFunctor<Eigen::SyclDevice, T>;
-DEFINE_SETONE_SYCL(float);
+TF_CALL_SYCL_NUMBER_TYPES(DEFINE_SETONE_SYCL);
 DEFINE_SETONE_SYCL(bool);
-DEFINE_SETONE_SYCL(double);
 DEFINE_SETONE_SYCL(uint8);
 DEFINE_SETONE_SYCL(int8);
 DEFINE_SETONE_SYCL(uint16);
@@ -157,8 +154,7 @@ struct FillFunctor<Eigen::SyclDevice, T> {
 
 #define DEFINE_FILL_SYCL(T) \
   template struct FillFunctor<Eigen::SyclDevice, T>;
-DEFINE_FILL_SYCL(float);
-DEFINE_FILL_SYCL(double);
+TF_CALL_SYCL_NUMBER_TYPES(DEFINE_FILL_SYCL);
 TF_CALL_INTEGRAL_TYPES(DEFINE_FILL_SYCL)
 #undef DEFINE_FILL_SYCL
 #endif  // TENSORFLOW_USE_SYCL

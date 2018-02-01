@@ -641,7 +641,7 @@ class FusedBatchNormGradOp : public OpKernel {
     Tensor* placeholder_1 = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(3, TensorShape({}), &placeholder_1));
-    functor::SetZeroFunctor<Device, float> f;
+    functor::SetZeroFunctor<Device, U> f;
     f(context->eigen_device<Device>(), placeholder_1->flat<U>());
     Tensor* placeholder_2 = nullptr;
     OP_REQUIRES_OK(
