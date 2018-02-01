@@ -67,7 +67,7 @@ REGISTER_KERNEL_BUILDER(Name("Equal")
 REGISTER_KERNEL_BUILDER(Name("ApproximateEqual")                  \
                             .Device(DEVICE_SYCL)                  \
                             .TypeConstraint<type>("T"),           \
-                        ApproximateEqualOp<SYCLDevice, float>);
+                        ApproximateEqualOp<SYCLDevice, type>);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
 #undef REGISTER_SYCL_CWISE_KERNEL
 #endif  // TENSORFLOW_USE_SYCL

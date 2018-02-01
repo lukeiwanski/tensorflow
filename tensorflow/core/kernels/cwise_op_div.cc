@@ -49,11 +49,7 @@ REGISTER_KERNEL_BUILDER(Name("Div")
 REGISTER_KERNEL_BUILDER(Name("Div")                               \
                             .Device(DEVICE_SYCL)                  \
                             .TypeConstraint<type>("T"),           \
-                        BinaryOp<SYCLDevice, functor::div<type>>);
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
-#undef REGISTER_SYCL_CWISE_KERNEL
-
-#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
+                        BinaryOp<SYCLDevice, functor::div<type>>);\
 REGISTER_KERNEL_BUILDER(Name("RealDiv")                           \
                             .Device(DEVICE_SYCL)                  \
                             .TypeConstraint<type>("T"),           \

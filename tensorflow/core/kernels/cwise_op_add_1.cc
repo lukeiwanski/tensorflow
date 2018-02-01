@@ -50,11 +50,7 @@ REGISTER_KERNEL_BUILDER(Name("AddV2")
 REGISTER_KERNEL_BUILDER(Name("Add")                               \
                             .Device(DEVICE_SYCL)                  \
                             .TypeConstraint<type>("T"),           \
-                        BinaryOp<SYCLDevice, functor::add<type>>);
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
-#undef REGISTER_SYCL_CWISE_KERNEL
-
-#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
+                        BinaryOp<SYCLDevice, functor::add<type>>);\
 REGISTER_KERNEL_BUILDER(Name("AddV2")                             \
                             .Device(DEVICE_SYCL)                  \
                             .TypeConstraint<type>("T"),           \
