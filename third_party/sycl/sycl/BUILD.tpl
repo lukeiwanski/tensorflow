@@ -51,6 +51,5 @@ cc_library(
     name = "sycl",
     deps = if_sycl([
         ":sycl_headers",
-        ":syclrt",
     ]),
 )

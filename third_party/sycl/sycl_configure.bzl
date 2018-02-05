@@ -182,9 +182,8 @@ def _sycl_autoconf_impl(repository_ctx):
     python_include_path = "/usr/include/python2.7"
   gcc_toolchain_path = repository_ctx.os.environ["ARM_TOOLCHAIN"]
   gcc_toolchain_name = repository_ctx.os.environ["ARM_TOOLCHAIN_NAME"]
-  gcc_toolchain_version = repository_ctx.os.environ["ARM_TOOLCHAIN_VERSION"]
   opencl_includes = repository_ctx.os.environ["OPENCL_INCLUDES"]
-  #spir_type = repository_ctx.os.environ["ARM_BITCODE_TARGET"]
+  spir_type = repository_ctx.os.environ["ARM_BITCODE_TARGET"]
 
   # SYCL toolchain bits
   if not _enable_sycl(repository_ctx):
@@ -209,17 +208,14 @@ def _sycl_autoconf_impl(repository_ctx):
         "%{PYTHON_INCLUDE_PATH}%" : python_include_path,
         "%{COMPUTECPP_ROOT_DIR}%"  : computecpp_root,
         "%{OPENCL_INCLUDE_DIR}%" : opencl_includes,
-        "%{python_lib_path}" : find_python_lib(repository_ctx),
+        "%{BITCODE_FORMAT}%" : spir_type
       })
 
       _tpl(repository_ctx, "crosstool:compute-script",
       {
         "%{ARM_COMPILER_PATH}%" : gcc_toolchain_path,
         "%{ARM_TARGET}%" : gcc_toolchain_name,
-        "%{PYTHON_INCLUDE_PATH}%" : python_include_path,
         "%{COMPUTECPP_ROOT_DIR}%"  : computecpp_root,
-        "%{OPENCL_INCLUDE_DIR}%" : opencl_includes,
-        "%{python_lib_path}" : find_python_lib(repository_ctx),
       })
 
       # symlink libraries

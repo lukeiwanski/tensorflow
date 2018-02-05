@@ -56,7 +56,6 @@ toolchain {
   cxx_builtin_include_directory: "/usr/include"
 
   cxx_builtin_include_directory: "%{COMPUTECPP_ROOT_DIR}%"
-  cxx_builtin_include_directory: "%{python_lib_path}"
 
   tool_path { name: "gcov" path: "/usr/bin/gcov" }
 
@@ -172,7 +171,6 @@ toolchain {
   cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%"
   cxx_builtin_include_directory: "%{COMPUTECPP_ROOT_DIR}%"
   cxx_builtin_include_directory: "%{OPENCL_INCLUDE_DIR}%"
-  cxx_builtin_include_directory: "%{python_lib_path}%"
   cxx_builtin_include_directory: "%{PYTHON_INCLUDE_PATH}%"
 
   cxx_flag: "-target"
@@ -194,7 +192,7 @@ toolchain {
   cxx_flag: "-Xclang"
   cxx_flag: "-cl-mad-enable"
   cxx_flag: "-sycl-target"
-  cxx_flag: "spirv"
+  cxx_flag: "%{BITCODE_FORMAT}%"
   cxx_flag: "-DTENSORFLOW_USE_SYCL=1"
   cxx_flag: "-DEIGEN_USE_SYCL=1"
   cxx_flag: "-DEIGEN_HAS_C99_MATH=1"

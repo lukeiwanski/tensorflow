@@ -38,7 +38,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@eigen_archive//:eigen",
-        "@local_config_sycl//sycl:sycl",
+        "@local_config_sycl//sycl:sycl_headers",
     ],
 )
 
