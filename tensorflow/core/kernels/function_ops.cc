@@ -92,11 +92,16 @@ class RetvalOp : public OpKernel {
 REGISTER_SYSTEM_KERNEL_BUILDER(Name("_Arg").Device(DEVICE_CPU), ArgOp);
 REGISTER_SYSTEM_KERNEL_BUILDER(Name("_Retval").Device(DEVICE_CPU), RetvalOp);
 
-#if TENSORFLOW_USE_SYCL
+#ifdef TENSORFLOW_USE_SYCL
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
       Name("_Arg").Device(DEVICE_SYCL).TypeConstraint<type>("T"), ArgOp);
-TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER);
+TF_CALL_int64(REGISTER);
+TF_CALL_uint16(REGISTER);
+TF_CALL_int16(REGISTER);
+TF_CALL_uint8(REGISTER);
+TF_CALL_int8(REGISTER);
 TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Arg")
                                                    .Device(DEVICE_SYCL)
                                                    .HostMemory("output")
@@ -107,7 +112,12 @@ TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Arg")
   REGISTER_KERNEL_BUILDER(                                           \
       Name("_Retval").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
       RetvalOp);
-TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER);
+TF_CALL_int64(REGISTER);
+TF_CALL_uint16(REGISTER);
+TF_CALL_int16(REGISTER);
+TF_CALL_uint8(REGISTER);
+TF_CALL_int8(REGISTER);
 TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Retval")
                                                    .Device(DEVICE_SYCL)
                                                    .HostMemory("input")
