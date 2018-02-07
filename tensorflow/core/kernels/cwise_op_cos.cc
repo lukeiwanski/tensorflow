@@ -24,7 +24,7 @@ REGISTER3(UnaryOp, GPU, "Cos", functor::cos, float, Eigen::half, double);
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL(type) REGISTER3(UnaryOp, SYCL, "Cos", functor::cos, type)
+#define REGISTER_SYCL(type) REGISTER(UnaryOp, SYCL, "Cos", functor::cos, type)
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
 #undef REGISTER_SYCL
 #endif  // TENSORFLOW_USE_SYCL
