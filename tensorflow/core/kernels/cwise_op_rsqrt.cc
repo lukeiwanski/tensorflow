@@ -36,7 +36,8 @@ REGISTER3(SimpleBinaryOp, GPU, "RsqrtGrad", functor::rsqrt_grad, float,
           Eigen::half, double);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL(type) SimpleBinaryOp, SYCL, "RsqrtGrad", functor::rsqrt_grad, type)
+#define REGISTER_SYCL(type) \
+  REGISTER(SimpleBinaryOp, SYCL, "RsqrtGrad", functor::rsqrt_grad, type)
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
 #undef REGISTER_SYCL
 #endif  //  TENSORFLOW_USE_SYCL
