@@ -234,7 +234,7 @@ REGISTER_KERNEL_BUILDER(Name("ConcatV2")
                               .HostMemory("axis"),           \
                           ConcatV2Op<SYCLDevice, type>)
 
-REGISTER_SYCL(bool);
+TF_CALL_bool(REGISTER_SYCL);
 TF_CALL_int64(REGISTER_SYCL);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
 
