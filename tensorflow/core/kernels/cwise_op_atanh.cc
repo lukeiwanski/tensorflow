@@ -22,7 +22,7 @@ REGISTER4(UnaryOp, CPU, "Atanh", functor::atanh, float, double, complex64,
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL(type) \
-  REGISTER4(UnaryOp, SYCL, "Atanh", functor::atanh, type)
+  REGISTER(UnaryOp, SYCL, "Atanh", functor::atanh, type)
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
 #undef REGISTER_SYCL
 #endif  // TENSORFLOW_USE_SYCL
