@@ -21,7 +21,7 @@ REGISTER8(BinaryOp, CPU, "RightShift", functor::right_shift, int8, int16, int32,
 
 #if TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNEL(TYPE) \
-  REGISTER8(BinaryOp, SYCL, "RightShift", functor::right_shift, TYPE)
+  REGISTER(BinaryOp, SYCL, "RightShift", functor::right_shift, TYPE)
 TF_CALL_int8(REGISTER_SYCL_KERNEL);
 TF_CALL_int16(REGISTER_SYCL_KERNEL);
 TF_CALL_int32(REGISTER_SYCL_KERNEL);
