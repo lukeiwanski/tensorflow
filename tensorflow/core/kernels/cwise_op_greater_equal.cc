@@ -35,13 +35,10 @@ REGISTER_KERNEL_BUILDER(Name("GreaterEqual")
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
-REGISTER_KERNEL_BUILDER(Name("GreaterEqual")                      \
-                            .Device(DEVICE_SYCL)                  \
-                            .TypeConstraint<type>("T"),           \
-                        BinaryOp<SYCLDevice, functor::greater_equal<type>>);
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
-#undef REGISTER_SYCL_CWISE_KERNEL
+#define REGISTER_SYCL(type) \
+  REGISTER(BinaryOp, SYCL, "GreaterEqual", functor::greater_equal, type)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
+#undef REGISTER_SYCL
 
 REGISTER4(BinaryOp, SYCL, "GreaterEqual", functor::greater_equal, int64, uint8,
           int8, int16);

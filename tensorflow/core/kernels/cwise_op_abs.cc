@@ -38,14 +38,10 @@ REGISTER_KERNEL_BUILDER(Name("Abs")
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
-REGISTER_KERNEL_BUILDER(Name("Abs")                               \
-                            .Device(DEVICE_SYCL)                  \
-                            .TypeConstraint<type>("T"),           \
-                        UnaryOp<SYCLDevice, functor::abs<type>>);
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
-REGISTER_SYCL_CWISE_KERNEL(int64);
-#undef REGISTER_SYCL_CWISE_KERNEL
+#define REGISTER_SYCL(type) REGISTER(UnaryOp, SYCL, "Abs", functor::abs, type)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
+TF_CALL_int64(REGISTER_SYCL);
+#undef REGISTER_SYCL
 
 REGISTER_KERNEL_BUILDER(Name("Abs")
                             .Device(DEVICE_SYCL)

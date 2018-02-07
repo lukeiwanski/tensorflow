@@ -45,17 +45,11 @@ REGISTER_KERNEL_BUILDER(Name("Div")
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
-REGISTER_KERNEL_BUILDER(Name("Div")                               \
-                            .Device(DEVICE_SYCL)                  \
-                            .TypeConstraint<type>("T"),           \
-                        BinaryOp<SYCLDevice, functor::div<type>>);\
-REGISTER_KERNEL_BUILDER(Name("RealDiv")                           \
-                            .Device(DEVICE_SYCL)                  \
-                            .TypeConstraint<type>("T"),           \
-                        BinaryOp<SYCLDevice, functor::div<type>>);
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
-#undef REGISTER_SYCL_CWISE_KERNEL
+#define REGISTER_SYCL(type)                           \
+  REGISTER(BinaryOp, SYCL, "Div", functor::div, type) \
+  REGISTER(BinaryOp, SYCL, "RealDiv", functor::div, type)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
+#undef REGISTER_SYCL
 REGISTER_KERNEL_BUILDER(Name("Div")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")

@@ -606,7 +606,7 @@ TF_CALL_complex128(REGISTER_GPU)
                               .HostMemory("multiples"),            \
                           TileGradientOp<SYCLDevice, int64>);
 
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
+    TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
 #undef REGISTER_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 

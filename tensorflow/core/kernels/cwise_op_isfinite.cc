@@ -25,12 +25,9 @@ REGISTER3(UnaryOp, GPU, "IsFinite", functor::isfinite, float, Eigen::half,
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
-REGISTER_KERNEL_BUILDER(Name("IsFinite")                          \
-                            .Device(DEVICE_SYCL)                  \
-                            .TypeConstraint<type>("T"),           \
-                        UnaryOp<SYCLDevice, functor::isfinite<type>>);
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
-#undef REGISTER_SYCL_CWISE_KERNEL
+#define REGISTER_SYCL(type) \
+  REGISTER(UnaryOp, SYCL, "IsFinite", functor::isfinite, type)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
+#undef REGISTER_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

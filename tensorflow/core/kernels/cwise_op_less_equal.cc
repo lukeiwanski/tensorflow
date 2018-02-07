@@ -35,15 +35,12 @@ REGISTER_KERNEL_BUILDER(Name("LessEqual")
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
-REGISTER_KERNEL_BUILDER(Name("LessEqual")                         \
-                            .Device(DEVICE_SYCL)                  \
-                            .TypeConstraint<type>("T"),           \
-                        BinaryOp<SYCLDevice, functor::less_equal<type>>);
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
-#undef REGISTER_SYCL_CWISE_KERNEL
-REGISTER4(BinaryOp, SYCL, "LessEqual", functor::less_equal, int64, uint8,
-          int8, int16);
+#define REGISTER_SYCL(type) \
+  REGISTER(BinaryOp, SYCL, "LessEqual", functor::less_equal, type)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
+#undef REGISTER_SYCL
+REGISTER4(BinaryOp, SYCL, "LessEqual", functor::less_equal, int64, uint8, int8,
+          int16);
 REGISTER_KERNEL_BUILDER(Name("LessEqual")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")

@@ -44,13 +44,10 @@ REGISTER_KERNEL_BUILDER(Name("FloorDiv")
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER4(BinaryOp, SYCL, "FloorDiv", functor::floor_div, uint8, uint16, int16,
           int64);
-#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
-REGISTER_KERNEL_BUILDER(Name("FloorDiv")                          \
-                            .Device(DEVICE_SYCL)                  \
-                            .TypeConstraint<type>("T"),           \
-                        BinaryOp<SYCLDevice, functor::floor_div_real<type>>);
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
-#undef REGISTER_SYCL_CWISE_KERNEL
+#define REGISTER_SYCL(type) \
+  REGISTER(BinaryOp, SYCL, "FloorDiv", functor::floor_div_real, type);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
+#undef REGISTER_SYCL
 
 REGISTER_KERNEL_BUILDER(Name("FloorDiv")
                             .Device(DEVICE_SYCL)

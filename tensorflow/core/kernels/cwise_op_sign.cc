@@ -35,13 +35,9 @@ REGISTER_KERNEL_BUILDER(Name("Sign")
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER(UnaryOp, SYCL, "Sign", functor::sign, int64);
-#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
-REGISTER_KERNEL_BUILDER(Name("Sign")                              \
-                            .Device(DEVICE_SYCL)                  \
-                            .TypeConstraint<type>("T"),           \
-                        UnaryOp<SYCLDevice, functor::sign<type>>);
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
-#undef REGISTER_SYCL_CWISE_KERNEL
+#define REGISTER_SYCL(type) REGISTER(UnaryOp, SYCL, "Sign", functor::sign, type)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
+#undef REGISTER_SYCL
 REGISTER_KERNEL_BUILDER(Name("Sign")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")

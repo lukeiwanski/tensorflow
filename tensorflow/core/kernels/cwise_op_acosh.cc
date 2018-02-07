@@ -21,13 +21,10 @@ REGISTER4(UnaryOp, CPU, "Acosh", functor::acosh, float, double, complex64,
           complex128);
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
-REGISTER_KERNEL_BUILDER(Name("Acosh")                             \
-                            .Device(DEVICE_SYCL)                  \
-                            .TypeConstraint<type>("T"),           \
-                        UnaryOp<SYCLDevice, functor::acosh<type>>);
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
-#undef REGISTER_SYCL_CWISE_KERNEL
+#define REGISTER_SYCL(type) \
+  REGISTER(UnaryOp, SYCL, "Acosh", functor::acosh, type)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
+#undef REGISTER_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA

@@ -34,6 +34,10 @@ REGISTER4(BinaryOp, GPU, "Add", functor::add, uint8, int64, complex64,
 REGISTER4(BinaryOp, GPU, "AddV2", functor::add, uint8, int64, complex64,
           complex128);
 #endif  // GOOGLE_CUDA
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER2(BinaryOp, SYCL, "Add", functor::add, uint8, int64);
+REGISTER2(BinaryOp, SYCL, "AddV2", functor::add, uint8, int64);
+#endif  // GOOGLE_CUDA
 
 #endif  // !defined(__ANDROID_TYPES_SLIM__)
 

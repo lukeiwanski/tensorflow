@@ -181,7 +181,7 @@ REGISTER_SELECT_GPU(complex128);
       SelectOp<SYCLDevice, type>);
 
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SELECT_SYCL);
-REGISTER_SELECT_SYCL(int32);
+TF_CALL_int32(REGISTER_SELECT_SYCL);
 REGISTER_SELECT_SYCL(int64);
 #undef REGISTER_SELECT_SYCL
 #endif  // TENSORFLOW_USE_SYCL
@@ -228,17 +228,16 @@ struct SelectScalarFunctor<SYCLDevice, T> {
                   typename TTypes<T>::ConstFlat then_flat,
                   typename TTypes<T>::ConstFlat else_flat) {
 #if !defined(EIGEN_HAS_INDEX_LIST)
-  Eigen::array<int, 1> rank1{1};
+    Eigen::array<int, 1> rank1{1};
 #else
-  Eigen::IndexList<Eigen::type2index<1>> rank1;
+    Eigen::IndexList<Eigen::type2index<1> > rank1;
 #endif
-  const int size  = then_flat.dimension(0);
-  Eigen::array<int, 1> broadcast_dims{size};
+    const int size = then_flat.dimension(0);
+    Eigen::array<int, 1> broadcast_dims{size};
 
-  To32Bit(out).device(d) = cond.reshape(rank1)
-                               .broadcast(broadcast_dims)
-                               .select(then_flat, else_flat);
-
+    To32Bit(out).device(d) = cond.reshape(rank1)
+                                 .broadcast(broadcast_dims)
+                                 .select(then_flat, else_flat);
   }
 };
 #endif  // TENSORFLOW_USE_SYCL

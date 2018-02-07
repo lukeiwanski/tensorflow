@@ -182,32 +182,36 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_UPDATE_GPU);
 #ifdef TENSORFLOW_USE_SYCL
 
 #define REGISTER_SCATTER_KERNEL_INDEX_SYCL(type, index_type, dev, name, op) \
-  REGISTER_KERNEL_BUILDER(Name(name)                                   \
-                              .Device(DEVICE_##dev)                    \
-                              .TypeConstraint<type>("T")               \
-                              .TypeConstraint<index_type>("Tindices")  \
-                              .HostMemory("indices"),                 \
+  REGISTER_KERNEL_BUILDER(Name(name)                                        \
+                              .Device(DEVICE_##dev)                         \
+                              .TypeConstraint<type>("T")                    \
+                              .TypeConstraint<index_type>("Tindices")       \
+                              .HostMemory("indices"),                       \
                           ScatterUpdateOp<dev##Device, type, index_type, op>)
 
 #define REGISTER_SCATTER_KERNEL_SYCL(type, dev, name, op)         \
   REGISTER_SCATTER_KERNEL_INDEX_SYCL(type, int32, dev, name, op); \
   REGISTER_SCATTER_KERNEL_INDEX_SYCL(type, int64, dev, name, op);
 
-#define REGISTER_SCATTER_ARITHEMTIC_SYCL_SPEC(type, dev)                                 \
-  REGISTER_SCATTER_KERNEL_SYCL(type, dev, "ScatterAdd", scatter_op::UpdateOp::ADD); \
-  REGISTER_SCATTER_KERNEL_SYCL(type, dev, "ScatterDiv", scatter_op::UpdateOp::DIV); \
-  REGISTER_SCATTER_KERNEL_SYCL(type, dev, "ScatterMul", scatter_op::UpdateOp::MUL); \
-  REGISTER_SCATTER_KERNEL_SYCL(type, dev, "ScatterSub", scatter_op::UpdateOp::SUB);
+#define REGISTER_SCATTER_ARITHEMTIC_SYCL_SPEC(type, dev)   \
+  REGISTER_SCATTER_KERNEL_SYCL(type, dev, "ScatterAdd",    \
+                               scatter_op::UpdateOp::ADD); \
+  REGISTER_SCATTER_KERNEL_SYCL(type, dev, "ScatterDiv",    \
+                               scatter_op::UpdateOp::DIV); \
+  REGISTER_SCATTER_KERNEL_SYCL(type, dev, "ScatterMul",    \
+                               scatter_op::UpdateOp::MUL); \
+  REGISTER_SCATTER_KERNEL_SYCL(type, dev, "ScatterSub",    \
+                               scatter_op::UpdateOp::SUB);
 
-#define REGISTER_SCATTER_UPDATE_SYCL_SPEC(type, dev)            \
+#define REGISTER_SCATTER_UPDATE_SYCL_SPEC(type, dev)       \
   REGISTER_SCATTER_KERNEL_SYCL(type, dev, "ScatterUpdate", \
-                          scatter_op::UpdateOp::ASSIGN);
-
+                               scatter_op::UpdateOp::ASSIGN);
 
 #define REGISTER_SCATTER_ARITHEMTIC_SYCL(type) \
   REGISTER_SCATTER_ARITHEMTIC_SYCL_SPEC(type, SYCL);
 
-#define REGISTER_SCATTER_UPDATE_SYCL(type) REGISTER_SCATTER_UPDATE_SYCL_SPEC(type, SYCL);
+#define REGISTER_SCATTER_UPDATE_SYCL(type) \
+  REGISTER_SCATTER_UPDATE_SYCL_SPEC(type, SYCL);
 
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SCATTER_ARITHEMTIC_SYCL);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SCATTER_UPDATE_SYCL);

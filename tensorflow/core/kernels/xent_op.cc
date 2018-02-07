@@ -125,11 +125,11 @@ REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits")
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL(T)                                               \
-REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits")          \
-                            .Device(DEVICE_SYCL)                       \
-                            .TypeConstraint<T>("T"),                   \
-                        SoftmaxXentWithLogitsOp<SYCLDevice, T>);
+#define REGISTER_SYCL(T)                                        \
+  REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits") \
+                              .Device(DEVICE_SYCL)              \
+                              .TypeConstraint<T>("T"),          \
+                          SoftmaxXentWithLogitsOp<SYCLDevice, T>);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
 #undef REGISTER_SYCL
 #endif  // TENSORFLOW_USE_SYCL

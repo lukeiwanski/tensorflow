@@ -34,13 +34,10 @@ REGISTER_KERNEL_BUILDER(Name("Greater")
                         BinaryOp<CPUDevice, functor::greater<int32>>);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
-REGISTER_KERNEL_BUILDER(Name("Greater")                           \
-                            .Device(DEVICE_SYCL)                  \
-                            .TypeConstraint<type>("T"),           \
-                        BinaryOp<SYCLDevice, functor::greater<type>>);
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
-#undef REGISTER_SYCL_CWISE_KERNEL
+#define REGISTER_SYCL(type) \
+  REGISTER(BinaryOp, SYCL, "Greater", functor::greater, type)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
+#undef REGISTER_SYCL
 REGISTER4(BinaryOp, SYCL, "Greater", functor::greater, int64, uint8, int8,
           int16);
 

@@ -21,13 +21,10 @@ REGISTER5(UnaryOp, CPU, "Round", functor::round, Eigen::half, float, double,
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER2(UnaryOp, SYCL, "Round", functor::round, int32, int64);
-#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
-REGISTER_KERNEL_BUILDER(Name("Round")                             \
-                            .Device(DEVICE_SYCL)                  \
-                            .TypeConstraint<type>("T"),           \
-                        UnaryOp<SYCLDevice, functor::round<type>>);
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
-#undef REGISTER_SYCL_CWISE_KERNEL
+#define REGISTER_SYCL(type) \
+  REGISTER(UnaryOp, SYCL, "Round", functor::round, type)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
+#undef REGISTER_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA

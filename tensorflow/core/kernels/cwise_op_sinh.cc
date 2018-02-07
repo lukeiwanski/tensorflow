@@ -20,10 +20,8 @@ REGISTER4(UnaryOp, CPU, "Sinh", functor::sinh, float, double, complex64,
           complex128);
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(TYPE)                                \
-  REGISTER_KERNEL_BUILDER(                                        \
-      Name("Sinh").Device(DEVICE_SYCL).TypeConstraint<TYPE>("T"), \
-      UnaryOp<SYCLDevice, functor::sinh<TYPE>>);
+#define REGISTER_SYCL_KERNEL(TYPE) \
+  REGISTER(UnaryOp, SYCL, "Sinh", functor::sinh, type)
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
 #undef REGISTER_SYCL_KERNEL
 #endif  // TENSORFLOW_USE_SYCL

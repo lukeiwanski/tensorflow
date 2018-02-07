@@ -43,13 +43,9 @@ REGISTER_KERNEL_BUILDER(Name("Mul")
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER(BinaryOp, SYCL, "Mul", functor::mul, uint8);
-#define REGISTER_SYCL_CWISE_KERNEL(type)                          \
-REGISTER_KERNEL_BUILDER(Name("Mul")                               \
-                            .Device(DEVICE_SYCL)                  \
-                            .TypeConstraint<type>("T"),           \
-                        BinaryOp<SYCLDevice, functor::mul<type>>);
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
-#undef REGISTER_SYCL_CWISE_KERNEL
+#define REGISTER_SYCL(type) REGISTER(BinaryOp, SYCL, "Mul", functor::mul, type)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
+#undef REGISTER_SYCL
 REGISTER_KERNEL_BUILDER(Name("Mul")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")
