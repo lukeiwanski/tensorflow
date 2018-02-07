@@ -39,7 +39,7 @@ REGISTER_KERNEL_BUILDER(
 REGISTER(BinaryOp, SYCL, "SquaredDifference", functor::squared_difference,
          int64);
 #define REGISTER_SYCL(type)                                                   \
-  REGISTER5(BinaryOp, SYCL, "SquaredDifference", functor::squared_difference, \
+  REGISTER(BinaryOp, SYCL, "SquaredDifference", functor::squared_difference,  \
             type)
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
 #undef REGISTER_SYCL
