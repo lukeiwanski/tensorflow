@@ -344,7 +344,7 @@ TF_CALL_POD_TYPES(REGISTER_CPU);
 #define REGISTER_SYCL(type) REGISTER_KERNEL(type, SYCL)
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
 TF_CALL_bool(REGISTER_SYCL);
-TF_CALL_boolint64(REGISTER_SYCL);
+TF_CALL_int64(REGISTER_SYCL);
 REGISTER_KERNEL_BUILDER(Name("OnesLike")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
