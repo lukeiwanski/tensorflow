@@ -287,8 +287,8 @@ REGISTER_CPU(Variant);
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL(type) REGISTER_KERNEL(type, SYCL)
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL);
-REGISTER_SYCL(bool);
-REGISTER_SYCL(int64);
+TF_CALL_bool(REGISTER_SYCL);
+TF_CALL_int64(REGISTER_SYCL);
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
