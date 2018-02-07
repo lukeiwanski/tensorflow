@@ -29,5 +29,5 @@ REGISTER_KERNEL_BUILDER(Name("Floor")                             \
                         UnaryOp<SYCLDevice, functor::floor<type>>);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
 #undef REGISTER_SYCL_CWISE_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

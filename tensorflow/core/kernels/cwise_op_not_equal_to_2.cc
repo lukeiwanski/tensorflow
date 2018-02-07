@@ -35,5 +35,5 @@ REGISTER4(BinaryOp, SYCL, "NotEqual", functor::not_equal_to, int8, int16, int64,
           bool);
 #endif  // TENSORFLOW_USE_SYCL
 
-#endif   // !defined(__ANDROID_TYPES_SLIM__)
+#endif  // !defined(__ANDROID_TYPES_SLIM__)
 }  // namespace tensorflow

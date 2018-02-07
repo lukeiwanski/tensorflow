@@ -931,7 +931,7 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateOutfeed(
-          shape, operands[0], config ? *config : ""));
+          operands[0]->shape(), operands[0], config ? *config : ""));
       break;
     }
     case HloOpcode::kRng: {
@@ -2173,7 +2173,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
 //
 //  {[2:3:4], [5:6:7], [8:9]}
 //
-// The the parsed result will be:
+// The parsed result will be:
 //
 //  {/*starts=*/{2, 5, 8}, /*limits=*/{3, 6, 9}, /*strides=*/{4, 7, 1}}
 //

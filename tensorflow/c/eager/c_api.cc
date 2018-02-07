@@ -85,15 +85,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
     return nullptr;
   }
 
-  TFE_Context* ret = new TFE_Context(session);
-  ret->policy = opts->policy;
-  ret->pflr.reset(new tensorflow::ProcessFunctionLibraryRuntime(
-      ret->session->device_mgr, opts->session_options.options.env,
-      TF_GRAPH_DEF_VERSION, &ret->func_lib_def, {}));
-  ret->rendezvous =
-      new tensorflow::IntraProcessRendezvous(ret->session->device_mgr);
-
-  return ret;
+  return new TFE_Context(*opts, session);
 }
 
 void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) {
@@ -116,6 +108,23 @@ TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
 void TFE_ContextClearCaches(TFE_Context* ctx) {
   tensorflow::mutex_lock ml(ctx->cache_mu);
   tensorflow::gtl::STLDeleteValues(&ctx->kernel_cache);
+}
+
+void TFE_ContextSetThreadLocalDevicePlacementPolicy(
+    TFE_Context* ctx, TFE_ContextDevicePlacementPolicy policy) {
+  tensorflow::mutex_lock ml(ctx->policy_map_mu);
+  ctx->thread_local_policies[std::this_thread::get_id()] = policy;
+}
+
+extern TFE_ContextDevicePlacementPolicy TFE_ContextGetDevicePlacementPolicy(
+    TFE_Context* ctx) {
+  tensorflow::mutex_lock ml(ctx->policy_map_mu);
+  auto policy_map_it =
+      ctx->thread_local_policies.find(std::this_thread::get_id());
+  if (policy_map_it != ctx->thread_local_policies.end()) {
+    return policy_map_it->second;
+  }
+  return ctx->policy;
 }
 
 TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
@@ -173,6 +182,7 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
   bool is_same_device =
       (srcd == dstd) || (DeviceName(srcd) == DeviceName(dstd));
   const bool dst_cpu = IsCPU(dstd);
+  const bool src_cpu = IsCPU(srcd);
   if (is_same_device) {
     return new TFE_TensorHandle(h->t, dst_cpu ? nullptr : dstd);
   }
@@ -196,7 +206,7 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     return new TFE_TensorHandle(dst, dst_cpu ? nullptr : dstd);
   }
   tensorflow::DeviceContext* src_device_context = nullptr;
-  if (!IsCPU(srcd)) {
+  if (!src_cpu) {
     src_device_context = srcd->tensorflow_gpu_device_info()->default_context;
   }
   tensorflow::DeviceContext* dst_device_context = nullptr;
@@ -243,15 +253,6 @@ TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
 
 void TFE_DeleteOp(TFE_Op* op) { delete op; }
 
-static void TFE_OpSetDeviceHelper(TFE_Op* op, tensorflow::Device* device,
-                                  TF_Status* status) {
-  // Questionable heuristic: Place the op on the same device as the first input
-  // placed outside of host memory?
-  if (IsCPU(op->device) && !IsCPU(device)) {
-    op->device = device;
-  }
-}
-
 void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
   tensorflow::Device* d = nullptr;
   if (device_name != nullptr && strlen(device_name) > 0) {
@@ -259,11 +260,24 @@ void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
         op->ctx->session->device_mgr->LookupDevice(device_name, &d);
     if (!status->status.ok()) return;
   }
-  TFE_OpSetDeviceHelper(op, d, status);
+  op->device = d;
+}
+
+const char* TFE_OpGetDevice(TFE_Op* op, TF_Status* status) {
+  tensorflow::Device* device =
+      (op->device == nullptr) ? op->ctx->devices()[0] : op->device;
+  return device->name().c_str();
 }
 
 void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
-  TFE_OpSetDeviceHelper(op, h->d, status);
+  // Questionable heuristic ...
+  //
+  // Motivation: After an 'op' is placed on GPU because some of its earlier
+  // inputs are on GPU, we want to keep the 'op' there, even if some later
+  // inputs of it are not on GPU.
+  if (IsCPU(op->device) && !IsCPU(h->d)) {
+    op->device = h->d;
+  }
   if (!status->status.ok()) return;
   op->inputs.push_back(h->t);
   op->input_devices.push_back(h->d);
@@ -280,7 +294,7 @@ TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,
     return TF_ATTR_INT;  // The compiler requires that we return something.
   }
   status->status =
-      tensorflow::AttrTypeByName(op->attr_types, attr_name, &ret, is_list);
+      tensorflow::AttrTypeByName(*op->attr_types, attr_name, &ret, is_list);
   return ret;
 }
 
@@ -434,10 +448,17 @@ tensorflow::Status ValidateInputTypeAndPlacement(
     const tensorflow::Device* actual_device =
         op->input_devices[i] == nullptr ? host_device : op->input_devices[i];
     if (expected_device != actual_device) {
-      switch (ctx->policy) {
-        case TFE_DEVICE_PLACEMENT_EXPLICIT:
+      switch (TFE_ContextGetDevicePlacementPolicy(ctx)) {
+        case TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32:
           // TODO(xpan): See if we could bubble python related error up
           // to python level.
+          if (op->inputs[i].dtype() == tensorflow::DT_INT32) {
+            // Note: enabling silent copies of int32 tensors to match behavior
+            // of graph mode.
+            break;
+          }
+          TF_FALLTHROUGH_INTENDED;
+        case TFE_DEVICE_PLACEMENT_EXPLICIT:
           return tensorflow::errors::InvalidArgument(
               "Tensors on conflicting devices:"
               " cannot compute ",

@@ -15,8 +15,8 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/contrib/rnn/kernels/gru_ops.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
@@ -64,9 +64,9 @@ class GRUCellBlockOp : public OpKernel {
                                         h_prev_tensor->dim_size(0), " vs. ",
                                         batch_size));
     OP_REQUIRES(ctx, h_prev_tensor->dim_size(1) == cell_size,
-                errors::InvalidArgument("h_prev.dims(1) != cell_size: ",
-                                        h_prev_tensor->dim_size(1), " vs. ",
-                                        cell_size));
+                errors::InvalidArgument(
+                    "h_prev.dims(1) != cell_size: ", h_prev_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
     // Shape of 'w_ru' must be [input_size+cell_size, 2*cell_size]
     OP_REQUIRES(ctx, w_ru_tensor->dim_size(0) == input_size + cell_size,
@@ -85,10 +85,10 @@ class GRUCellBlockOp : public OpKernel {
                     "w_c.dim_size(0) != input_size + cell_size: ",
                     w_c_tensor->dim_size(0), " vs. ", input_size + cell_size));
 
-    OP_REQUIRES(
-        ctx, w_c_tensor->dim_size(1) == cell_size,
-        errors::InvalidArgument("w_c.dim_size(1) != cell_size: ",
-                                w_c_tensor->dim_size(1), " vs. ", cell_size));
+    OP_REQUIRES(ctx, w_c_tensor->dim_size(1) == cell_size,
+                errors::InvalidArgument(
+                    "w_c.dim_size(1) != cell_size: ", w_c_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
     // Shape of 'b_ru' must be [2*cell_size]
     OP_REQUIRES(ctx, b_ru_tensor->dim_size(0) == cell_size * 2,
@@ -100,10 +100,10 @@ class GRUCellBlockOp : public OpKernel {
                 errors::InvalidArgument("Rank of b_ru must be 1",
                                         b_ru_tensor->dims(), " vs. 1", 1));
     // Shape of 'b_c' must be [cell_size]
-    OP_REQUIRES(
-        ctx, b_c_tensor->dim_size(0) == cell_size,
-        errors::InvalidArgument("b_c.dim_size(0) != cell_size: ",
-                                b_c_tensor->dim_size(0), " vs. ", cell_size));
+    OP_REQUIRES(ctx, b_c_tensor->dim_size(0) == cell_size,
+                errors::InvalidArgument(
+                    "b_c.dim_size(0) != cell_size: ", b_c_tensor->dim_size(0),
+                    " vs. ", cell_size));
     OP_REQUIRES(ctx, b_c_tensor->dims() == 1,
                 errors::InvalidArgument("Rank of b_c must be 1",
                                         b_c_tensor->dims(), " vs. 1"));
@@ -229,9 +229,9 @@ class GRUBlockCellGradOp : public OpKernel {
                                         h_prev_tensor->dim_size(0), " vs. ",
                                         batch_size));
     OP_REQUIRES(ctx, h_prev_tensor->dim_size(1) == cell_size,
-                errors::InvalidArgument("h_prev.dims(1) != cell_size: ",
-                                        h_prev_tensor->dim_size(1), " vs. ",
-                                        cell_size));
+                errors::InvalidArgument(
+                    "h_prev.dims(1) != cell_size: ", h_prev_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
     // Shape of 'w_ru' must be [input_size+cell_size, 2*cell_size]
     OP_REQUIRES(ctx, w_ru_tensor->dim_size(0) == input_size + cell_size,
@@ -250,10 +250,10 @@ class GRUBlockCellGradOp : public OpKernel {
                     "w_c.dim_size(0) != input_size + cell_size: ",
                     w_c_tensor->dim_size(0), " vs. ", input_size + cell_size));
 
-    OP_REQUIRES(
-        ctx, w_c_tensor->dim_size(1) == cell_size,
-        errors::InvalidArgument("w_c.dim_size(1) != cell_size: ",
-                                w_c_tensor->dim_size(1), " vs. ", cell_size));
+    OP_REQUIRES(ctx, w_c_tensor->dim_size(1) == cell_size,
+                errors::InvalidArgument(
+                    "w_c.dim_size(1) != cell_size: ", w_c_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
     // Shape of 'b_ru' must be [2*cell_size]
     OP_REQUIRES(ctx, b_ru_tensor->dim_size(0) == cell_size * 2,
@@ -266,54 +266,54 @@ class GRUBlockCellGradOp : public OpKernel {
                                         b_ru_tensor->dims(), " vs. 1"));
 
     // Shape of 'b_c' must be [cell_size]
-    OP_REQUIRES(
-        ctx, b_c_tensor->dim_size(0) == cell_size,
-        errors::InvalidArgument("b_c.dim_size(0) != cell_size: ",
-                                b_c_tensor->dim_size(0), " vs. ", cell_size));
+    OP_REQUIRES(ctx, b_c_tensor->dim_size(0) == cell_size,
+                errors::InvalidArgument(
+                    "b_c.dim_size(0) != cell_size: ", b_c_tensor->dim_size(0),
+                    " vs. ", cell_size));
 
     OP_REQUIRES(ctx, b_c_tensor->dims() == 1,
                 errors::InvalidArgument("Rank of b_c must be 1 ",
                                         b_c_tensor->dims(), " vs. 1"));
 
     // Shape of 'r' must be [batch_size, cell_size]
-    OP_REQUIRES(
-        ctx, r_tensor->dim_size(0) == batch_size,
-        errors::InvalidArgument("r.dims(0) != batch_size: ",
-                                r_tensor->dim_size(0), " vs. ", batch_size));
-    OP_REQUIRES(
-        ctx, r_tensor->dim_size(1) == cell_size,
-        errors::InvalidArgument("r.dims(1) != cell_size: ",
-                                r_tensor->dim_size(1), " vs. ", cell_size));
+    OP_REQUIRES(ctx, r_tensor->dim_size(0) == batch_size,
+                errors::InvalidArgument(
+                    "r.dims(0) != batch_size: ", r_tensor->dim_size(0), " vs. ",
+                    batch_size));
+    OP_REQUIRES(ctx, r_tensor->dim_size(1) == cell_size,
+                errors::InvalidArgument(
+                    "r.dims(1) != cell_size: ", r_tensor->dim_size(1), " vs. ",
+                    cell_size));
 
     // Shape of 'u' must be [batch_size, cell_size]
-    OP_REQUIRES(
-        ctx, u_tensor->dim_size(0) == batch_size,
-        errors::InvalidArgument("u.dims(0) != batch_size: ",
-                                u_tensor->dim_size(0), " vs. ", batch_size));
-    OP_REQUIRES(
-        ctx, u_tensor->dim_size(1) == cell_size,
-        errors::InvalidArgument("u.dims(1) != cell_size: ",
-                                u_tensor->dim_size(1), " vs. ", cell_size));
+    OP_REQUIRES(ctx, u_tensor->dim_size(0) == batch_size,
+                errors::InvalidArgument(
+                    "u.dims(0) != batch_size: ", u_tensor->dim_size(0), " vs. ",
+                    batch_size));
+    OP_REQUIRES(ctx, u_tensor->dim_size(1) == cell_size,
+                errors::InvalidArgument(
+                    "u.dims(1) != cell_size: ", u_tensor->dim_size(1), " vs. ",
+                    cell_size));
 
     // Shape of 'c' must be [batch_size, cell_size]
-    OP_REQUIRES(
-        ctx, c_tensor->dim_size(0) == batch_size,
-        errors::InvalidArgument("c.dims(0) != batch_size: ",
-                                c_tensor->dim_size(0), " vs. ", batch_size));
-    OP_REQUIRES(
-        ctx, c_tensor->dim_size(1) == cell_size,
-        errors::InvalidArgument("c.dims(1) != cell_size: ",
-                                c_tensor->dim_size(1), " vs. ", cell_size));
+    OP_REQUIRES(ctx, c_tensor->dim_size(0) == batch_size,
+                errors::InvalidArgument(
+                    "c.dims(0) != batch_size: ", c_tensor->dim_size(0), " vs. ",
+                    batch_size));
+    OP_REQUIRES(ctx, c_tensor->dim_size(1) == cell_size,
+                errors::InvalidArgument(
+                    "c.dims(1) != cell_size: ", c_tensor->dim_size(1), " vs. ",
+                    cell_size));
 
     // Shape of 'd_h' must be [batch_size, cell_size]
-    OP_REQUIRES(
-        ctx, d_h_tensor->dim_size(0) == batch_size,
-        errors::InvalidArgument("d_h.dims(0) != batch_size: ",
-                                d_h_tensor->dim_size(0), " vs. ", batch_size));
-    OP_REQUIRES(
-        ctx, d_h_tensor->dim_size(1) == cell_size,
-        errors::InvalidArgument("d_h.dims(1) != cell_size: ",
-                                d_h_tensor->dim_size(1), " vs. ", cell_size));
+    OP_REQUIRES(ctx, d_h_tensor->dim_size(0) == batch_size,
+                errors::InvalidArgument(
+                    "d_h.dims(0) != batch_size: ", d_h_tensor->dim_size(0),
+                    " vs. ", batch_size));
+    OP_REQUIRES(ctx, d_h_tensor->dim_size(1) == cell_size,
+                errors::InvalidArgument(
+                    "d_h.dims(1) != cell_size: ", d_h_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
     // Create output tensors.
     Tensor* d_x_tensor = nullptr;

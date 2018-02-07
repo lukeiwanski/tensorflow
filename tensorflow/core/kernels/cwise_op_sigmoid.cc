@@ -31,7 +31,7 @@ REGISTER_KERNEL_BUILDER(Name("Sigmoid")                           \
                         UnaryOp<SYCLDevice, functor::sigmoid<type>>);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
 #undef REGISTER_SYCL_CWISE_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 REGISTER5(SimpleBinaryOp, CPU, "SigmoidGrad", functor::sigmoid_grad, float,
           Eigen::half, double, complex64, complex128);
@@ -47,6 +47,6 @@ REGISTER_KERNEL_BUILDER(Name("SigmoidGrad")                       \
                         SimpleBinaryOp<SYCLDevice, functor::sigmoid_grad<type>>);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
 #undef REGISTER_SYCL_CWISE_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

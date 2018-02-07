@@ -31,7 +31,7 @@ REGISTER_KERNEL_BUILDER(Name("Sqrt")                              \
                         UnaryOp<SYCLDevice, functor::sqrt<type>>);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
 #undef REGISTER_SYCL_CWISE_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 
 REGISTER5(SimpleBinaryOp, CPU, "SqrtGrad", functor::sqrt_grad, float,
@@ -49,5 +49,5 @@ REGISTER_KERNEL_BUILDER(Name("SqrtGrad")                          \
                         SimpleBinaryOp<SYCLDevice, functor::sqrt_grad<type>>);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
 #undef REGISTER_SYCL_CWISE_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

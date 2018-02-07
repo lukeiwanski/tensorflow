@@ -50,7 +50,7 @@ cc_library(
     deps = [
         ":op_macros",
         "//tensorflow/contrib/lite:context",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
     ],
 )
 
@@ -72,21 +72,48 @@ cc_library(
 )
 
 cc_library(
+    name = "kernel_util",
+    srcs = [
+        "kernel_util.cc",
+    ],
+    hdrs = [
+        "kernel_util.h",
+    ],
+    deps = [
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:context",
+        "//tensorflow/contrib/lite/kernels/internal:round",
+    ],
+)
+
+tf_cc_test(
+    name = "kernel_util_test",
+    size = "small",
+    srcs = ["kernel_util_test.cc"],
+    deps = [
+        ":kernel_util",
+        "//tensorflow/contrib/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "builtin_ops",
     srcs = [
         "activations.cc",
         "add.cc",
         "basic_rnn.cc",
         "batch_to_space_nd.cc",
+        "bidirectional_sequence_rnn.cc",
         "concatenation.cc",
         "conv.cc",
         "depthwise_conv.cc",
+        "div.cc",
         "embedding_lookup.cc",
         "embedding_lookup_sparse.cc",
         "fully_connected.cc",
         "gather.cc",
         "hashtable_lookup.cc",
-        "kernel_util.cc",
         "l2norm.cc",
         "local_response_norm.cc",
         "lsh_projection.cc",
@@ -101,12 +128,15 @@ cc_library(
         "skip_gram.cc",
         "space_to_batch_nd.cc",
         "space_to_depth.cc",
+        "squeeze.cc",
+        "strided_slice.cc",
+        "sub.cc",
         "svdf.cc",
         "transpose.cc",
+        "unidirectional_sequence_lstm.cc",
         "unidirectional_sequence_rnn.cc",
     ],
     hdrs = [
-        "kernel_util.h",
         "padding.h",
         "register.h",
     ],
@@ -120,11 +150,13 @@ cc_library(
     }),
     deps = [
         ":activation_functor",
+        ":kernel_util",
         ":op_macros",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/kernels:gemm_support",
+        "//tensorflow/contrib/lite/kernels/internal:kernel_utils",
         "//tensorflow/contrib/lite/kernels/internal:optimized",
         "//tensorflow/contrib/lite/kernels/internal:optimized_base",
         "//tensorflow/contrib/lite/kernels/internal:quantization_util",
@@ -218,6 +250,7 @@ tf_cc_test(
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -238,6 +271,30 @@ tf_cc_test(
     name = "basic_rnn_test",
     size = "small",
     srcs = ["basic_rnn_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "unidirectional_sequence_lstm_test",
+    size = "small",
+    srcs = ["unidirectional_sequence_lstm_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "bidirectional_sequence_rnn_test",
+    size = "small",
+    srcs = ["bidirectional_sequence_rnn_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -482,6 +539,30 @@ tf_cc_test(
     name = "space_to_depth_test",
     size = "small",
     srcs = ["space_to_depth_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "squeeze_test",
+    size = "small",
+    srcs = ["squeeze_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "strided_slice_test",
+    size = "small",
+    srcs = ["strided_slice_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",

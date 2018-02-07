@@ -30,7 +30,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class SelectOp : public OpKernel {
@@ -184,7 +184,7 @@ TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SELECT_SYCL);
 REGISTER_SELECT_SYCL(int32);
 REGISTER_SELECT_SYCL(int64);
 #undef REGISTER_SELECT_SYCL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace functor {
 
@@ -200,13 +200,11 @@ struct SelectFunctorBase {
 };
 
 template <typename T>
-struct SelectFunctor<CPUDevice, T>
-        : SelectFunctorBase<CPUDevice, T> {};
+struct SelectFunctor<CPUDevice, T> : SelectFunctorBase<CPUDevice, T> {};
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
-struct SelectFunctor<SYCLDevice, T>
-        : SelectFunctorBase<SYCLDevice, T> {};
-#endif // TENSORFLOW_USE_SYCL
+struct SelectFunctor<SYCLDevice, T> : SelectFunctorBase<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 struct SelectScalarFunctorBase {
@@ -221,7 +219,7 @@ struct SelectScalarFunctorBase {
 // CPU Specializations of Select functors with scalar
 template <typename T>
 struct SelectScalarFunctor<CPUDevice, T>
-        : SelectScalarFunctorBase<CPUDevice, T> {};
+    : SelectScalarFunctorBase<CPUDevice, T> {};
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
 struct SelectScalarFunctor<SYCLDevice, T> {
@@ -243,7 +241,7 @@ struct SelectScalarFunctor<SYCLDevice, T> {
 
   }
 };
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 struct BatchSelectFunctorBase {
@@ -256,8 +254,8 @@ struct BatchSelectFunctorBase {
     const Eigen::DenseIndex all_but_batch = then_flat_outer_dims.dimension(1);
 
 #if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::array<Eigen::DenseIndex, 2> broadcast_dims{{ 1, all_but_batch }};
-    Eigen::Tensor<Eigen::DenseIndex, 2>::Dimensions reshape_dims{{ batch, 1 }};
+    Eigen::array<Eigen::DenseIndex, 2> broadcast_dims{{1, all_but_batch}};
+    Eigen::Tensor<Eigen::DenseIndex, 2>::Dimensions reshape_dims{{batch, 1}};
 #else
     Eigen::IndexList<Eigen::type2index<1>, Eigen::DenseIndex> broadcast_dims;
     broadcast_dims.set(1, all_but_batch);
@@ -273,13 +271,13 @@ struct BatchSelectFunctorBase {
 };
 
 template <typename T>
-struct BatchSelectFunctor<CPUDevice, T>
-        : BatchSelectFunctorBase<CPUDevice, T> {};
+struct BatchSelectFunctor<CPUDevice, T> : BatchSelectFunctorBase<CPUDevice, T> {
+};
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
 struct BatchSelectFunctor<SYCLDevice, T>
-        : BatchSelectFunctorBase<SYCLDevice, T> {};
-#endif // TENSORFLOW_USE_SYCL
+    : BatchSelectFunctorBase<SYCLDevice, T> {};
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 

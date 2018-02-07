@@ -57,12 +57,7 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
 void ConstantOp::Compute(OpKernelContext* ctx) {
   ctx->set_output(0, tensor_);
   if (TF_PREDICT_FALSE(ctx->track_allocations())) {
-    AllocatorAttributes attr;
-    if (ctx->allocate_on_host(attr)) {
-      ctx->record_host_persistent_memory_allocation(tensor_.AllocatedBytes());
-    } else {
-      ctx->record_device_persistent_memory_allocation(tensor_.AllocatedBytes());
-    }
+    ctx->record_persistent_memory_allocation(tensor_.AllocatedBytes());
   }
 }
 
@@ -151,7 +146,6 @@ typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
 #endif  // TENSORFLOW_USE_SYCL
-
 
 template <typename Device, typename T, typename Index>
 class FillOp : public OpKernel {

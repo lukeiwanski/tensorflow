@@ -107,10 +107,9 @@ struct LaunchConv2DBackpropFilterOp<CPUDevice, T> {
                   int row_stride, int col_stride, const Padding& padding,
                   Tensor* filter_backprop, TensorFormat data_format) {
     const CPUDevice& d = ctx->eigen_device<CPUDevice>();
-    functor::SpatialConvolutionBackwardKernel<CPUDevice, T>()(
+    functor::SpatialConvolutionBackwardFilter<CPUDevice, T>()(
         d, filter_backprop->tensor<T, 4>(), input.tensor<T, 4>(),
-        out_backprop.tensor<T, 4>(), filter_backprop->dim_size(0),
-        filter_backprop->dim_size(1), row_stride, col_stride);
+        out_backprop.tensor<T, 4>(), row_stride, col_stride);
   }
 };
 
@@ -628,7 +627,6 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
       f(context->eigen_device<Device>(), filter_backprop->flat<T>());
       return;
     }
-
 
     // For now we take the stride from the second and third dimensions only (we
     // do not support striding on the batch or depth dimension).

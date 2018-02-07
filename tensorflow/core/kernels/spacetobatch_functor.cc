@@ -316,7 +316,7 @@ struct SpaceToBatchFunctor<SYCLDevice, T, NUM_BLOCK_DIMS, B2S> {
   template struct SpaceToBatchFunctor<CPUDevice, T, NUM_BLOCK_DIMS, false>; \
   template struct SpaceToBatchFunctor<CPUDevice, T, NUM_BLOCK_DIMS, true>;
 #endif
-/**/
+  /**/
 
 #define INSTANTIATE_FOR_T(T) \
   TF_SPACETOBATCH_FOR_EACH_NUM_BLOCK_DIMS(INSTANTIATE, T)

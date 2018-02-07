@@ -126,7 +126,8 @@ STRING(REGEX REPLACE ";" "\\\\;" python_protos "${python_protos}")
 STRING(REGEX REPLACE "\n" ";" python_protos "${python_protos}")
 
 foreach(python_proto ${python_protos})
-  if(NOT python_proto MATCHES "\#")
+  if(NOT python_proto MATCHES "^\#")
+    STRING(REGEX REPLACE " *\#.*" "" python_proto "${python_proto}")
     if(NOT EXISTS "${tensorflow_source_dir}/${python_proto}")
       message(SEND_ERROR "Python proto directory not found: ${python_proto}")
     endif()
@@ -147,7 +148,8 @@ STRING(REGEX REPLACE ";" "\\\\;" python_protos_cc "${python_protos_cc}")
 STRING(REGEX REPLACE "\n" ";" python_protos_cc "${python_protos_cc}")
 
 foreach(python_proto_cc ${python_protos_cc})
-  if(NOT python_proto_cc MATCHES "\#")
+  if(NOT python_proto_cc MATCHES "^\#")
+    STRING(REGEX REPLACE " *\#.*" "" python_proto_cc "${python_proto_cc}")
     if(NOT EXISTS "${tensorflow_source_dir}/${python_proto_cc}")
       message(SEND_ERROR "Python proto CC directory not found: ${python_proto_cc}")
     endif()
@@ -209,7 +211,8 @@ STRING(REGEX REPLACE ";" "\\\\;" python_modules "${python_modules}")
 STRING(REGEX REPLACE "\n" ";" python_modules "${python_modules}")
 
 foreach(python_module ${python_modules})
-  if(NOT python_module MATCHES "\#")
+  if(NOT python_module MATCHES "^\#")
+    STRING(REGEX REPLACE " *\#.*" "" python_module "${python_module}")
     if(NOT EXISTS "${tensorflow_source_dir}/${python_module}")
       message(SEND_ERROR "Python module not found: ${python_module}")
     endif()
@@ -304,7 +307,7 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
     # containing the wrappers.
     add_custom_command(
       OUTPUT ${GENERATE_PYTHON_OP_LIB_DESTINATION}
-      COMMAND ${tf_python_op_lib_name}_gen_python ${tensorflow_source_dir}/tensorflow/core/api_def/base_api,${tensorflow_source_dir}/tensorflow/core/api_def/python_api @${tensorflow_source_dir}/tensorflow/python/ops/hidden_ops.txt ${require_shape_fn} > ${GENERATE_PYTHON_OP_LIB_DESTINATION}
+      COMMAND ${tf_python_op_lib_name}_gen_python ${tensorflow_source_dir}/tensorflow/core/api_def/base_api,${tensorflow_source_dir}/tensorflow/core/api_def/python_api ${require_shape_fn} > ${GENERATE_PYTHON_OP_LIB_DESTINATION}
       DEPENDS ${tf_python_op_lib_name}_gen_python
     )
 
@@ -314,6 +317,7 @@ endfunction()
 
 GENERATE_PYTHON_OP_LIB("audio_ops")
 GENERATE_PYTHON_OP_LIB("array_ops")
+GENERATE_PYTHON_OP_LIB("batch_ops")
 GENERATE_PYTHON_OP_LIB("bitwise_ops")
 GENERATE_PYTHON_OP_LIB("math_ops")
 GENERATE_PYTHON_OP_LIB("functional_ops")
@@ -331,6 +335,7 @@ GENERATE_PYTHON_OP_LIB("list_ops")
 GENERATE_PYTHON_OP_LIB("logging_ops")
 GENERATE_PYTHON_OP_LIB("lookup_ops")
 GENERATE_PYTHON_OP_LIB("nn_ops")
+GENERATE_PYTHON_OP_LIB("manip_ops")
 GENERATE_PYTHON_OP_LIB("parsing_ops")
 GENERATE_PYTHON_OP_LIB("random_ops")
 GENERATE_PYTHON_OP_LIB("remote_fused_graph_ops"
@@ -359,6 +364,8 @@ GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_quantiles_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_quantile_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_stats_accumulator_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_stats_accumulator_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_coder_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/coder/python/ops/gen_coder_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_cudnn_rnn_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cudnn_rnn/ops/gen_cudnn_rnn_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_data_prefetching_ops"

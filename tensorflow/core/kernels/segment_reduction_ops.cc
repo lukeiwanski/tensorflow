@@ -118,7 +118,7 @@ class SegmentReductionOp : public OpKernel {
     Eigen::DSizes<Eigen::DenseIndex, 1> dims_to_reduce;
     dims_to_reduce[0] = 0;
 #else
-    Eigen::IndexList<Eigen::type2index<0>> dims_to_reduce;
+    Eigen::IndexList<Eigen::type2index<0> > dims_to_reduce;
 #endif
     Index start = 0, end = 1;
 
@@ -362,14 +362,20 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SORTED_KERNELS_ALL);
 namespace functor {
 
 // UnsortedSegmentSumFunctor implementation for CPUDevice and SYCLDevice.
-// todo: Remove duplicate code in UnsortedSegmentSumFunctor and UnsortedSegmentMaxFunctor.
+// todo: Remove duplicate code in UnsortedSegmentSumFunctor and
+// UnsortedSegmentMaxFunctor.
 template <typename Device, typename T, typename Index>
 void UnsortedSegmentSumFunctor<Device, T, Index>::operator()(
-    OpKernelContext* ctx, const Device& d, const Index output_rows,
-    const TensorShape& segment_ids_shape,
-    typename TTypes<Index>::ConstFlat segment_ids, const Index data_size,
-    const T* data, typename TTypes<T, 2>::Tensor output) {
+    OpKernelContext* ctx, const Device& d,
+    const Index output_rows, const TensorShape& segment_ids_shape,
+    typename TTypes<Index>::ConstFlat segment_ids,
+    const Index data_size, const T* data,
+    typename TTypes<T, 2>::Tensor output) {
+#ifdef TENSORFLOW_USE_SYCL
   output.device(d) = output.constant(T(0));
+#else
+  output.setZero();
+#endif  // TENSORFLOW_USE_SYCL
   if (data_size == 0) {
     return;
   }
@@ -377,9 +383,9 @@ void UnsortedSegmentSumFunctor<Device, T, Index>::operator()(
   auto data_flat = typename TTypes<T, 2>::ConstTensor(data, N, data_size / N);
   for (int64 i = 0; i < N; ++i) {
     Index j = internal::SubtleMustCopy(segment_ids(i));
-      if (j < 0) {
-        continue;
-      }
+    if (j < 0) {
+      continue;
+    }
     OP_REQUIRES(ctx, FastBoundsCheck(j, output_rows),
                 errors::InvalidArgument(
                     "segment_ids", SliceDebugString(segment_ids_shape, i),
@@ -387,6 +393,7 @@ void UnsortedSegmentSumFunctor<Device, T, Index>::operator()(
     output.template chip<0>(j).device(d) += data_flat.template chip<0>(i);
   }
 }
+
 // UnsortedSegmentMaxFunctor implementation for CPUDevice.
 template <typename T, typename Index>
 struct UnsortedSegmentMaxFunctor<CPUDevice, T, Index>
@@ -461,9 +468,10 @@ class UnsortedSegmentBaseOp : public OpKernel {
 
     auto data_ptr = data.template flat<T>().data();
     reduction_functor_(context, context->template eigen_device<Device>(),
-                     output_rows, segment_ids.shape(), segment_flat,
-                     data.NumElements(), data_ptr, output_flat);
+                       output_rows, segment_ids.shape(), segment_flat,
+                       data.NumElements(), data_ptr, output_flat);
   }
+
  private:
   functor::UnsortedSegmentBaseFunctor<Device, T, Index>& reduction_functor_;
 };
@@ -472,22 +480,20 @@ template <typename Device, class T, class Index>
 class UnsortedSegmentSumOp : public UnsortedSegmentBaseOp<Device, T, Index> {
  public:
   explicit UnsortedSegmentSumOp(OpKernelConstruction* context)
-      : UnsortedSegmentBaseOp<Device, T, Index>(
-            context,
-            sum_functor_) {}
+      : UnsortedSegmentBaseOp<Device, T, Index>(context, sum_functor_) {}
+
  private:
-    functor::UnsortedSegmentSumFunctor<Device, T, Index> sum_functor_;
+  functor::UnsortedSegmentSumFunctor<Device, T, Index> sum_functor_;
 };
 
 template <typename Device, class T, class Index>
 class UnsortedSegmentMaxOp : public UnsortedSegmentBaseOp<Device, T, Index> {
  public:
   explicit UnsortedSegmentMaxOp(OpKernelConstruction* context)
-      : UnsortedSegmentBaseOp<Device, T, Index>(
-            context,
-            max_functor_) {}
+      : UnsortedSegmentBaseOp<Device, T, Index>(context, max_functor_) {}
+
  private:
-    functor::UnsortedSegmentMaxFunctor<Device, T, Index> max_functor_;
+  functor::UnsortedSegmentMaxFunctor<Device, T, Index> max_functor_;
 };
 
 #define REGISTER_REAL_CPU_UNSORTED_KERNELS(type, index_type)                  \
@@ -682,9 +688,9 @@ class SparseSegmentReductionOpBase : public OpKernel {
           Reduce(input_flat, indices_vec, start, end - start, out);
       OP_REQUIRES(context, bad_offset < 0,
                   errors::InvalidArgument(
-                      "Bad: indices[", start + bad_offset, "] == ",
-                      indices_vec(start + bad_offset), " out of range [0, ",
-                      input_flat.dimension(0), ")"));
+                      "Bad: indices[", start + bad_offset,
+                      "] == ", indices_vec(start + bad_offset),
+                      " out of range [0, ", input_flat.dimension(0), ")"));
 
       start = end;
       ++end;

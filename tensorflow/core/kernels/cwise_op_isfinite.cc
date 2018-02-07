@@ -32,5 +32,5 @@ REGISTER_KERNEL_BUILDER(Name("IsFinite")                          \
                         UnaryOp<SYCLDevice, functor::isfinite<type>>);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
 #undef REGISTER_SYCL_CWISE_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

@@ -17,8 +17,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_gradients.h"
 
 namespace tensorflow {
-REGISTER4(UnaryOp, CPU, "Acosh", functor::acosh, float, double,
-          complex64, complex128);
+REGISTER4(UnaryOp, CPU, "Acosh", functor::acosh, float, double, complex64,
+          complex128);
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_CWISE_KERNEL(type)                          \
@@ -28,7 +28,7 @@ REGISTER_KERNEL_BUILDER(Name("Acosh")                             \
                         UnaryOp<SYCLDevice, functor::acosh<type>>);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_CWISE_KERNEL);
 #undef REGISTER_SYCL_CWISE_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 REGISTER2(UnaryOp, GPU, "Acosh", functor::acosh, float, double);

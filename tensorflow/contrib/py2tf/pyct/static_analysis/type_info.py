@@ -24,6 +24,7 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.py2tf.pyct import anno
+from tensorflow.contrib.py2tf.pyct import transformer
 from tensorflow.python.util import tf_inspect
 
 
@@ -34,8 +35,6 @@ class Scope(object):
     values: A dict mapping string to gast.Node, containing the value that was
         most recently assigned to the symbol.
   """
-
-  # TODO(mdan): Should rather use a CFG here?
 
   def __init__(self, parent):
     """Create a new scope.
@@ -62,10 +61,14 @@ class Scope(object):
             (self.parent is not None and self.parent.hasval(name)))
 
   def getval(self, name):
-    return self.values[name]
+    if name in self.values:
+      return self.values[name]
+    if self.parent is not None:
+      return self.parent.getval(name)
+    raise KeyError(name)
 
 
-class TypeInfoResolver(gast.NodeTransformer):
+class TypeInfoResolver(transformer.Base):
   """Annotates symbols with type information where possible.
 
   Nodes currently annotated:
@@ -73,30 +76,71 @@ class TypeInfoResolver(gast.NodeTransformer):
     * Attribute (helps resolve object methods)
   """
 
-  def __init__(self, value_hints):
+  def __init__(self, context):
+    super(TypeInfoResolver, self).__init__(context)
     self.scope = Scope(None)
-    self.value_hints = value_hints
     self.function_level = 0
 
   def visit_FunctionDef(self, node):
+    self.scope = Scope(self.scope)
     self.function_level += 1
     self.generic_visit(node)
     self.function_level -= 1
+    self.scope = self.scope.parent
+    return node
+
+  def _visit_block(self, block):
+    self.scope = Scope(self.scope)
+    for i, n in enumerate(block):
+      block[i] = self.generic_visit(n)
+    self.scope = self.scope.parent
+    return block
+
+  def visit_For(self, node):
+    self.generic_visit(node.target)
+    self.generic_visit(node.iter)
+    node.body = self._visit_block(node.body)
+    node.orelse = self._visit_block(node.orelse)
+    return node
+
+  def visit_While(self, node):
+    self.generic_visit(node.test)
+    node.body = self._visit_block(node.body)
+    node.orelse = self._visit_block(node.orelse)
+    return node
+
+  def visit_If(self, node):
+    self.generic_visit(node.test)
+    node.body = self._visit_block(node.body)
+    node.orelse = self._visit_block(node.orelse)
+    return node
+
+  def _process_function_arg(self, arg_name):
+    if self.function_level == 1 and arg_name in self.context.arg_types:
+      # Forge a node to hold the type information, so that method calls on
+      # it can resolve the type.
+      type_holder = gast.Name(arg_name, gast.Load(), None)
+      type_string, type_obj = self.context.arg_types[arg_name]
+      anno.setanno(type_holder, 'type', type_obj)
+      anno.setanno(type_holder, 'type_fqn', tuple(type_string.split('.')))
+      self.scope.setval(arg_name, type_holder)
+
+  def visit_arg(self, node):
+    self._process_function_arg(node.arg)
     return node
 
   def visit_Name(self, node):
     self.generic_visit(node)
     if isinstance(node.ctx, gast.Param):
-      self.scope.setval(node.id, gast.Name(node.id, gast.Load(), None))
-      if (self.function_level == 1 and self.value_hints is not None and
-          node.id in self.value_hints):
-        # Forge a node to hold the type information, so that method calls on
-        # it can resolve the type.
-        type_holder = gast.Name(node.id, gast.Load(), None)
-        type_string, type_obj = self.value_hints[node.id]
-        anno.setanno(type_holder, 'type', type_obj)
-        anno.setanno(type_holder, 'type_fqn', tuple(type_string.split('.')))
-        self.scope.setval(node.id, type_holder)
+      self._process_function_arg(node.id)
+    elif isinstance(node.ctx, gast.Load) and self.scope.hasval(node.id):
+      # E.g. if we had
+      # a = b
+      # then for future references to `a` we should have traced_source = `b`
+      traced_source = self.scope.getval(node.id)
+      if anno.hasanno(traced_source, 'type'):
+        anno.setanno(node, 'type', anno.getanno(traced_source, 'type'))
+        anno.setanno(node, 'type_fqn', anno.getanno(traced_source, 'type_fqn'))
     return node
 
   def _process_variable_assignment(self, source, targets):
@@ -105,7 +149,7 @@ class TypeInfoResolver(gast.NodeTransformer):
       if anno.hasanno(func, 'live_val'):
         func_obj = anno.getanno(func, 'live_val')
         if tf_inspect.isclass(func_obj):
-          # This is then a constructor.
+          anno.setanno(source, 'is_constructor', True)
           anno.setanno(source, 'type', func_obj)
           anno.setanno(source, 'type_fqn', anno.getanno(func, 'fqn'))
           # TODO(mdan): Raise an error if constructor has side effects.
@@ -118,8 +162,15 @@ class TypeInfoResolver(gast.NodeTransformer):
           self.scope.setval(e.id,
                             gast.Subscript(
                                 source, gast.Index(i), ctx=gast.Store()))
-      else:
+      elif isinstance(t, gast.Name):
         self.scope.setval(t.id, source)
+      elif isinstance(t, gast.Attribute):
+        if not (isinstance(t.value, gast.Name) and t.value.id == 'self'):
+          raise ValueError(
+              'Dont know how to handle assignment to attributes of objects'
+              ' other than "self": [%s].%s' % (t.value, t.attr))
+      else:
+        raise ValueError('Dont know how to handle assignment to %s' % t)
 
   def visit_With(self, node):
     for wi in node.items:
@@ -133,31 +184,6 @@ class TypeInfoResolver(gast.NodeTransformer):
     self._process_variable_assignment(node.value, node.targets)
     return node
 
-  def visit_Call(self, node):
-    target = node.func
-    if not anno.hasanno(target, 'live_val'):
-      if not isinstance(target, gast.Attribute):
-        # Suspecting this pattern would reach here:
-        #   foo = bar
-        #   foo()
-        raise ValueError('Dont know how to handle dynamic functions.')
-      if not isinstance(target.value, gast.Name):
-        # Possible example of this kind:
-        #   foo = module.Foo()
-        #   foo.bar.baz()
-        # TODO(mdan): This should be doable by using the FQN.
-        raise ValueError('Dont know how to handle object properties yet.')
-      # In the example below, object_source is 'tr.train.Optimizer()':
-      #   opt = tf.train.Optimizer()
-      #   opt.foo()
-      object_source = self.scope.getval(target.value.id)
-      if not anno.hasanno(object_source, 'type'):
-        raise ValueError('Could not determine type of "%s". Is it dynamic?' %
-                         (target.value.id))
-      anno.setanno(target, 'type_fqn', anno.getanno(object_source, 'type_fqn'))
-    self.generic_visit(node)
-    return node
 
-
-def resolve(node, value_hints):
-  return TypeInfoResolver(value_hints).visit(node)
+def resolve(node, context):
+  return TypeInfoResolver(context).visit(node)
