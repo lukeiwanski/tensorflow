@@ -51,7 +51,7 @@ limitations under the License.
 
 #ifdef TF_USE_SYCLDNN
 #include "tensorflow/core/kernels/conv_ops_sycl.h"
-#endif  // TF_USE_SYCLDNN
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 
@@ -132,7 +132,7 @@ struct LaunchConv2DBackpropInputOp<SYCLDevice, T> {
         in_backprop->dim_size(2), row_stride, col_stride);
   }
 };
-#endif  // TF_USE_SYCLEIGEN
+#endif  // TENSORFLOW_USE_SYCL
 
 #ifdef TENSORFLOW_USE_LIBXSMM
 template <typename Device, class T>
@@ -1144,7 +1144,8 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
                               .HostMemory("input_sizes"), \
                           Conv2DSlowBackpropInputOp<SYCLDevice, T>);
 
-TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS);
+//TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS);
+TF_CALL_float(REGISTER_SYCL_KERNELS)
 #undef REGISTER_SYCL_KERNELS
 #endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
