@@ -211,13 +211,6 @@ def _sycl_autoconf_impl(repository_ctx):
         "%{BITCODE_FORMAT}%" : spir_type
       })
 
-      _tpl(repository_ctx, "crosstool:compute-script",
-      {
-        "%{ARM_COMPILER_PATH}%" : gcc_toolchain_path,
-        "%{ARM_TARGET}%" : gcc_toolchain_name,
-        "%{COMPUTECPP_ROOT_DIR}%"  : computecpp_root,
-      })
-
       # symlink libraries
       _check_lib(repository_ctx, computecpp_root+"/lib", "libComputeCpp.so" )
       _symlink_dir(repository_ctx, computecpp_root + "/lib", "sycl/lib")

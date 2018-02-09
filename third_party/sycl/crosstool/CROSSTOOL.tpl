@@ -87,8 +87,10 @@ toolchain {
   cxx_flag: "-DEIGEN_USE_SYCL=1"
   cxx_flag: "-DEIGEN_HAS_C99_MATH=1"
   cxx_flag: "-DEIGEN_HAS_CXX11_MATH=1"
-  cxx_flag: "-I%{COMPUTECPP_ROOT_DIR}%/include"
-  cxx_flag: "-I%{PYTHON_INCLUDE_PATH}%"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{COMPUTECPP_ROOT_DIR}%/include"
+  cxx_flag: "-isystem"
+  cxx_flag: "%{PYTHON_INCLUDE_PATH}%"
 
   # Make C++ compilation deterministic. Use linkstamping instead of these
   # compiler symbols.
@@ -159,7 +161,7 @@ toolchain {
   tool_path { name: "compat-ld" path: "/bin/false" }
   tool_path { name: "cpp" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-cpp" }
   tool_path { name: "dwp" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-dwp" }
-  tool_path { name: "gcc" path: "compute-script" }
+  tool_path { name: "gcc" path: "%{COMPUTECPP_ROOT_DIR}%/bin/compute" }
   tool_path { name: "g++" path: "%{COMPUTECPP_ROOT_DIR}%/bin/compute++" }
   tool_path { name: "gcov" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-gcov" }
   tool_path { name: "ld" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-ld" }
@@ -173,11 +175,14 @@ toolchain {
   cxx_builtin_include_directory: "%{OPENCL_INCLUDE_DIR}%"
   cxx_builtin_include_directory: "%{PYTHON_INCLUDE_PATH}%"
 
-  cxx_flag: "-target"
-  cxx_flag: "%{ARM_TARGET}%"
+  compiler_flag: "-target"
+  compiler_flag: "%{ARM_TARGET}%"
+  compiler_flag: "-isystem"
+  compiler_flag: "%{PYTHON_INCLUDE_PATH}%"
+  compiler_flag: "-DEIGEN_HAS_C99_MATH=1"
+  compiler_flag: "--gcc-toolchain=%{ARM_COMPILER_PATH}%"
+  compiler_flag: "--sysroot=%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/libc"
   cxx_flag: "-std=c++11"
-  cxx_flag: "-isystem"
-  cxx_flag: "%{PYTHON_INCLUDE_PATH}%"
   cxx_flag: "-isystem"
   cxx_flag: "%{COMPUTECPP_ROOT_DIR}%/include"
   cxx_flag: "-isystem"
@@ -195,10 +200,7 @@ toolchain {
   cxx_flag: "%{BITCODE_FORMAT}%"
   cxx_flag: "-DTENSORFLOW_USE_SYCL=1"
   cxx_flag: "-DEIGEN_USE_SYCL=1"
-  cxx_flag: "-DEIGEN_HAS_C99_MATH=1"
   cxx_flag: "-DEIGEN_HAS_CXX11_MATH=1"
-  cxx_flag: "--gcc-toolchain=%{ARM_COMPILER_PATH}%"
-  cxx_flag: "--sysroot=%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/libc"
   linker_flag: "-lstdc++"
 
   unfiltered_cxx_flag: "-Wno-builtin-macro-redefined"
@@ -211,6 +213,10 @@ toolchain {
   compiler_flag: "-D_FORTIFY_SOURCE=1"
   compiler_flag: "-fstack-protector"
 
+  linker_flag: "-target"
+  linker_flag: "%{ARM_TARGET}%"
+  linker_flag: "--gcc-toolchain=%{ARM_COMPILER_PATH}%"
+  linker_flag: "--sysroot=%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/libc"
   linker_flag: "-Wl,-z,relro,-z,now"
   linker_flag: "-no-canonical-prefixes"
   linker_flag: "-Wl,--build-id=md5"
