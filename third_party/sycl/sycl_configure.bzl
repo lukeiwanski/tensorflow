@@ -183,7 +183,7 @@ def _sycl_autoconf_impl(repository_ctx):
   gcc_toolchain_path = repository_ctx.os.environ["ARM_TOOLCHAIN"]
   gcc_toolchain_name = repository_ctx.os.environ["ARM_TOOLCHAIN_NAME"]
   opencl_includes = repository_ctx.os.environ["OPENCL_INCLUDES"]
-  spir_type = repository_ctx.os.environ["ARM_BITCODE_TARGET"]
+  spir_type = repository_ctx.os.environ["BITCODE_TARGET"]
 
   # SYCL toolchain bits
   if not _enable_sycl(repository_ctx):
