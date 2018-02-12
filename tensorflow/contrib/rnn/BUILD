@@ -229,7 +229,10 @@ tf_custom_op_library(
         "kernels/lstm_ops_gpu.cu.cc",
         "kernels/lstm_ops.h",
     ],
-    deps = ["//tensorflow/core/kernels:eigen_helpers"],
+    deps = [
+        "//tensorflow/core/kernels:eigen_helpers",
+        "@local_config_sycl//sycl:syclrt",
+    ],
 )
 
 tf_gen_op_wrapper_py(
@@ -251,7 +254,10 @@ tf_custom_op_library(
         "kernels/gru_ops_gpu.cu.cc",
         "kernels/gru_ops.h",
     ],
-    deps = ["//tensorflow/core/kernels:eigen_helpers"],
+    deps = [
+        "//tensorflow/core/kernels:eigen_helpers",
+        "@local_config_sycl//sycl:syclrt",
+    ],
 )
 
 tf_gen_op_wrapper_py(
