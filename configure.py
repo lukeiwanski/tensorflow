@@ -807,52 +807,6 @@ def set_other_cuda_vars(environ_cp):
       write_to_bazelrc('test --config=cuda')
 
 
-def set_host_cxx_compiler(environ_cp):
-  """Set HOST_CXX_COMPILER."""
-  default_cxx_host_compiler = which('g++') or ''
-  ask_cxx_host_compiler = (
-      'Please specify which C++ compiler should be used as'
-      ' the host C++ compiler. [Default is %s]: ') % default_cxx_host_compiler
-
-  while True:
-    host_cxx_compiler = get_from_env_or_user_or_default(
-        environ_cp, 'HOST_CXX_COMPILER', ask_cxx_host_compiler,
-        default_cxx_host_compiler)
-    if os.path.exists(host_cxx_compiler):
-      break
-
-    # Reset and retry
-    print('Invalid C++ compiler path. %s cannot be found' % host_cxx_compiler)
-    environ_cp['HOST_CXX_COMPILER'] = ''
-
-  # Set HOST_CXX_COMPILER
-  environ_cp['HOST_CXX_COMPILER'] = host_cxx_compiler
-  write_action_env_to_bazelrc('HOST_CXX_COMPILER', host_cxx_compiler)
-
-
-def set_host_c_compiler(environ_cp):
-  """Set HOST_C_COMPILER."""
-  default_c_host_compiler = which('gcc') or ''
-  ask_c_host_compiler = (
-      'Please specify which C compiler should be used as the'
-      ' host C compiler. [Default is %s]: ') % default_c_host_compiler
-
-  while True:
-    host_c_compiler = get_from_env_or_user_or_default(
-        environ_cp, 'HOST_C_COMPILER', ask_c_host_compiler,
-        default_c_host_compiler)
-    if os.path.exists(host_c_compiler):
-      break
-
-    # Reset and retry
-    print('Invalid C compiler path. %s cannot be found' % host_c_compiler)
-    environ_cp['HOST_C_COMPILER'] = ''
-
-  # Set HOST_C_COMPILER
-  environ_cp['HOST_C_COMPILER'] = host_c_compiler
-  write_action_env_to_bazelrc('HOST_C_COMPILER', host_c_compiler)
-
-
 def set_computecpp_toolkit_path(environ_cp):
   """Set COMPUTECPP_TOOLKIT_PATH."""
   ask_computecpp_toolkit_path = ('Please specify the location where ComputeCpp '
