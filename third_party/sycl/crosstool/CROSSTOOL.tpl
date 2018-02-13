@@ -63,8 +63,6 @@ toolchain {
   cxx_flag: "%{COMPUTECPP_ROOT_DIR}%/include"
   cxx_flag: "-fsycl-ih-last"
   cxx_flag: "-sycl-driver"
-  # Serialisation of memory operations is required on some platforms
-  #cxx_flag: "-no-serial-memop"
   cxx_flag: "-Xclang"
   cxx_flag: "-cl-denorms-are-zero"
   cxx_flag: "-Xclang"
@@ -77,6 +75,8 @@ toolchain {
   cxx_flag: "-DEIGEN_USE_SYCL=1"
   cxx_flag: "-DEIGEN_HAS_C99_MATH=1"
   cxx_flag: "-DEIGEN_HAS_CXX11_MATH=1"
+  cxx_flag: "-Wno-unused-variable"
+  cxx_flag: "-Wno-unused-const-variable"
 
   unfiltered_cxx_flag: "-Wno-builtin-macro-redefined"
   unfiltered_cxx_flag: "-D__DATE__=\"redacted\""
@@ -97,9 +97,6 @@ toolchain {
   linker_flag: "-Wl,-z,relro,-z,now"
   linker_flag: "-Wl,--build-id=md5"
   linker_flag: "-Wl,--hash-style=gnu"
-
-  objcopy_embed_flag: "-I"
-  objcopy_embed_flag: "binary"
 
   compilation_mode_flags {
     mode: FASTBUILD
@@ -175,8 +172,6 @@ toolchain {
   cxx_flag: "%{OPENCL_INCLUDE_DIR}%"
   cxx_flag: "-fsycl-ih-last"
   cxx_flag: "-sycl-driver"
-  # Serialisation of memory operations is required on some platforms
-  #cxx_flag: "-no-serial-memop"
   cxx_flag: "-Xclang"
   cxx_flag: "-cl-denorms-are-zero"
   cxx_flag: "-Xclang"
@@ -189,6 +184,8 @@ toolchain {
   cxx_flag: "-DEIGEN_USE_SYCL=1"
   cxx_flag: "-DEIGEN_HAS_C99_MATH=1"
   cxx_flag: "-DEIGEN_HAS_CXX11_MATH=1"
+  cxx_flag: "-Wno-unused-variable"
+  cxx_flag: "-Wno-unused-const-variable"
 
   unfiltered_cxx_flag: "-Wno-builtin-macro-redefined"
   unfiltered_cxx_flag: "-D__DATE__=\"redacted\""
@@ -212,9 +209,6 @@ toolchain {
   linker_flag: "-Wl,-z,relro,-z,now"
   linker_flag: "-Wl,--build-id=md5"
   linker_flag: "-Wl,--hash-style=gnu"
-
-  objcopy_embed_flag: "-I"
-  objcopy_embed_flag: "binary"
 
   compilation_mode_flags {
     mode: FASTBUILD
