@@ -26,15 +26,3 @@ def if_ccpp(if_true, if_false = []):
         "@local_config_sycl//sycl:using_sycl_trisycl": if_false,
         "//conditions:default": if_false
     })
-
-def if_not_sycl(if_false, if_true = []):
-    """Shorthand for select()'ing on whether we're building with SYCL.
-
-    Returns a select statement which evaluates to if_true if we're building
-    with SYCL enabled.  Otherwise, the select statement evaluates to if_false.
-
-    """
-    return select({
-        "@local_config_sycl//sycl:using_sycl": if_true,
-        "//conditions:default": if_false
-    })
