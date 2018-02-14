@@ -261,7 +261,10 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//third_party/eigen3",
-    ],
+
+    ] + if_sycl([
+        "@local_config_sycl//sycl:syclrt",
+    ]),
 )
 
 cc_library(
