@@ -14,7 +14,7 @@ default_toolchain {
 
 default_toolchain {
   cpu: "armeabi"
-  toolchain_identifier: "%{ARM_TARGET}%"
+  toolchain_identifier: "%{CROSS_TARGET}%"
 }
 
 toolchain {
@@ -122,11 +122,11 @@ toolchain {
 }
 
 toolchain {
-  abi_version: "armeabi"
-  abi_libc_version: "armeabi"
+  abi_version: "%{CROSS_TARGET}%"
+  abi_libc_version: "%{CROSS_TARGET}%"
   builtin_sysroot: ""
   compiler: "compiler"
-  host_system_name: "armeabi"
+  host_system_name: "%{CROSS_TARGET}%"
   needsPic: true
   supports_gold_linker: false
   supports_incremental_linker: false
@@ -135,33 +135,33 @@ toolchain {
   supports_normalizing_ar: false
   supports_start_end_lib: false
   supports_thin_archives: false
-  target_libc: "armeabi"
+  target_libc: "%{CROSS_TARGET}%"
   target_cpu: "armeabi"
-  target_system_name: "armeabi"
-  toolchain_identifier: "%{ARM_TARGET}%"
+  target_system_name: "%{CROSS_TARGET}%"
+  toolchain_identifier: "%{CROSS_TARGET}%"
 
-  tool_path { name: "ar" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-ar" }
+  tool_path { name: "ar" path: "%{CROSS_COMPILER_PATH}%/bin/%{CROSS_TARGET}%-ar" }
   tool_path { name: "compat-ld" path: "/bin/false" }
-  tool_path { name: "cpp" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-cpp" }
-  tool_path { name: "dwp" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-dwp" }
+  tool_path { name: "cpp" path: "%{CROSS_COMPILER_PATH}%/bin/%{CROSS_TARGET}%-cpp" }
+  tool_path { name: "dwp" path: "%{CROSS_COMPILER_PATH}%/bin/%{CROSS_TARGET}%-dwp" }
   tool_path { name: "gcc" path: "%{COMPUTECPP_ROOT_DIR}%/bin/compute" }
   tool_path { name: "g++" path: "%{COMPUTECPP_ROOT_DIR}%/bin/compute++" }
-  tool_path { name: "gcov" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-gcov" }
-  tool_path { name: "ld" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-ld" }
-  tool_path { name: "nm" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-nm" }
-  tool_path { name: "objcopy" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-objcopy" }
-  tool_path { name: "objdump" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-objdump" }
-  tool_path { name: "strip" path: "%{ARM_COMPILER_PATH}%/bin/%{ARM_TARGET}%-strip" }
+  tool_path { name: "gcov" path: "%{CROSS_COMPILER_PATH}%/bin/%{CROSS_TARGET}%-gcov" }
+  tool_path { name: "ld" path: "%{CROSS_COMPILER_PATH}%/bin/%{CROSS_TARGET}%-ld" }
+  tool_path { name: "nm" path: "%{CROSS_COMPILER_PATH}%/bin/%{CROSS_TARGET}%-nm" }
+  tool_path { name: "objcopy" path: "%{CROSS_COMPILER_PATH}%/bin/%{CROSS_TARGET}%-objcopy" }
+  tool_path { name: "objdump" path: "%{CROSS_COMPILER_PATH}%/bin/%{CROSS_TARGET}%-objdump" }
+  tool_path { name: "strip" path: "%{CROSS_COMPILER_PATH}%/bin/%{CROSS_TARGET}%-strip" }
 
-  cxx_builtin_include_directory: "%{ARM_COMPILER_PATH}%"
+  cxx_builtin_include_directory: "%{CROSS_COMPILER_PATH}%"
   cxx_builtin_include_directory: "%{COMPUTECPP_ROOT_DIR}%"
   cxx_builtin_include_directory: "%{OPENCL_INCLUDE_DIR}%"
   cxx_builtin_include_directory: "%{PYTHON_INCLUDE_PATH}%"
 
   compiler_flag: "-target"
-  compiler_flag: "%{ARM_TARGET}%"
-  compiler_flag: "--gcc-toolchain=%{ARM_COMPILER_PATH}%"
-  compiler_flag: "--sysroot=%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/libc"
+  compiler_flag: "%{CROSS_TARGET}%"
+  compiler_flag: "--gcc-toolchain=%{CROSS_COMPILER_PATH}%"
+  compiler_flag: "--sysroot=%{CROSS_COMPILER_PATH}%/%{CROSS_TARGET}%/libc"
 
   cxx_flag: "-std=c++11"
   cxx_flag: "-isystem"
@@ -201,9 +201,9 @@ toolchain {
   compiler_flag: "-Wall"
 
   linker_flag: "-target"
-  linker_flag: "%{ARM_TARGET}%"
-  linker_flag: "--gcc-toolchain=%{ARM_COMPILER_PATH}%"
-  linker_flag: "--sysroot=%{ARM_COMPILER_PATH}%/%{ARM_TARGET}%/libc"
+  linker_flag: "%{CROSS_TARGET}%"
+  linker_flag: "--gcc-toolchain=%{CROSS_COMPILER_PATH}%"
+  linker_flag: "--sysroot=%{CROSS_COMPILER_PATH}%/%{CROSS_TARGET}%/libc"
   linker_flag: "-lstdc++"
   linker_flag: "-no-canonical-prefixes"
   linker_flag: "-Wl,-z,relro,-z,now"

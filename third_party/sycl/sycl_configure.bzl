@@ -26,10 +26,7 @@ def _enable_compute_cpp(repository_ctx):
   return _COMPUTECPP_TOOLKIT_PATH in repository_ctx.os.environ
 
 def _crosscompile(repository_ctx):
-  if "CROSS_TOOLCHAIN" in repository_ctx.os.environ:
-    crossing = repository_ctx.os.environ["CROSS_TOOLCHAIN"].strip()
-    return crossing == "1"
-  return False
+  return "CROSS_TOOLCHAIN" in repository_ctx.os.environ
 
 def auto_configure_fail(msg):
   """Output failure message when auto configuration fails."""
@@ -215,8 +212,8 @@ def _sycl_autoconf_impl(repository_ctx):
 
       _tpl(repository_ctx, "crosstool:CROSSTOOL",
       {
-        "%{ARM_COMPILER_PATH}%" : gcc_toolchain_path,
-        "%{ARM_TARGET}%" : gcc_toolchain_name,
+        "%{CROSS_COMPILER_PATH}%" : gcc_toolchain_path,
+        "%{CROSS_TARGET}%" : gcc_toolchain_name,
         "%{PYTHON_INCLUDE_PATH}%" : python_include_path,
         "%{COMPUTECPP_ROOT_DIR}%"  : computecpp_root,
         "%{OPENCL_INCLUDE_DIR}%" : opencl_includes,
