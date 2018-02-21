@@ -1450,6 +1450,8 @@ class MaxPoolingOp<SYCLDevice, T> : public OpKernel {
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
+    OP_REQUIRES_OK(context, ReadBoolFromEnvVar("TF_ENABLE_MAXPOOL_NANPROP",
+                                               false, &propagate_nans_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1464,7 +1466,13 @@ class MaxPoolingOp<SYCLDevice, T> : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(
                                 0, params.forward_output_shape(), &output));
 
-    LaunchMaxPoolingOpSYCL<T>::launch(context, tensor_in, params, output);
+    if (propagate_nans_) {
+      LaunchMaxPoolingOpSYCL<T, MaxComparatorWithNans<T>>::launch(
+          context, tensor_in, params, output);
+    } else {
+      LaunchMaxPoolingOpSYCL<T, MaxComparator<T>>::launch(context, tensor_in,
+                                                          params, output);
+    }
   }
 
  private:
@@ -1472,6 +1480,7 @@ class MaxPoolingOp<SYCLDevice, T> : public OpKernel {
   std::vector<int32> stride_;
   Padding padding_;
   TensorFormat data_format_;
+  bool propagate_nans_;
 };
 
 template <typename T>
@@ -1505,6 +1514,8 @@ class MaxPoolingV2Op<SYCLDevice, T> : public OpKernel {
                       "Pooling is not yet supported on the batch dimension."));
     }
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, ReadBoolFromEnvVar("TF_ENABLE_MAXPOOL_NANPROP",
+                                               false, &propagate_nans_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1545,7 +1556,13 @@ class MaxPoolingV2Op<SYCLDevice, T> : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(
                                 0, params.forward_output_shape(), &output));
 
-    LaunchMaxPoolingOpSYCL<T>::launch(context, tensor_in, params, output);
+    if (propagate_nans_) {
+      LaunchMaxPoolingOpSYCL<T, MaxComparatorWithNans<T>>::launch(
+          context, tensor_in, params, output);
+    } else {
+      LaunchMaxPoolingOpSYCL<T, MaxComparator<T>>::launch(context, tensor_in,
+                                                          params, output);
+    }
   }
 
  private:
@@ -1553,6 +1570,7 @@ class MaxPoolingV2Op<SYCLDevice, T> : public OpKernel {
   std::vector<int32> stride_;
   Padding padding_;
   TensorFormat data_format_;
+  bool propagate_nans_;
 };
 template <class T>
 class MaxPoolingGradOp<SYCLDevice, T> : public OpKernel {
@@ -1587,6 +1605,8 @@ class MaxPoolingGradOp<SYCLDevice, T> : public OpKernel {
     }
 
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, ReadBoolFromEnvVar("TF_ENABLE_MAXPOOL_NANPROP",
+                                               false, &propagate_nans_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1643,8 +1663,13 @@ class MaxPoolingGradOp<SYCLDevice, T> : public OpKernel {
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, output_shape, &output));
 
-    LaunchMaxPoolingGradOpSYCL<T>::launch(context, tensor_in, tensor_out,
-                                          out_backprop, params, output);
+    if (propagate_nans_) {
+      LaunchMaxPoolingGradOpSYCL<T, EqualWithNans<T>>::launch(
+          context, tensor_in, tensor_out, out_backprop, params, output);
+    } else {
+      LaunchMaxPoolingGradOpSYCL<T, Equal<T>>::launch(
+          context, tensor_in, tensor_out, out_backprop, params, output);
+    }
   }
 
  private:
@@ -1652,6 +1677,7 @@ class MaxPoolingGradOp<SYCLDevice, T> : public OpKernel {
   std::vector<int32> stride_;
   Padding padding_;
   TensorFormat data_format_;
+  bool propagate_nans_;
 };
 template <typename T>
 class MaxPoolingGradGradOp<SYCLDevice, T> : public OpKernel {

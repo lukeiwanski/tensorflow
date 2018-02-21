@@ -33,6 +33,41 @@ RoundUpToNearestMultiple(const IntegerType val, const IntegerType multiplier) {
   const IntegerType diff = val % multiplier;
   return val + (multiplier - diff);
 }
+template <typename T>
+struct MaxComparator {
+  inline TF_ATTRIBUTE_ALWAYS_INLINE static bool greater_than(T lhs, T rhs) {
+    return lhs > rhs;
+  }
+};
+template <typename T>
+struct MaxComparatorWithNans {
+  inline TF_ATTRIBUTE_ALWAYS_INLINE static bool greater_than(T lhs, T rhs) {
+    return !(lhs <= rhs);
+  }
+};
+template <typename T>
+struct Equal {
+  inline TF_ATTRIBUTE_ALWAYS_INLINE static bool is_equal(T lhs, T rhs) {
+    return lhs == rhs;
+  }
+};
+template <typename T>
+struct EqualWithNans {
+  inline TF_ATTRIBUTE_ALWAYS_INLINE static bool is_nan(T x) { return x != x; }
+  inline TF_ATTRIBUTE_ALWAYS_INLINE static bool is_equal(T lhs, T rhs) {
+    return lhs == rhs || (is_nan(lhs) && is_nan(rhs));
+  }
+};
+template <typename T, typename Comparator>
+struct MaxPoolReducer {
+  MaxPoolReducer() : value{std::numeric_limits<T>::lowest()} {}
+  inline TF_ATTRIBUTE_ALWAYS_INLINE void operator()(T new_val) {
+    if (Comparator::greater_than(new_val, value)) {
+      value = new_val;
+    }
+  }
+  T value;
+};
 /**
  * MaxPool2D SYCL kernel. Expects the number of threads to be equal to the
  * number of elements in the output tensor.
@@ -41,7 +76,7 @@ RoundUpToNearestMultiple(const IntegerType val, const IntegerType multiplier) {
  * all values in the window to find the maximum value. This value is then
  * copied into that output element.
  */
-template <typename T>
+template <typename T, typename Comparator>
 class MaxPool2DSYCL {
  public:
   static constexpr auto read_mode = cl::sycl::access::mode::read;
@@ -52,8 +87,7 @@ class MaxPool2DSYCL {
   using write_accessor =
       cl::sycl::accessor<uint8_t, 1, write_mode, global_access>;
 
-  MaxPool2DSYCL(const int output_size,
-                const PoolParameters& params,
+  MaxPool2DSYCL(const int output_size, const PoolParameters& params,
                 const read_accessor input_accessor,
                 write_accessor output_accessor)
       : output_size_{output_size},
@@ -61,7 +95,7 @@ class MaxPool2DSYCL {
         input_accessor_{input_accessor},
         output_accessor_{output_accessor} {}
   inline TF_ATTRIBUTE_ALWAYS_INLINE void operator()(cl::sycl::item<1> item) {
-    int index = item.get(0);
+    int index = item.get_id(0);
     if (index < output_size_) {
       T* input_data = ConvertToActualTypeSycl(T, input_accessor_);
       T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
@@ -77,17 +111,17 @@ class MaxPool2DSYCL {
       int rend = cl::sycl::min(rstart + p_.window_rows_, p_.in_rows_);
       rstart = cl::sycl::max(rstart, 0);
       n /= p_.out_rows_;
-      T maxval = Eigen::NumTraits<T>::lowest();
-      const T* input_data_n = input_data + n * p_.in_cols_ * p_.in_rows_ * p_.depth_;
+
+      MaxPoolReducer<T, Comparator> reducer{};
+      const T* input_data_n =
+          input_data + n * p_.in_cols_ * p_.in_rows_ * p_.depth_;
       for (int r = rstart; r < rend; ++r) {
         for (int c = cstart; c < cend; ++c) {
           int idx = (r * p_.in_cols_ + c) * p_.depth_ + d;
-          if (input_data_n[idx] > maxval) {
-            maxval = input_data_n[idx];
-          }
+          reducer(input_data_n[idx]);
         }
       }
-      output_data[index] = maxval;
+      output_data[index] = reducer.value;
     }
   }
 
@@ -97,9 +131,9 @@ class MaxPool2DSYCL {
   const read_accessor input_accessor_;
   write_accessor output_accessor_;
 };
-template <typename T>
+template <typename T, typename Comparator>
 struct LaunchMaxPoolingOpSYCL {
-  using Functor = MaxPool2DSYCL<T>;
+  using Functor = MaxPool2DSYCL<T, Comparator>;
   static constexpr auto read_mode = Functor::read_mode;
   static constexpr auto write_mode = Functor::write_mode;
 
@@ -110,7 +144,9 @@ struct LaunchMaxPoolingOpSYCL {
     const int output_size = output->NumElements();
     const int workgroup_size = device.maxSyclThreadsPerBlock();
     const int n_threads = RoundUpToNearestMultiple(output_size, workgroup_size);
-
+    if (output_size == 0) {
+      return;
+    }
     auto input_buffer =
         device.get_sycl_buffer(tensor_in.template flat<T>().data());
     auto output_buffer =
@@ -137,7 +173,7 @@ struct LaunchMaxPoolingOpSYCL {
  * determine whether the input value is the first maximum value, and so the
  * error should be propagated back to the corresponding backprop element.
  */
-template <typename T>
+template <typename T, typename EqualCheck>
 class MaxPoolGradSYCL {
  public:
   static constexpr auto read_mode = cl::sycl::access::mode::read;
@@ -148,8 +184,7 @@ class MaxPoolGradSYCL {
   using write_accessor =
       cl::sycl::accessor<uint8_t, 1, write_mode, global_access>;
 
-  MaxPoolGradSYCL(const int output_size,
-                  const SYCL2DPoolParams& params,
+  MaxPoolGradSYCL(const int output_size, const SYCL2DPoolParams& params,
                   const read_accessor input_data_accessor,
                   const read_accessor output_data_accessor,
                   const read_accessor input_backprop_accessor,
@@ -161,12 +196,13 @@ class MaxPoolGradSYCL {
         input_backprop_accessor_{input_backprop_accessor},
         output_backprop_accessor_{output_backprop_accessor} {}
   inline TF_ATTRIBUTE_ALWAYS_INLINE void operator()(cl::sycl::item<1> item) {
-    const int index = item.get(0);
+    const int index = item.get_id(0);
     if (index < output_size_) {
       T* input_data = ConvertToActualTypeSycl(T, input_data_accessor_);
       T* output_data = ConvertToActualTypeSycl(T, output_data_accessor_);
       T* input_backprop = ConvertToActualTypeSycl(T, input_backprop_accessor_);
-      T* output_backprop = ConvertToActualTypeSycl(T, output_backprop_accessor_);
+      T* output_backprop =
+          ConvertToActualTypeSycl(T, output_backprop_accessor_);
 
       T output_value = static_cast<T>(0);
       int n = index;
@@ -206,15 +242,16 @@ class MaxPoolGradSYCL {
           const int output_data_idx =
               (poolr * p_.out_cols_ + poolc) * p_.depth_ + d;
           bool should_continue = true;
-          bool is_max = (input_data[index] == output_data_n[output_data_idx]);
+          bool is_max = EqualCheck::is_equal(input_data[index],
+                                             output_data_n[output_data_idx]);
           for (int win_r = rstart; win_r < rend && should_continue; ++win_r) {
             for (int win_c = cstart; win_c < cend && should_continue; ++win_c) {
               const int input_data_idx =
                   (win_r * p_.in_cols_ + win_c) * p_.depth_ + d;
               if (input_data_idx == index_no_n) {
                 should_continue = false;
-              } else if (input_data_n[input_data_idx] ==
-                         output_data_n[output_data_idx]) {
+              } else if (EqualCheck::is_equal(input_data_n[input_data_idx],
+                                              output_data_n[output_data_idx])) {
                 should_continue = false;
                 is_max = false;
               }
@@ -238,9 +275,9 @@ class MaxPoolGradSYCL {
   const read_accessor input_backprop_accessor_;
   write_accessor output_backprop_accessor_;
 };
-template <typename T>
+template <typename T, typename Equal>
 struct LaunchMaxPoolingGradOpSYCL {
-  using Functor = MaxPoolGradSYCL<T>;
+  using Functor = MaxPoolGradSYCL<T, Equal>;
   static constexpr auto read_mode = Functor::read_mode;
   static constexpr auto write_mode = Functor::write_mode;
 
@@ -252,7 +289,9 @@ struct LaunchMaxPoolingGradOpSYCL {
     const int output_size = output->NumElements();
     const int workgroup_size = device.maxSyclThreadsPerBlock();
     const int n_threads = RoundUpToNearestMultiple(output_size, workgroup_size);
-
+    if (output_size == 0) {
+      return;
+    }
     auto input_data_buffer =
         device.get_sycl_buffer(tensor_in.template flat<T>().data());
     auto output_data_buffer =
@@ -271,8 +310,9 @@ struct LaunchMaxPoolingGradOpSYCL {
           input_backprop_buffer.template get_access<read_mode>(cgh);
       auto output_backprop_access =
           output_backprop_buffer.template get_access<write_mode>(cgh);
-      Functor max_pool(output_size, params, input_data_access, output_data_access,
-                       input_backprop_access, output_backprop_access);
+      Functor max_pool(output_size, params, input_data_access,
+                       output_data_access, input_backprop_access,
+                       output_backprop_access);
 
       cgh.parallel_for(cl::sycl::range<1>(n_threads), max_pool);
     });
@@ -299,8 +339,7 @@ class MaxPoolGradGradSYCL {
   using write_accessor =
       cl::sycl::accessor<uint8_t, 1, write_mode, global_access>;
 
-  MaxPoolGradGradSYCL(const int output_size,
-                      const PoolParameters& params,
+  MaxPoolGradGradSYCL(const int output_size, const PoolParameters& params,
                       const read_accessor input_data_accessor,
                       const read_accessor output_data_accessor,
                       const read_accessor input_backprop_accessor,
@@ -312,12 +351,13 @@ class MaxPoolGradGradSYCL {
         input_backprop_accessor_{input_backprop_accessor},
         output_backprop_accessor_{output_backprop_accessor} {}
   inline TF_ATTRIBUTE_ALWAYS_INLINE void operator()(cl::sycl::item<1> item) {
-    int index = item.get(0);
+    int index = item.get_id(0);
     if (index < output_size_) {
       T* input_data = ConvertToActualTypeSycl(T, input_data_accessor_);
       T* output_data = ConvertToActualTypeSycl(T, output_data_accessor_);
       T* input_backprop = ConvertToActualTypeSycl(T, input_backprop_accessor_);
-      T* output_backprop = ConvertToActualTypeSycl(T, output_backprop_accessor_);
+      T* output_backprop =
+          ConvertToActualTypeSycl(T, output_backprop_accessor_);
 
       int n = index;
       int d = n % p_.depth_;
@@ -373,7 +413,9 @@ struct LaunchMaxPoolingGradGradOpSYCL {
     const int output_size = output->NumElements();
     const int workgroup_size = device.maxSyclThreadsPerBlock();
     const int n_threads = RoundUpToNearestMultiple(output_size, workgroup_size);
-
+    if (output_size == 0) {
+      return;
+    }
     auto input_data_buffer =
         device.get_sycl_buffer(tensor_in.template flat<T>().data());
     auto output_data_buffer =
