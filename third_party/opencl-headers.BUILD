@@ -2,7 +2,7 @@ licenses(["notice"]) # KHR licence
 
 package(default_visibility = ["//visibility:public"])
 
-cc_inc_library(
+cc_library(
     name = "OpenCL-Headers",
     hdrs = [
         "opencl22/CL/cl_d3d10.h",
@@ -19,7 +19,5 @@ cc_inc_library(
         "opencl22/CL/cl_va_api_media_sharing_intel.h",
         "opencl22/CL/opencl.h",
     ],
-    prefix = "opencl22",
-    visibility = ["//visibility:public"],
+    strip_include_prefix = "opencl22",
 )
-

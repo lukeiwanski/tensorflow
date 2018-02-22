@@ -391,21 +391,21 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   native.new_http_archive(
-      name = "khronos_opencl_headers",
+      name = "opencl_headers",
       urls = [
           "https://github.com/KhronosGroup/OpenCL-Headers/archive/f039db6764d52388658ef15c30b2237bbda49803.tar.gz",
       ],
       strip_prefix = "OpenCL-Headers-f039db6764d52388658ef15c30b2237bbda49803",
-      build_file = str(Label("//third_party/OpenCL:BUILD.headers")),
+      build_file = str(Label("//third_party:opencl-headers.BUILD")),
   )
 
   native.new_http_archive(
-      name = "khronos_opencl_ICD_loader",
+      name = "opencl",
       urls = [
-          "https://github.com/KhronosGroup/OpenCL-ICD-Loader/archive/26a38983cbe5824fd5be03eab8d037758fc44360.tar.gz",
+          "https://github.com/codeplaysoftware/OpenCL-ICD-Loader/archive/4126d36b14afe045e36959963a1b3593d98343e1.tar.gz"
       ],
-      strip_prefix = "OpenCL-ICD-Loader-26a38983cbe5824fd5be03eab8d037758fc44360",
-      build_file = str(Label("//third_party/OpenCL:BUILD")),
+      strip_prefix = "OpenCL-ICD-Loader-4126d36b14afe045e36959963a1b3593d98343e1",
+      build_file = str(Label("//third_party:opencl.BUILD")),
   )
 
   filegroup_external(

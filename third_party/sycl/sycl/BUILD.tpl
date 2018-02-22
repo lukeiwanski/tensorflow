@@ -46,7 +46,7 @@ cc_library(
     includes = ["include/"],
     linkstatic = 0,
     deps = [
-        "@khronos_opencl_ICD_loader//:OpenCL",
+        "@opencl//:OpenCL",
     ],
 )
 
