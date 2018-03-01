@@ -102,6 +102,13 @@ def useDriver(compiler_flags):
     return call([CPU_C_COMPILER] + compiler_flags)
 
   if is_external(compiled_file_name, output_file_name):
+    if('g++' == CPU_CXX_COMPILER or '/g++' in CPU_CXX_COMPILER):
+      # If compiling with gcc, need to add the flag to force the compiler to
+      # report included dependencies according to the directory specified by
+      # the include flags. By default gcc will use either a relative or
+      # absolute path depending on which is shortest, and that confuses bazel's
+      # header dependency checking.
+      compiler_flags += ['-fno-canonical-system-headers']
     return call([CPU_CXX_COMPILER] + compiler_flags)
 
   filename, file_extension = os.path.splitext(output_file_name)
