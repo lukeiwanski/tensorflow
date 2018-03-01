@@ -859,6 +859,20 @@ def set_trisycl_include_dir(environ_cp):
   write_action_env_to_bazelrc('TRISYCL_INCLUDE_DIR',
                               trisycl_include_dir)
 
+def set_sycl_data_types(environ_cp):
+  """Set which data types are enabled for the SYCL configuration."""
+  use_half = int(
+      get_var(environ_cp, 'TF_USE_HALF_SYCL', 'half types in SYCL', False))
+  if use_half == 0:
+    write_to_bazelrc('build:sycl --cxxopt=-DTENSORFLOW_SYCL_NO_HALF=1')
+  environ_cp['TF_USE_HALF_SYCL'] = use_half
+
+  use_double = int(
+      get_var(environ_cp, 'TF_USE_DOUBLE_SYCL', 'double types in SYCL', True))
+  if use_double == 0:
+    write_to_bazelrc('build:sycl --cxxopt=-DTENSORFLOW_SYCL_NO_DOUBLE=1')
+  environ_cp['TF_USE_DOUBLE_SYCL'] = use_double
+
 def set_mpi_home(environ_cp):
   """Set MPI_HOME."""
   default_mpi_home = which('mpirun') or which('mpiexec') or ''
@@ -1012,6 +1026,7 @@ def main():
       set_computecpp_toolkit_path(environ_cp)
     else:
       set_trisycl_include_dir(environ_cp)
+    set_sycl_data_types(environ_cp)
 
   set_action_env_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)
   if (environ_cp.get('TF_NEED_CUDA') == '1' and
