@@ -837,6 +837,22 @@ def set_computecpp_toolkit_path(environ_cp):
   write_action_env_to_bazelrc('COMPUTECPP_TOOLKIT_PATH',
                               computecpp_toolkit_path)
 
+
+def set_computecpp_bitcode_target(environ_cp):
+  """Set the SYCL target bitcode to compile IR for."""
+  default_target = 'spir64'
+  ask_sycl_target = ('Please specify which bitcode to target when compiling '
+                     'SYCL code. [Default is %s]: ') % (default_target)
+
+  # TODO(jwlawson): Add check to ensure that the specified target is valid
+  sycl_target = get_from_env_or_user_or_default(
+      environ_cp, 'TF_SYCL_BITCODE_TARGET', ask_sycl_target,
+      default_target)
+
+  environ_cp['TF_SYCL_BITCODE_TARGET'] = sycl_target
+  write_action_env_to_bazelrc('TF_SYCL_BITCODE_TARGET', sycl_target)
+
+
 def set_trisycl_include_dir(environ_cp):
   """Set TRISYCL_INCLUDE_DIR"""
   ask_trisycl_include_dir = ('Please specify the location of the triSYCL '
@@ -1024,6 +1040,7 @@ def main():
     set_action_env_var(environ_cp, 'TF_NEED_COMPUTECPP', 'ComputeCPP', True)
     if environ_cp.get('TF_NEED_COMPUTECPP') == '1':
       set_computecpp_toolkit_path(environ_cp)
+      set_computecpp_bitcode_target(environ_cp)
     else:
       set_trisycl_include_dir(environ_cp)
     set_sycl_data_types(environ_cp)
