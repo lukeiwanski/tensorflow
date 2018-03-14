@@ -32,11 +32,15 @@ limitations under the License.
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "tensorflow/core/kernels/random_op.h"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace functor {
 
@@ -124,6 +128,110 @@ struct MultinomialFunctor<CPUDevice, T, OutputType> {
           DoWork);
   }
 };
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T, typename OutputType>
+struct MultinomialFunctor<SYCLDevice, T, OutputType> {
+  void operator()(OpKernelContext* ctx, const SYCLDevice& d,
+                  typename TTypes<T>::ConstMatrix logits,
+                  typename TTypes<float>::Flat /* noises */,
+                  typename TTypes<float>::Flat /* scores */,
+                  typename TTypes<float>::Flat /* scratch */, int batch_size,
+                  int num_classes, int num_samples,
+                  const random::PhiloxRandom& gen,
+                  typename TTypes<OutputType>::Matrix output) {
+    Tensor random_tensor;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                      TensorShape({batch_size,
+                                                   1,
+                                                   num_samples}),
+                                      &random_tensor));
+    auto eig_random = random_tensor.template tensor<T, 3>();
+
+#if !defined(EIGEN_HAS_INDEX_LIST)
+    Eigen::DSizes<Eigen::Index, 1> max_dims(1);
+    Eigen::DSizes<Eigen::Index, 1> sum_dims(1);
+
+    Eigen::DSizes<Eigen::Index, 2> zero_by_zero({0, 0});
+    Eigen::DSizes<Eigen::Index, 2> zero_by_one({0, 1});
+    Eigen::DSizes<Eigen::Index, 2> batch_by_one(batch_size, 1);
+    Eigen::DSizes<Eigen::Index, 2> one_by_classes({1, num_classes});
+    Eigen::DSizes<Eigen::Index, 2> batch_by_classes({batch_size, num_classes});
+
+    Eigen::DSizes<Eigen::Index, 3> batch_by_one_by_one({batch_size, 1, 1});
+    Eigen::DSizes<Eigen::Index, 3> one_by_classes_by_one({1, num_classes, 1});
+    Eigen::DSizes<Eigen::Index, 3> one_by_one_by_samples({1, 1, num_samples});
+    Eigen::DSizes<Eigen::Index, 3> batch_by_classes_by_one({batch_size,
+                                                            num_classes, 1});
+    Eigen::DSizes<Eigen::Index, 3> batch_by_one_by_samples(batch_size, 1,
+                                                           num_samples);
+#else
+    Eigen::IndexList<Eigen::type2index<1> > max_dims;
+
+    Eigen::IndexList<Eigen::type2index<1> > sum_dims;
+
+    Eigen::IndexList<Eigen::type2index<0>,
+                     Eigen::type2index<0> > zero_by_zero;
+
+    Eigen::IndexList<Eigen::type2index<0>,
+                     Eigen::type2index<1> > zero_by_one;
+
+    Eigen::IndexList<Eigen::Index, Eigen::type2index<1> > batch_by_one;
+    batch_by_one.set(0, batch_size);
+
+    Eigen::IndexList<Eigen::type2index<1>, Eigen::Index> one_by_classes;
+    one_by_classes.set(1, num_classes);
+
+    Eigen::IndexList<Eigen::Index, Eigen::Index> batch_by_classes;
+    batch_by_classes.set(0, batch_size);
+    batch_by_classes.set(1, num_classes);
+
+    Eigen::IndexList<Eigen::Index, Eigen::type2index<1>,
+                     Eigen::type2index<1> > batch_by_one_by_one;
+    batch_by_one_by_one.set(0, batch_size);
+
+    Eigen::IndexList<Eigen::type2index<1>, Eigen::Index,
+                     Eigen::type2index<1> > one_by_classes_by_one;
+    one_by_classes_by_one.set(1, num_classes);
+
+    Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<1>,
+                     Eigen::Index> one_by_one_by_samples;
+    one_by_one_by_samples.set(2, num_samples);
+
+    Eigen::IndexList<Eigen::Index, Eigen::Index,
+                     Eigen::type2index<1> > batch_by_classes_by_one;
+    batch_by_classes_by_one.set(0, batch_size);
+    batch_by_classes_by_one.set(1, num_classes);
+
+    Eigen::IndexList<Eigen::Index, Eigen::type2index<1>,
+                     Eigen::Index> batch_by_one_by_samples;
+    batch_by_one_by_samples.set(0, batch_size);
+    batch_by_one_by_samples.set(2, num_samples);
+#endif
+
+    // Compute bounds.
+    auto max_logits = logits.maximum(max_dims).reshape(batch_by_one);
+    auto exp_logits = (logits - max_logits.broadcast(one_by_classes)).exp();
+    auto bounds = exp_logits.cumsum(1).reshape(batch_by_classes_by_one);
+
+    // Set random.
+    using Distribution = random::UniformDistribution<random::PhiloxRandom, T>;
+    FillPhiloxRandom<SYCLDevice, Distribution> fill_random;
+    fill_random(ctx, d, gen, eig_random.data(), eig_random.size(),
+                Distribution());
+    auto max_bounds = bounds.template chip<1>(num_classes - 1);
+    auto max_logits_3d = max_bounds.reshape(batch_by_one_by_one)
+                                   .broadcast(one_by_one_by_samples);
+    auto bcast_random = (eig_random * max_logits_3d)
+                        .broadcast(one_by_classes_by_one);
+
+    // Generate each sample.
+    auto is_greater = bcast_random > bounds.broadcast(one_by_one_by_samples);
+    output.device(d) = is_greater.template cast<OutputType>().sum(sum_dims);
+  }
+};
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 
@@ -247,5 +355,24 @@ TF_CALL_double(REGISTER);
 #undef REGISTER
 
 #endif  // GOOGLE_CUDA
+
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER(TYPE)                                                   \
+  REGISTER_KERNEL_BUILDER(Name("Multinomial")                            \
+                              .Device(DEVICE_SYCL)                       \
+                              .HostMemory("num_samples")                 \
+                              .TypeConstraint<TYPE>("T")                 \
+                              .TypeConstraint("output_dtype", DT_INT32), \
+                          MultinomialOp<SYCLDevice, TYPE, int32>)        \
+  REGISTER_KERNEL_BUILDER(Name("Multinomial")                            \
+                              .Device(DEVICE_SYCL)                       \
+                              .HostMemory("num_samples")                 \
+                              .TypeConstraint<TYPE>("T")                 \
+                              .TypeConstraint("output_dtype", DT_INT64), \
+                          MultinomialOp<SYCLDevice, TYPE, int64>)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER);
+#undef REGISTER
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow
