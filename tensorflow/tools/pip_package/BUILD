@@ -10,6 +10,7 @@ load(
     "transitive_hdrs",
 )
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
+load("//third_party/acl:build_defs.bzl", "if_acl")
 load("//tensorflow:tensorflow.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
@@ -126,6 +127,8 @@ filegroup(
     ] + if_mkl([
         "//third_party/mkl:LICENSE",
         "@mkl//:LICENSE",
+    ]) + if_acl([
+        "//third_party/acl:LICENSE",
     ]) + if_not_windows([
         "@nccl_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
@@ -194,7 +197,7 @@ sh_binary(
         ],
     }) + if_mkl(["//third_party/mkl:intel_binary_blob"]) + if_tensorrt([
         "//tensorflow/contrib/tensorrt:init_py",
-    ]),
+    ]) + if_acl(["//third_party/acl:intel_binary_blob"]),
 )
 
 # A genrule for generating a marker file for the pip package on Windows

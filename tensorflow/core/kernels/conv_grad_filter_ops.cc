@@ -50,7 +50,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
-#if defined(TF_USE_SYCLDNN) && defined(TENSORFLOW_USE_SYCL)
+#ifdef TF_USE_SYCLDNN
 #include "tensorflow/core/kernels/conv_ops_sycl.h"
 #endif  // TENSORFLOW_USE_SYCL
 
@@ -207,13 +207,16 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
+    if(!std::is_same<Device, Eigen::SyclDevice>::value) {
     OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
                 errors::InvalidArgument(
                     "Conv2DFastBackpropFilterOp only supports NHWC."));
+    }
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
+    if(!std::is_same<Device, Eigen::SyclDevice>::value) {
     OP_REQUIRES(
         context, (strides_[0] == 1 && strides_[3] == 1),
         errors::InvalidArgument("Current implementation does not yet support "
@@ -221,6 +224,7 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
     OP_REQUIRES(context, strides_[1] > 0 && strides_[2] > 0,
                 errors::InvalidArgument(
                     "Row and column strides should be larger than 0."));
+    }
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
     OP_REQUIRES(context, dilations_.size() == 4,

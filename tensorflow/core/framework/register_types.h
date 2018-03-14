@@ -222,8 +222,10 @@ limitations under the License.
 #ifdef __ANDROID_TYPES_SLIM__
 #define TF_CALL_SYCL_NUMBER_TYPES(m) TF_CALL_float(m)
 #else  // __ANDROID_TYPES_SLIM__
-#define TF_CALL_SYCL_NUMBER_TYPES(m) TF_CALL_float(m) TF_CALL_SYCL_double(m) \
-  TF_CALL_SYCL_half(m)
+#define TF_CALL_SYCL_NUMBER_TYPES(m)    \
+    TF_CALL_SYCL_half(m)                \
+    TF_CALL_float(m)                    \
+    TF_CALL_SYCL_double(m)
 #endif  // __ANDROID_TYPES_SLIM__
 
 #endif  // TENSORFLOW_FRAMEWORK_REGISTER_TYPES_H_

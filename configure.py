@@ -1355,6 +1355,15 @@ def set_other_mpi_vars(environ_cp):
 def set_grpc_build_flags():
   write_to_bazelrc('build --define grpc_no_ares=true')
 
+def set_acl():
+  # Set up for ARM Compute Library
+  write_to_bazelrc('build:acl --define using_acl=true')
+  write_to_bazelrc('build:acl -c opt')
+  write_to_bazelrc('build:acl --copt="-DARM_COMPUTE_CL"')
+  write_to_bazelrc('build:acl --copt="-DARM_COMPUTE_NO_EXCEPTIONS"')
+  print('Add "--config=acl" to your bazel command to build with ARM '
+        'Compute Library support.\nPlease set the environment variable '
+        '\"TF_ACL_ROOT\" every time before build.')
 
 def set_windows_build_flags():
   if is_windows():
@@ -1489,6 +1498,7 @@ def main():
         'adding "--config=<>" to your build command. See tools/bazel.rc for '
         'more details.')
   config_info_line('mkl', 'Build with MKL support.')
+  config_info_line('acl', 'Build with ACL support.')
   config_info_line('monolithic', 'Config for mostly static monolithic build.')
 
 if __name__ == '__main__':

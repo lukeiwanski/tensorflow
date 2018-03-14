@@ -49,7 +49,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
-#if defined(TF_USE_SYCLDNN) && defined(TENSORFLOW_USE_SYCL)
+#ifdef TF_USE_SYCLDNN
 #include "tensorflow/core/kernels/conv_ops_sycl.h"
 #endif  // TENSORFLOW_USE_SYCL
 

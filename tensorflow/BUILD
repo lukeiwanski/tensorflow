@@ -702,11 +702,20 @@ load(
     "if_mkl",
 )
 
+load(
+    "//third_party/acl:build_defs.bzl",
+    "if_acl",
+)
+
 filegroup(
     name = "intel_binary_blob",
     data = if_mkl(
         [
             "//third_party/mkl:intel_binary_blob",
+        ],
+    ) + if_acl(
+        [
+            "//third_party/acl:intel_binary_blob",
         ],
     ),
 )

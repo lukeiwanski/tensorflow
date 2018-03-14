@@ -148,6 +148,10 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
+load(
+    "//third_party/acl:build_defs.bzl",
+    "if_acl",
+)
 
 # -----------------------------------------------------------------------------
 # Public targets
@@ -1881,6 +1885,10 @@ tf_cuda_library(
             "//third_party/mkl:intel_binary_blob",
             "@mkl_dnn//:mkl_dnn",
         ],
+    ) + if_acl(
+        [
+            "//third_party/acl:intel_binary_blob",
+        ],
     ),
     alwayslink = 1,
 )
@@ -2135,6 +2143,10 @@ tf_cuda_library(
         [
             "//third_party/mkl:intel_binary_blob",
         ],
+    ) + if_acl(
+        [
+            "//third_party/acl:intel_binary_blob",
+        ],
     ),
     alwayslink = 1,
 )
@@ -2179,6 +2191,10 @@ tf_cuda_library(
         [
             "//third_party/mkl:intel_binary_blob",
             "@mkl_dnn//:mkl_dnn",
+        ],
+    ) + if_acl(
+        [
+            "//third_party/acl:intel_binary_blob"
         ],
     ) + tf_additional_core_deps() + if_static([":core_cpu_impl"]),
     alwayslink = 1,

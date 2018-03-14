@@ -148,7 +148,7 @@ struct TileFunctor<SYCLDevice, T> {
     // needed for the kernel to compute the tile indices.
     cl::sycl::buffer<int64, 2> stride_buffer(cl::sycl::range<2>(3, ndims));
     auto stride_host = stride_buffer.template get_access<
-        cl::sycl::access::mode::write, cl::sycl::access::target::host_buffer>();
+        cl::sycl::access::mode::write>();
     for (int i = 0; i < ndims; ++i) {
       stride_host[cl::sycl::id<2>(0, i)] = in_strides[i];
       stride_host[cl::sycl::id<2>(1, i)] = out_strides[i];

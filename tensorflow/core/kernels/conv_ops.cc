@@ -51,7 +51,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
-#if defined(TF_USE_SYCLDNN) && defined(TENSORFLOW_USE_SYCL)
+#ifdef TF_USE_SYCLDNN
 #include "tensorflow/core/kernels/conv_ops_sycl.h"
 #endif  // TENSORFLOW_USE_SYCL
 
@@ -147,21 +147,13 @@ struct LaunchConv2DOp<CPUDevice, T> {
 template <typename T>
 struct LaunchConv2DOp<SYCLDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
-                  const Tensor& input, const Tensor& filter, int row_dilation,
-                  int col_dilation, int row_stride, int col_stride,
-                  const Padding& padding, Tensor* output,
+                  const Tensor& input, const Tensor& filter, int row_stride,
+                  int col_stride, const Padding& padding, Tensor* output,
                   TensorFormat data_format) {
     if (data_format != FORMAT_NHWC) {
       ctx->SetStatus(
           errors::Unimplemented("Generic conv implementation only supports "
                                 "NHWC tensor format for now."));
-      return;
-    }
-    // TODO(lukeiwanski): Add the SYCL implementation of dilated conv 2D.
-    if (row_dilation > 1 || col_dilation > 1) {
-      ctx->SetStatus(
-          errors::Unimplemented("Generic conv implementation only supports "
-                                "dilated rate of 1 for now."));
       return;
     }
     LaunchGeneric<SYCLDevice, T>()(ctx, input, filter, row_stride, col_stride,
@@ -487,7 +479,7 @@ TF_CALL_float(REGISTER_CPU);
 #endif  // USE_GEMM_FOR_CONV
 
 // To be used inside depthwise_conv_op.cc.
-template class LaunchConv2DOp<CPUDevice, float>;
+template struct LaunchConv2DOp<CPUDevice, float>;
 
 #if GOOGLE_CUDA
 int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,

@@ -16,7 +16,7 @@ struct TransformedFilterTile<T, 2, 2, 3, 3> final
   using BaseTransformedFilterTile<T, 2, 2, 3, 3>::data;
 
   template <ConvType _FT>
-  inline TF_ATTRIBUTE_ALWAYS_INLINE TransformedFilterTile(
+  inline SNN_ALWAYS_INLINE TransformedFilterTile(
       FilterTile<T, 2, 2, 3, 3, _FT> const& filter)
       : BaseTransformedFilterTile<T, 2, 2, 3, 3>{} {
     // ...
@@ -28,7 +28,7 @@ struct TransformedInputTile<T, 2, 2, 3, 3> final
     : public BaseTransformedInputTile<T, 2, 2, 3, 3> {
   using BaseTransformedInputTile<T, 2, 2, 3, 3>::data;
 
-  inline TF_ATTRIBUTE_ALWAYS_INLINE TransformedInputTile(
+  inline SNN_ALWAYS_INLINE TransformedInputTile(
       InputTile<T, 2, 2, 3, 3> const& inp)
       : BaseTransformedInputTile<T, 2, 2, 3, 3>{} {
     // ...
@@ -38,7 +38,7 @@ struct TransformedInputTile<T, 2, 2, 3, 3> final
 template <typename T>
 struct OutputTile<T, 2, 2, 3, 3> final : public BaseOutputTile<T, 2, 2, 3, 3> {
   using BaseOutputTile<T, 2, 2, 3, 3>::data;
-  inline TF_ATTRIBUTE_ALWAYS_INLINE OutputTile(
+  inline SNN_ALWAYS_INLINE OutputTile(
       IntermediateTile<T, 2, 2, 3, 3> const& tile)
       : BaseOutputTile<T, 2, 2, 3, 3>{} {
     // ...
@@ -53,38 +53,47 @@ struct TransformedFilterTile<T, 2, 2, 3, 3> final
    * Apply the Winograd transform to the filter tile.
    */
   template <ConvType _FT>
-  inline TF_ATTRIBUTE_ALWAYS_INLINE TransformedFilterTile(
+  inline SNN_ALWAYS_INLINE TransformedFilterTile(
       FilterTile<T, 2, 2, 3, 3, _FT> const& filter)
       : BaseTransformedFilterTile<T, 2, 2, 3, 3>{} {
-    T abc = filter.data[0][0] + filter.data[0][1] + filter.data[0][2];
-    T ambc = filter.data[0][0] - filter.data[0][1] + filter.data[0][2];
-    T def = filter.data[1][0] + filter.data[1][1] + filter.data[1][2];
-    T dmef = filter.data[1][0] - filter.data[1][1] + filter.data[1][2];
-    T ghi = filter.data[2][0] + filter.data[2][1] + filter.data[2][2];
-    T gmhi = filter.data[2][0] - filter.data[2][1] + filter.data[2][2];
-
     data[0][0] = filter.data[0][0];
-    data[0][1] = abc / 2;
-    data[0][2] = ambc / 2;
+    data[0][1] =
+        (filter.data[0][0] + filter.data[0][1] + filter.data[0][2]) / 2;
+    data[0][2] =
+        (filter.data[0][0] - filter.data[0][1] + filter.data[0][2]) / 2;
     data[0][3] = filter.data[0][2];
 
     data[1][0] =
         (filter.data[0][0] + filter.data[1][0] + filter.data[2][0]) / 2;
-    data[1][1] = (abc + def + ghi) / 4;
-    data[1][2] = (ambc + dmef + gmhi) / 4;
+    data[1][1] = (filter.data[0][0] + filter.data[0][1] + filter.data[0][2] +
+                  filter.data[1][0] + filter.data[1][1] + filter.data[1][2] +
+                  filter.data[2][0] + filter.data[2][1] + filter.data[2][2]) /
+                 4;
+    data[1][2] = (filter.data[0][0] - filter.data[0][1] + filter.data[0][2] +
+                  filter.data[1][0] - filter.data[1][1] + filter.data[1][2] +
+                  filter.data[2][0] - filter.data[2][1] + filter.data[2][2]) /
+                 4;
     data[1][3] =
         (filter.data[0][2] + filter.data[1][2] + filter.data[2][2]) / 2;
 
     data[2][0] =
         (filter.data[0][0] - filter.data[1][0] + filter.data[2][0]) / 2;
-    data[2][1] = (abc - def + ghi) / 4;
-    data[2][2] = (ambc - dmef + gmhi) / 4;
+    data[2][1] = (filter.data[0][0] + filter.data[0][1] + filter.data[0][2] -
+                  filter.data[1][0] - filter.data[1][1] - filter.data[1][2] +
+                  filter.data[2][0] + filter.data[2][1] + filter.data[2][2]) /
+                 4;
+    data[2][2] = (filter.data[0][0] - filter.data[0][1] + filter.data[0][2] -
+                  filter.data[1][0] + filter.data[1][1] - filter.data[1][2] +
+                  filter.data[2][0] - filter.data[2][1] + filter.data[2][2]) /
+                 4;
     data[2][3] =
         (filter.data[0][2] - filter.data[1][2] + filter.data[2][2]) / 2;
 
     data[3][0] = filter.data[2][0];
-    data[3][1] = ghi / 2;
-    data[3][2] = gmhi / 2;
+    data[3][1] =
+        (filter.data[2][0] + filter.data[2][1] + filter.data[2][2]) / 2;
+    data[3][2] =
+        (filter.data[2][0] - filter.data[2][1] + filter.data[2][2]) / 2;
     data[3][3] = filter.data[2][2];
   }
 };
@@ -95,7 +104,7 @@ struct TransformedInputTile<T, 2, 2, 3, 3> final
   /**
    * Apply the Winograd transform to the filter tile.
    */
-  inline TF_ATTRIBUTE_ALWAYS_INLINE TransformedInputTile(
+  inline SNN_ALWAYS_INLINE TransformedInputTile(
       InputTile<T, 2, 2, 3, 3> const& inp)
       : BaseTransformedInputTile<T, 2, 2, 3, 3>{} {
     data[0][0] =
@@ -133,7 +142,6 @@ struct TransformedInputTile<T, 2, 2, 3, 3> final
         inp.data[1][1] + inp.data[3][2] - inp.data[1][2] - inp.data[3][1];
     data[3][3] =
         inp.data[1][1] + inp.data[3][3] - inp.data[1][3] - inp.data[3][1];
-
   }
 };
 template <typename T>
@@ -143,7 +151,7 @@ struct OutputTile<T, 2, 2, 3, 3> final : public BaseOutputTile<T, 2, 2, 3, 3> {
    * Apply the Winograd transform to the intermediate tile to give the final
    * output tile.
    */
-  inline TF_ATTRIBUTE_ALWAYS_INLINE OutputTile(
+  inline SNN_ALWAYS_INLINE OutputTile(
       IntermediateTile<T, 2, 2, 3, 3> const& tile)
       : BaseOutputTile<T, 2, 2, 3, 3>{} {
     data[0][0] = tile.data[0][0] + tile.data[0][1] + tile.data[0][2] +
@@ -166,7 +174,7 @@ struct TransformedFilterTile<T, 2, 1, 3, 1> final
   using BaseTransformedFilterTile<T, 2, 1, 3, 1>::data;
 
   template <ConvType _FT>
-  inline TF_ATTRIBUTE_ALWAYS_INLINE TransformedFilterTile(
+  inline SNN_ALWAYS_INLINE TransformedFilterTile(
       FilterTile<T, 2, 1, 3, 1, _FT> const& filter)
       : BaseTransformedFilterTile<T, 2, 1, 3, 1>{} {
     data[0][0] = filter.data[0][0];
@@ -183,7 +191,7 @@ struct TransformedInputTile<T, 2, 1, 3, 1> final
     : public BaseTransformedInputTile<T, 2, 1, 3, 1> {
   using BaseTransformedInputTile<T, 2, 1, 3, 1>::data;
 
-  inline TF_ATTRIBUTE_ALWAYS_INLINE TransformedInputTile(
+  inline SNN_ALWAYS_INLINE TransformedInputTile(
       InputTile<T, 2, 1, 3, 1> const& inp)
       : BaseTransformedInputTile<T, 2, 1, 3, 1>{} {
     data[0][0] = inp.data[0][0] - inp.data[2][0];
@@ -196,7 +204,7 @@ struct TransformedInputTile<T, 2, 1, 3, 1> final
 template <typename T>
 struct OutputTile<T, 2, 1, 3, 1> final : public BaseOutputTile<T, 2, 1, 3, 1> {
   using BaseOutputTile<T, 2, 1, 3, 1>::data;
-  inline TF_ATTRIBUTE_ALWAYS_INLINE OutputTile(
+  inline SNN_ALWAYS_INLINE OutputTile(
       IntermediateTile<T, 2, 1, 3, 1> const& tile)
       : BaseOutputTile<T, 2, 1, 3, 1>{} {
     data[0][0] = tile.data[0][0] + tile.data[1][0] + tile.data[2][0];
@@ -209,7 +217,7 @@ struct TransformedFilterTile<T, 1, 2, 1, 3> final
   using BaseTransformedFilterTile<T, 1, 2, 1, 3>::data;
 
   template <ConvType _FT>
-  inline TF_ATTRIBUTE_ALWAYS_INLINE TransformedFilterTile(
+  inline SNN_ALWAYS_INLINE TransformedFilterTile(
       FilterTile<T, 1, 2, 1, 3, _FT> const& filter)
       : BaseTransformedFilterTile<T, 1, 2, 1, 3>{} {
     data[0][0] = filter.data[0][0];
@@ -226,7 +234,7 @@ struct TransformedInputTile<T, 1, 2, 1, 3> final
     : public BaseTransformedInputTile<T, 1, 2, 1, 3> {
   using BaseTransformedInputTile<T, 1, 2, 1, 3>::data;
 
-  inline TF_ATTRIBUTE_ALWAYS_INLINE TransformedInputTile(
+  inline SNN_ALWAYS_INLINE TransformedInputTile(
       InputTile<T, 1, 2, 1, 3> const& inp)
       : BaseTransformedInputTile<T, 1, 2, 1, 3>{} {
     data[0][0] = inp.data[0][0] - inp.data[0][2];
@@ -239,7 +247,7 @@ struct TransformedInputTile<T, 1, 2, 1, 3> final
 template <typename T>
 struct OutputTile<T, 1, 2, 1, 3> final : public BaseOutputTile<T, 1, 2, 1, 3> {
   using BaseOutputTile<T, 1, 2, 1, 3>::data;
-  inline TF_ATTRIBUTE_ALWAYS_INLINE OutputTile(
+  inline SNN_ALWAYS_INLINE OutputTile(
       IntermediateTile<T, 1, 2, 1, 3> const& tile)
       : BaseOutputTile<T, 1, 2, 1, 3>{} {
     data[0][0] = tile.data[0][0] + tile.data[0][1] + tile.data[0][2];
@@ -252,7 +260,7 @@ struct TransformedFilterTile<T, 3, 1, 2, 1> final
   using BaseTransformedFilterTile<T, 3, 1, 2, 1>::data;
 
   template <ConvType _FT>
-  inline TF_ATTRIBUTE_ALWAYS_INLINE TransformedFilterTile(
+  inline SNN_ALWAYS_INLINE TransformedFilterTile(
       FilterTile<T, 3, 1, 2, 1, _FT> const& filter)
       : BaseTransformedFilterTile<T, 3, 1, 2, 1>{} {
     data[0][0] = filter.data[0][0];
@@ -267,7 +275,7 @@ struct TransformedInputTile<T, 3, 1, 2, 1> final
     : public BaseTransformedInputTile<T, 3, 1, 2, 1> {
   using BaseTransformedInputTile<T, 3, 1, 2, 1>::data;
 
-  inline TF_ATTRIBUTE_ALWAYS_INLINE TransformedInputTile(
+  inline SNN_ALWAYS_INLINE TransformedInputTile(
       InputTile<T, 3, 1, 2, 1> const& inp)
       : BaseTransformedInputTile<T, 3, 1, 2, 1>{} {
     data[0][0] = inp.data[0][0] - inp.data[2][0];
@@ -280,7 +288,7 @@ struct TransformedInputTile<T, 3, 1, 2, 1> final
 template <typename T>
 struct OutputTile<T, 3, 1, 2, 1> final : public BaseOutputTile<T, 3, 1, 2, 1> {
   using BaseOutputTile<T, 3, 1, 2, 1>::data;
-  inline TF_ATTRIBUTE_ALWAYS_INLINE OutputTile(
+  inline SNN_ALWAYS_INLINE OutputTile(
       IntermediateTile<T, 3, 1, 2, 1> const& tile)
       : BaseOutputTile<T, 3, 1, 2, 1>{} {
     data[0][0] = tile.data[0][0] + tile.data[1][0] + tile.data[2][0];
@@ -294,7 +302,7 @@ struct TransformedFilterTile<T, 1, 3, 1, 2> final
   using BaseTransformedFilterTile<T, 1, 3, 1, 2>::data;
 
   template <ConvType _FT>
-  inline TF_ATTRIBUTE_ALWAYS_INLINE TransformedFilterTile(
+  inline SNN_ALWAYS_INLINE TransformedFilterTile(
       FilterTile<T, 1, 3, 1, 2, _FT> const& filter)
       : BaseTransformedFilterTile<T, 1, 3, 1, 2>{} {
     data[0][0] = filter.data[0][0];
@@ -309,7 +317,7 @@ struct TransformedInputTile<T, 1, 3, 1, 2> final
     : public BaseTransformedInputTile<T, 1, 3, 1, 2> {
   using BaseTransformedInputTile<T, 1, 3, 1, 2>::data;
 
-  inline TF_ATTRIBUTE_ALWAYS_INLINE TransformedInputTile(
+  inline SNN_ALWAYS_INLINE TransformedInputTile(
       InputTile<T, 1, 3, 1, 2> const& inp)
       : BaseTransformedInputTile<T, 1, 3, 1, 2>{} {
     data[0][0] = inp.data[0][0] - inp.data[0][2];
@@ -322,7 +330,7 @@ struct TransformedInputTile<T, 1, 3, 1, 2> final
 template <typename T>
 struct OutputTile<T, 1, 3, 1, 2> final : public BaseOutputTile<T, 1, 3, 1, 2> {
   using BaseOutputTile<T, 1, 3, 1, 2>::data;
-  inline TF_ATTRIBUTE_ALWAYS_INLINE OutputTile(
+  inline SNN_ALWAYS_INLINE OutputTile(
       IntermediateTile<T, 1, 3, 1, 2> const& tile)
       : BaseOutputTile<T, 1, 3, 1, 2>{} {
     data[0][0] = tile.data[0][0] + tile.data[0][1] + tile.data[0][2];
@@ -337,7 +345,7 @@ struct TransformedFilterTile<T, 3, 3, 2, 2> final
   using BaseTransformedFilterTile<T, 3, 3, 2, 2>::data;
 
   template <ConvType _FT>
-  inline TF_ATTRIBUTE_ALWAYS_INLINE TransformedFilterTile(
+  inline SNN_ALWAYS_INLINE TransformedFilterTile(
       FilterTile<T, 3, 3, 2, 2, _FT> const& filter)
       : BaseTransformedFilterTile<T, 3, 3, 2, 2>{} {
     data[0][0] = filter.data[0][0];
@@ -374,7 +382,7 @@ struct TransformedInputTile<T, 3, 3, 2, 2> final
     : public BaseTransformedInputTile<T, 3, 3, 2, 2> {
   using BaseTransformedInputTile<T, 3, 3, 2, 2>::data;
 
-  inline TF_ATTRIBUTE_ALWAYS_INLINE TransformedInputTile(
+  inline SNN_ALWAYS_INLINE TransformedInputTile(
       InputTile<T, 3, 3, 2, 2> const& inp)
       : BaseTransformedInputTile<T, 3, 3, 2, 2>{} {
     data[0][0] =
@@ -418,7 +426,7 @@ struct TransformedInputTile<T, 3, 3, 2, 2> final
 template <typename T>
 struct OutputTile<T, 3, 3, 2, 2> final : public BaseOutputTile<T, 3, 3, 2, 2> {
   using BaseOutputTile<T, 3, 3, 2, 2>::data;
-  inline TF_ATTRIBUTE_ALWAYS_INLINE OutputTile(
+  inline SNN_ALWAYS_INLINE OutputTile(
       IntermediateTile<T, 3, 3, 2, 2> const& tile)
       : BaseOutputTile<T, 3, 3, 2, 2>{} {
     data[0][0] = tile.data[0][0] + tile.data[0][1] + tile.data[0][2] +

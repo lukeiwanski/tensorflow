@@ -183,13 +183,104 @@ inline Offsets calculate_offsets<ConvType::FilterBackprop>(
   Offsets result{in_offset, out_offset};
   return result;
 }
+template <typename T, int vector_width, ConvType CType>
+struct LaunchVectorTransform {
+  using Index = int;
+  using InputTransform = im2col::ExtractInputTiles<T, vector_width, CType>;
+  static cl::sycl::event launch(Eigen::SyclDevice const& device,
+                                T const* const input, Index const in_offset,
+                                T* const transform,
+                                const SYCLConv2DParams& params,
+                                Index const tile_size) {
+    const Index in_transform_items = params.batch_ * params.in_rows_ *
+                                     params.in_cols_ * params.channels_ /
+                                     vector_width;
+    return sycl_conv::launch_transform<InputTransform>(
+        device, input, transform, in_transform_items, params, in_offset,
+        tile_size);
+  }
+};
+template <typename T, int vector_width>
+struct LaunchVectorTransform<T, vector_width, ConvType::InputBackprop> {
+  using Index = int;
+  static constexpr auto CType = ConvType::InputBackprop;
+  using InputTransform = im2col::ExtractInputTiles<T, vector_width, CType>;
+  static cl::sycl::event launch(Eigen::SyclDevice const& device,
+                                T const* const input, Index const in_offset,
+                                T* const transform,
+                                const SYCLConv2DParams& params,
+                                Index const tile_size) {
+    const Index in_transform_items = params.batch_ * params.out_rows_ *
+                                     params.out_cols_ * params.features_ /
+                                     vector_width;
+    return sycl_conv::launch_transform<InputTransform>(
+        device, input, transform, in_transform_items, params, in_offset,
+        tile_size);
+  }
+};
+template <typename T, ConvType ConvType>
+struct LaunchIm2colTransform;
+template <typename T>
+struct LaunchIm2colTransform<T, ConvType::Forward> {
+  using Index = int;
+  static constexpr auto CType = ConvType::Forward;
+  static cl::sycl::event launch(Eigen::SyclDevice const& device,
+                                T const* const input, Index const in_offset,
+                                T* const transform,
+                                const SYCLConv2DParams& params,
+                                Index const tile_size) {
+    if (params.channels_ % 4 == 0) {
+      return LaunchVectorTransform<T, 4, CType>::launch(
+          device, input, in_offset, transform, params, tile_size);
+    } else if (params.channels_ % 2 == 0) {
+      return LaunchVectorTransform<T, 2, CType>::launch(
+          device, input, in_offset, transform, params, tile_size);
+    } else {
+      return LaunchVectorTransform<T, 1, CType>::launch(
+          device, input, in_offset, transform, params, tile_size);
+    }
+  }
+};
+template <typename T>
+struct LaunchIm2colTransform<T, ConvType::InputBackprop> {
+  using Index = int;
+  static constexpr auto CType = ConvType::InputBackprop;
+  static cl::sycl::event launch(Eigen::SyclDevice const& device,
+                                T const* const input, Index const in_offset,
+                                T* const transform,
+                                const SYCLConv2DParams& params,
+                                Index const tile_size) {
+    if (params.features_ % 4 == 0) {
+      return LaunchVectorTransform<T, 4, CType>::launch(
+          device, input, in_offset, transform, params, tile_size);
+    } else if (params.features_ % 2 == 0) {
+      return LaunchVectorTransform<T, 2, CType>::launch(
+          device, input, in_offset, transform, params, tile_size);
+    } else {
+      return LaunchVectorTransform<T, 1, CType>::launch(
+          device, input, in_offset, transform, params, tile_size);
+    }
+  }
+};
+template <typename T>
+struct LaunchIm2colTransform<T, ConvType::FilterBackprop> {
+  using Index = int;
+  static constexpr auto CType = ConvType::FilterBackprop;
+  static cl::sycl::event launch(Eigen::SyclDevice const& device,
+                                T const* const input, Index const in_offset,
+                                T* const transform,
+                                const SYCLConv2DParams& params,
+                                Index const tile_size) {
+    return LaunchVectorTransform<T, 1, CType>::launch(
+        device, input, in_offset, transform, params, tile_size);
+  }
+};
 template <typename T, ConvType CType>
 struct RunIm2ColAllocated;
 template <typename T>
 struct RunIm2ColAllocated<T, ConvType::Forward> {
   using Index = int;
   static constexpr auto CType = ConvType::Forward;
-  using InputTransform = im2col::ExtractInputTiles<T, CType>;
 
   static void run(Eigen::SyclDevice const& device, T* const output,
                   Index const out_offset, T const* const input,
@@ -202,11 +293,8 @@ struct RunIm2ColAllocated<T, ConvType::Forward> {
     const size_t actual_transform_size = alloc_size_per_image * params.batch_;
 
     device.memset(transform, 0, actual_transform_size);
-    const Index in_transform_items =
-        params.batch_ * params.in_rows_ * params.in_cols_ * params.channels_;
-    sycl_conv::launch_transform<InputTransform>(device, input, transform,
-                                                in_transform_items, params,
-                                                in_offset, tile_info.size);
+    LaunchIm2colTransform<T, CType>::launch(device, input, in_offset, transform,
+                                            params, tile_info.size);
     sycl_conv::launch_matmul<false, false>(
         device, transform, filter, output + out_offset, static_cast<T>(0),
         n_tiles, tile_info.size, params.features_);
@@ -216,7 +304,6 @@ template <typename T>
 struct RunIm2ColAllocated<T, ConvType::InputBackprop> {
   using Index = int;
   static constexpr auto CType = ConvType::InputBackprop;
-  using InputTransform = im2col::ExtractInputTiles<T, CType>;
 
   static void run(Eigen::SyclDevice const& device, T* const output,
                   Index const out_offset, T const* const input,
@@ -229,11 +316,8 @@ struct RunIm2ColAllocated<T, ConvType::InputBackprop> {
     const size_t actual_transform_size = alloc_size_per_image * params.batch_;
 
     device.memset(transform, 0, actual_transform_size);
-    const Index in_transform_items =
-        params.batch_ * params.out_rows_ * params.out_cols_ * params.features_;
-    sycl_conv::launch_transform<InputTransform>(device, input, transform,
-                                                in_transform_items, params,
-                                                in_offset, tile_info.size);
+    LaunchIm2colTransform<T, CType>::launch(device, input, in_offset, transform,
+                                            params, tile_info.size);
     sycl_conv::launch_matmul<false, false>(
         device, transform, filter_transform, output + out_offset,
         static_cast<T>(0), n_tiles, tile_info.size, params.channels_);
@@ -243,7 +327,6 @@ template <typename T>
 struct RunIm2ColAllocated<T, ConvType::FilterBackprop> {
   using Index = int;
   static constexpr auto CType = ConvType::FilterBackprop;
-  using InputTransform = im2col::ExtractInputTiles<T, CType>;
 
   static void run(Eigen::SyclDevice const& device, T* const output,
                   Index const out_offset, T const* const input,
@@ -266,11 +349,8 @@ struct RunIm2ColAllocated<T, ConvType::FilterBackprop> {
     const size_t actual_transform_size = alloc_size_per_image * params.batch_;
 
     device.memset(transform, 0, actual_transform_size);
-    const Index in_transform_items =
-        params.batch_ * params.in_rows_ * params.in_cols_ * params.channels_;
-    sycl_conv::launch_transform<InputTransform>(device, input, transform,
-                                                in_transform_items, params,
-                                                in_offset, tile_size);
+    LaunchIm2colTransform<T, CType>::launch(device, input, in_offset, transform,
+                                            params, tile_size);
     if (in_offset == 0) {
       sycl_conv::launch_matmul<false, false>(
           device, transform, filter + out_offset, output, static_cast<T>(0),

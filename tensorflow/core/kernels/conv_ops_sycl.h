@@ -5,13 +5,18 @@
 #ifndef TENSORFLOW_KERNELS_CONV_OPS_SYCL_H_
 #define TENSORFLOW_KERNELS_CONV_OPS_SYCL_H_
 
+#ifdef ARM_NON_MOBILE
+#define SNN_ARM 1
+#define SNN_SELECTOR arm_selector
+#else
+#define SNN_SELECTOR default_selector
+#endif
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 
 #include "tensorflow/core/kernels/conv_ops_sycl_launcher.h"
-
-#define SNN_SELECTOR default_selector
 
 namespace tensorflow {
 typedef Eigen::SyclDevice SYCLDevice;

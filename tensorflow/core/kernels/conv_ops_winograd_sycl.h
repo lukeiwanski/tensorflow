@@ -145,22 +145,23 @@ inline Offsets calculate_offsets<ConvType::FilterBackprop>(
   return result;
 }
 }  // namespace winograd
-template <typename T, int M, int N, int R, int S, ConvType CType>
+template <typename T, int channel_vector, int M, int N, int R, int S,
+          ConvType CType>
 struct LaunchMatmulWinograd {
   using Index = int;
   static constexpr int A = M + R - 1;
   static constexpr int B = N + S - 1;
   static constexpr bool trans_input = false;
-  static constexpr bool trans_filter = (CType == ConvType::Forward);
-  using InputTransform = winograd::ExtractInputTiles<T, M, N, R, S, CType>;
+  static constexpr bool trans_filter = true;//(CType == ConvType::Forward);
+  using InputTransform =
+      winograd::ExtractInputTiles<T, channel_vector, M, N, R, S, CType>;
   using FilterTransform = winograd::ExtractKernelTiles<T, M, N, R, S, CType>;
   using OutputTransform =
       winograd::ExtractOutputTiles<T, M, N, R, S, CType, false>;
 
   static bool launch(Eigen::SyclDevice const& device, T* const output,
                      T const* const input, T const* const filter,
-                     SYCLConv2DParams& params) {
-    params = winograd::get_params<CType>(params);
+                     SYCLConv2DParams const& params) {
     const winograd::TileInfo tile_info =
         winograd::get_tile_info<CType>(params, M, N);
     cl::sycl::queue sycl_queue = device.sycl_queue();
@@ -204,6 +205,7 @@ struct LaunchMatmulWinograd {
         static_cast<T*>(device.allocate(in_transform_bytes));
     size_t const inter_bytes = inter_alloc_size_per_image * images_per_alloc;
     T* const intermediate = static_cast<T*>(device.allocate(inter_bytes));
+    cl::sycl::event last_event;
 
     for (int i = 0; i < alloc_info.n_input_transforms; ++i) {
       winograd::Offsets offset =
@@ -216,8 +218,8 @@ struct LaunchMatmulWinograd {
       SYCLConv2DParams kernel_params{params};
       kernel_params.batch_ = images_per_alloc;
 
-      Index const in_transform_items =
-          tile_info.number * kernel_params.batch_ * kernel_params.channels_;
+      Index const in_transform_items = tile_info.number * kernel_params.batch_ *
+                                       kernel_params.channels_ / channel_vector;
       sycl_conv::launch_transform<InputTransform>(
           device, input, in_transform, in_transform_items, kernel_params,
           offset.in, tile_info.number * kernel_params.batch_, tile_info.rows,
@@ -230,7 +232,7 @@ struct LaunchMatmulWinograd {
 
       Index const n_out_items =
           tile_info.number * kernel_params.batch_ * kernel_params.features_;
-      sycl_conv::launch_transform<OutputTransform>(
+      last_event = sycl_conv::launch_transform<OutputTransform>(
           device, intermediate, output, n_out_items, kernel_params, offset.out,
           tile_info.number * kernel_params.batch_, tile_info.rows,
           tile_info.cols);
@@ -238,17 +240,19 @@ struct LaunchMatmulWinograd {
     device.deallocate(fil_transform);
     device.deallocate(in_transform);
     device.deallocate(intermediate);
-    device.synchronize();
+    last_event.wait();
     return true;
   }
 };
-template <typename T, int M, int N, int R, int S>
-struct LaunchMatmulWinograd<T, M, N, R, S, ConvType::FilterBackprop> {
+template <typename T, int channel_vector, int M, int N, int R, int S>
+struct LaunchMatmulWinograd<T, channel_vector, M, N, R, S,
+                            ConvType::FilterBackprop> {
   using Index = int;
   static constexpr int A = M + R - 1;
   static constexpr int B = N + S - 1;
   static constexpr auto CType = ConvType::FilterBackprop;
-  using InputTransform = winograd::ExtractInputTiles<T, M, N, R, S, CType>;
+  using InputTransform =
+      winograd::ExtractInputTiles<T, channel_vector, M, N, R, S, CType>;
   using FilterTransform = winograd::ExtractKernelTiles<T, M, N, R, S, CType>;
   using OutputTransform =
       winograd::ExtractOutputTiles<T, M, N, R, S, CType, false>;
@@ -257,8 +261,7 @@ struct LaunchMatmulWinograd<T, M, N, R, S, ConvType::FilterBackprop> {
 
   static bool launch(Eigen::SyclDevice const& device, T* const output,
                      T const* const input, T const* const filter,
-                     SYCLConv2DParams& params) {
-    params = winograd::get_params<CType>(params);
+                     SYCLConv2DParams const& params) {
     const winograd::TileInfo tile_info =
         winograd::get_tile_info<CType>(params, R, S);
 
@@ -268,7 +271,7 @@ struct LaunchMatmulWinograd<T, M, N, R, S, ConvType::FilterBackprop> {
     size_t const inter_bytes =
         A * B * params.channels_ * params.features_ * sizeof(T);
     size_t const alloc_limit =
-        sycl_device.get_info<cl::sycl::info::device::max_mem_alloc_size>();
+        sycl_device.get_info<cl::sycl::info::device::max_mem_alloc_size>() / 4;
     if (TF_PREDICT_FALSE(inter_bytes > alloc_limit)) {
       VLOG(1) << "The temporary buffer required by Winograd for the "
                  "intermediate tensor is too large to be allocated on the "
@@ -301,6 +304,7 @@ struct LaunchMatmulWinograd<T, M, N, R, S, ConvType::FilterBackprop> {
     T* const fil_transform =
         static_cast<T*>(device.allocate(fil_transform_bytes));
     T* const intermediate = static_cast<T*>(device.allocate(inter_bytes));
+    cl::sycl::event last_event;
 
     for (int i = 0; i < alloc_info.n_input_transforms; ++i) {
       winograd::Offsets offset =
@@ -313,8 +317,8 @@ struct LaunchMatmulWinograd<T, M, N, R, S, ConvType::FilterBackprop> {
       SYCLConv2DParams kernel_params{params};
       kernel_params.batch_ = images_per_alloc;
 
-      const Index in_transform_items =
-          tile_info.number * kernel_params.batch_ * kernel_params.channels_;
+      const Index in_transform_items = tile_info.number * kernel_params.batch_ *
+                                       kernel_params.channels_ / channel_vector;
       sycl_conv::launch_transform<InputTransform>(
           device, input, in_transform, in_transform_items, kernel_params,
           offset.in, tile_info.number * kernel_params.batch_, tile_info.rows,
@@ -335,11 +339,11 @@ struct LaunchMatmulWinograd<T, M, N, R, S, ConvType::FilterBackprop> {
       const Index out_transform_items =
           kernel_params.channels_ * kernel_params.features_;
       if (i == 0) {
-        sycl_conv::launch_transform<OutputTransform>(
+        last_event = sycl_conv::launch_transform<OutputTransform>(
             device, intermediate, output, out_transform_items, kernel_params,
             tile_info.number * kernel_params.batch_);
       } else {
-        sycl_conv::launch_transform<OutputTransformAccumulate>(
+        last_event = sycl_conv::launch_transform<OutputTransformAccumulate>(
             device, intermediate, output, out_transform_items, kernel_params,
             tile_info.number * kernel_params.batch_);
       }
@@ -347,37 +351,56 @@ struct LaunchMatmulWinograd<T, M, N, R, S, ConvType::FilterBackprop> {
     device.deallocate(fil_transform);
     device.deallocate(in_transform);
     device.deallocate(intermediate);
-    device.synchronize();
+    last_event.wait();
     return true;
   }
 };
 }  // namespace tensorflow
 #include "tensorflow/core/kernels/conv_ops_winograd_sycl_impl.h"
 namespace tensorflow {
+template <typename T, typename backend_type, int M, int N, int R, int S,
+          ConvType CType>
+struct WinogradVectorLauncher {
+  static bool launch(backend_type const& backend, T* const output,
+                     T const* const input, T const* const filter,
+                     SYCLConv2DParams params) {
+    params = winograd::get_params<CType>(params);
+    if (params.channels_ % 4 == 0) {
+      return LaunchMatmulWinograd<T, 4, M, N, R, S, CType>::launch(
+          backend, output, input, filter, params);
+    } else if (params.channels_ % 2 == 0) {
+      return LaunchMatmulWinograd<T, 2, M, N, R, S, CType>::launch(
+          backend, output, input, filter, params);
+    } else {
+      return LaunchMatmulWinograd<T, 1, M, N, R, S, CType>::launch(
+          backend, output, input, filter, params);
+    }
+  }
+};
 template <typename T, typename backend_type, ConvType CType>
 struct Launcher<T, backend_type, algorithm::winograd_3x3, CType> final
-    : public LaunchMatmulWinograd<T, 2, 2, 3, 3, CType> {};
+    : public WinogradVectorLauncher<T, backend_type, 2, 2, 3, 3, CType> {};
 template <typename T, typename backend_type, ConvType CType>
 struct Launcher<T, backend_type, algorithm::winograd_3x1, CType> final
-    : public LaunchMatmulWinograd<T, 2, 1, 3, 1, CType> {};
+    : public WinogradVectorLauncher<T, backend_type, 2, 1, 3, 1, CType> {};
 template <typename T, typename backend_type, ConvType CType>
 struct Launcher<T, backend_type, algorithm::winograd_1x3, CType> final
-    : public LaunchMatmulWinograd<T, 1, 2, 1, 3, CType> {};
+    : public WinogradVectorLauncher<T, backend_type, 1, 2, 1, 3, CType> {};
 
 template <typename T, typename backend_type>
 struct Launcher<T, backend_type, algorithm::winograd_3x3,
                 ConvType::FilterBackprop>
-    final
-    : public LaunchMatmulWinograd<T, 3, 3, 2, 2, ConvType::FilterBackprop> {};
+    final : public WinogradVectorLauncher<T, backend_type, 3, 3, 2, 2,
+                                          ConvType::FilterBackprop> {};
 template <typename T, typename backend_type>
 struct Launcher<T, backend_type, algorithm::winograd_3x1,
                 ConvType::FilterBackprop>
-    final
-    : public LaunchMatmulWinograd<T, 3, 1, 2, 1, ConvType::FilterBackprop> {};
+    final : public WinogradVectorLauncher<T, backend_type, 3, 1, 2, 1,
+                                          ConvType::FilterBackprop> {};
 template <typename T, typename backend_type>
 struct Launcher<T, backend_type, algorithm::winograd_1x3,
                 ConvType::FilterBackprop>
-    final
-    : public LaunchMatmulWinograd<T, 1, 3, 1, 2, ConvType::FilterBackprop> {};
+    final : public WinogradVectorLauncher<T, backend_type, 1, 3, 1, 2,
+                                          ConvType::FilterBackprop> {};
 }  // namespace tensorflow
 #endif  // TENSORFLOW_KERNELS_CONV_OPS_WINOGRAD_SYCL_H_

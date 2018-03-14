@@ -10,6 +10,7 @@
 #include "tensorflow/core/kernels/conv_ops_sycl_selectors.h"
 
 #include "tensorflow/core/kernels/conv_ops_direct_sycl.h"
+#include "tensorflow/core/kernels/conv_ops_direct_tiled_sycl.h"
 #include "tensorflow/core/kernels/conv_ops_im2col_sycl.h"
 #include "tensorflow/core/kernels/conv_ops_winograd_sycl.h"
 
@@ -110,11 +111,13 @@ static inline void launch_conv2d(backend_type const& backend,
     CASE(result, winograd_3x3);
     CASE(result, im2col);
     CASE(result, direct);
+    CASE(result, direct_tiled);
     CASE(result, not_supported);
   }
 #undef CASE
   if (!result) {
-    // Fall back to using direct convolution which does not require allocations.
+    VLOG(2) << "Fall back to using direct convolution which does not require "
+               "allocations.";
     CALL_LAUNCHER(result, algorithm::direct);
   }
 #undef CALL_LAUNCHER

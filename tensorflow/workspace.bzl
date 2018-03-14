@@ -3,6 +3,7 @@
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("//third_party/mkl:build_defs.bzl", "mkl_repository")
+load("//third_party/acl:build_defs.bzl", "acl_repository")
 load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
@@ -91,6 +92,16 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       build_file = str(Label("//third_party/mkl:mkl.BUILD")),
   )
 
+  acl_repository(
+      name = "acl",
+      urls = [
+          "https://github.com/ARM-software/ComputeLibrary/archive/6bc7b9046ae6ed4e4b574675e0c597b5d39a7423.tar.gz",
+      ],
+      strip_prefix = "ComputeLibrary-6bc7b9046ae6ed4e4b574675e0c597b5d39a7423",
+      build_file = str(Label("//third_party/acl:acl.BUILD")),
+      repository = tf_repo_name,
+  )
+
   if path_prefix:
     print("path_prefix was specified to tf_workspace but is no longer used " +
           "and will be removed in the future.")
@@ -120,11 +131,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "eigen_archive",
       urls = [
-          "http://mirror.bazel.build/bitbucket.org/mehdi_goli/opencl/get/0a213609e9ca.tar.gz",
-          "https://bitbucket.org/mehdi_goli/opencl/get/0a213609e9ca.tar.gz",
+          "http://mirror.bazel.build/bitbucket.org/mehdi_goli/opencl/get/d241b80712dc.tar.gz",
+          "https://bitbucket.org/mehdi_goli/opencl/get/d241b80712dc.tar.gz",
       ],
-      sha256 = "b85e577aa01184494cee8689cdd637115597ecf155d7a6bf5a00f3d170da9d25",
-      strip_prefix = "mehdi_goli-opencl-0a213609e9ca",
+      sha256 = "92d4879d3ac3338f0ecdb2bd3cfe0acc2177ff088314ab120b5103bd4857094b",
+      strip_prefix = "mehdi_goli-opencl-d241b80712dc",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 

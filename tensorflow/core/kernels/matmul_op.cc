@@ -30,6 +30,12 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
+#ifdef ARM_COMPUTE_CL
+#include "arm_compute/core/Types.h"
+#include "arm_compute/runtime/CL/CLFunctions.h"
+#include "arm_compute/runtime/CL/CLScheduler.h"
+#endif  // ARM_COMPUTE_CL
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -492,7 +498,6 @@ class MatMulOp : public OpKernel {
       f(ctx->eigen_device<Device>(), out->flat<T>());
       return;
     }
-
     LaunchMatMul<Device, T, USE_CUBLAS>::launch(
         ctx, a, b, dim_pair, &algorithms_, use_autotune_, out);
   }
@@ -504,6 +509,127 @@ class MatMulOp : public OpKernel {
   bool transpose_a_;
   bool transpose_b_;
 };
+
+
+#ifdef ARM_COMPUTE_CL
+template <>
+class MatMulOp<CPUDevice, float, false> : public OpKernel {
+ public:
+  explicit MatMulOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_a", &transpose_a_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_b", &transpose_b_));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& a = ctx->input(0);
+    const Tensor& b = ctx->input(1);
+
+    // Check that the dimensions of the two matrices are valid.
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(a.shape()),
+                errors::InvalidArgument("In[0] is not a matrix"));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(b.shape()),
+                errors::InvalidArgument("In[1] is not a matrix"));
+    Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
+    dim_pair[0].first = transpose_a_ ? 0 : 1;
+    dim_pair[0].second = transpose_b_ ? 1 : 0;
+
+    OP_REQUIRES(
+        ctx, a.dim_size(dim_pair[0].first) == b.dim_size(dim_pair[0].second),
+        errors::InvalidArgument(
+            "Matrix size-incompatible: In[0]: ", a.shape().DebugString(),
+            ", In[1]: ", b.shape().DebugString()));
+    int a_dim_remaining = 1 - dim_pair[0].first;
+    int b_dim_remaining = 1 - dim_pair[0].second;
+    TensorShape out_shape(
+        {a.dim_size(a_dim_remaining), b.dim_size(b_dim_remaining)});
+    Tensor* out = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, out_shape, &out));
+
+    if (out->NumElements() == 0) {
+      // If a has shape [0, x] or b has shape [x, 0], the output shape
+      // is a 0-element matrix, so there is nothing to do.
+      return;
+    }
+
+    if (a.NumElements() == 0 || b.NumElements() == 0) {
+      // If a has shape [x, 0] and b has shape [0, y], the
+      // output shape is [x, y] where x and y are non-zero, so we fill
+      // the output with zeros.
+      functor::SetZeroFunctor<CPUDevice, float> f;
+      f(ctx->eigen_device<CPUDevice>(), out->flat<float>());
+      return;
+    }
+
+    // Maps a tensor to host mem, fills it with data, unmaps. Can handle transposed
+    // tensors.
+    auto fill_with_window =
+      [](const Tensor& tf_tensor, arm_compute::CLTensor& arm_tensor, bool transpose) {
+        arm_tensor.map(true);
+        auto tensor_flat = tf_tensor.flat<float>().data();
+        arm_compute::Window win;
+        win.use_tensor_dimensions(arm_tensor.info()->tensor_shape());
+        arm_compute::Iterator it(&arm_tensor, win);
+
+        if (transpose) {
+          size_t y_size = arm_tensor.info()->tensor_shape().y();
+          arm_compute::execute_window_loop(win, [&] (arm_compute::Coordinates& c) {
+            *reinterpret_cast<float*>(it.ptr()) = tensor_flat[c.x() * y_size + c.y()];
+          }, it);
+        } else {
+          size_t x_size = arm_tensor.info()->tensor_shape().x();
+          arm_compute::execute_window_loop(win, [&] (arm_compute::Coordinates& c) {
+            *reinterpret_cast<float*>(it.ptr()) = tensor_flat[c.y() * x_size + c.x()];
+          }, it);
+        }
+
+        arm_tensor.unmap();
+    };
+
+    arm_compute::CLScheduler::get().default_init();
+    arm_compute::CLGEMM arm_gemm;
+    arm_compute::CLTensor arm_a, arm_b, arm_out;
+    // Shapes are always transposed between TensorFlow and Arm Compute Library.
+    arm_compute::TensorShape shape_a{a.dim_size(!transpose_a_), a.dim_size(transpose_a_)},
+      shape_b{b.dim_size(!transpose_b_), b.dim_size(transpose_b_)},
+      shape_out{out->dim_size(1), out->dim_size(0)};
+
+    arm_a.allocator()->init(arm_compute::TensorInfo(shape_a, 1, arm_compute::DataType::F32));
+    arm_b.allocator()->init(arm_compute::TensorInfo(shape_b, 1, arm_compute::DataType::F32));
+    arm_out.allocator()->init(arm_compute::TensorInfo(shape_out, 1, arm_compute::DataType::F32));
+
+    arm_gemm.configure(&arm_a, &arm_b, nullptr, &arm_out, 1.0f, 0.0f);
+
+    arm_a.allocator()->allocate();
+    arm_b.allocator()->allocate();
+    arm_out.allocator()->allocate();
+
+    fill_with_window(a, arm_a, transpose_a_);
+    fill_with_window(b, arm_b, transpose_b_);
+    arm_gemm.run();
+
+    arm_compute::CLScheduler::get().sync();
+    arm_compute::Window out_win;
+    out_win.use_tensor_dimensions(arm_out.info()->tensor_shape());
+    arm_out.map(true);
+    arm_compute::Iterator out_it(&arm_out, out_win);
+    auto eigen_out = out->flat<float>().data();
+    size_t x_size = arm_out.info()->tensor_shape().x();
+    arm_compute::execute_window_loop(out_win, [&] (arm_compute::Coordinates& c) {
+      eigen_out[c.y() * x_size + c.x()] = *reinterpret_cast<float*>(out_it.ptr());
+    }, out_it);
+    arm_out.unmap();
+
+    arm_a.allocator()->free();
+    arm_b.allocator()->free();
+    arm_out.allocator()->free();
+  }
+
+ private:
+  bool transpose_a_;
+  bool transpose_b_;
+};
+#endif  // ARM_COMPUTE_CL
 
 namespace functor {
 
@@ -571,7 +697,6 @@ TF_CALL_complex128(REGISTER_CPU_EIGEN);
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
 TF_CALL_half(REGISTER_CPU);
-
 TF_CALL_int32(REGISTER_CPU);
 TF_CALL_complex64(REGISTER_CPU);
 TF_CALL_complex128(REGISTER_CPU);

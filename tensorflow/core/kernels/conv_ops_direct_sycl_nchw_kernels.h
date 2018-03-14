@@ -9,6 +9,8 @@
 
 #include "tensorflow/core/kernels/conv_ops_sycl_common.h"
 #include "tensorflow/core/kernels/conv_ops_sycl_fast_div.h"
+#include "tensorflow/core/kernels/conv_ops_sycl_kernel_helpers.h"
+#include "tensorflow/core/kernels/conv_ops_sycl_kernel_macros.h"
 #include "tensorflow/core/kernels/conv_ops_sycl_param_macros.h"
 
 namespace tensorflow {
@@ -32,12 +34,11 @@ struct Conv2DNCHW<T, ConvType::Forward, use_fast_div, static_window,
   using read_accessor =
       cl::sycl::accessor<buffer_data, 1, read_mode, global_access>;
 
-  inline TF_ATTRIBUTE_ALWAYS_INLINE Conv2DNCHW(Index n_elems,
-                                               const SYCLConv2DParams& params,
-                                               const read_accessor input,
-                                               const read_accessor kernel,
-                                               write_accessor output)
-      : n_elems_{n_elems},
+  inline Conv2DNCHW(Index n_elems, const SYCLConv2DParams& params,
+                    const read_accessor input, const read_accessor kernel,
+                    write_accessor output)
+      : n_elems_{params.batch_ * params.features_ * params.out_rows_ *
+                 params.out_cols_},
         div_features_{params.features_},
         div_out_cols_{params.out_cols_},
         div_out_rows_{params.out_rows_},
@@ -46,27 +47,28 @@ struct Conv2DNCHW<T, ConvType::Forward, use_fast_div, static_window,
         kernel_accessor_{kernel},
         output_accessor_{output} {}
 
-  inline TF_ATTRIBUTE_ALWAYS_INLINE void operator()(cl::sycl::item<1> item) {
-    const Index index = item.get_id(0);
+  inline SNN_ALWAYS_INLINE void operator()(cl::sycl::item<1> item) {
+    Index index = item.get_id(0);
+    const Index range = item.get_range().get(0);
 
-    if (index < n_elems_) {
+    for (; index < n_elems_; index += range) {
       const T* input_data = ConvertToActualTypeSycl(T, input_accessor_);
       const T* kernel_data = ConvertToActualTypeSycl(T, kernel_accessor_);
       T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
 
-      const Index bdrc_idx = index;
-      const Index bdr_idx = bdrc_idx / div_out_cols_;
-      const Index col_idx = bdrc_idx - bdr_idx * SNN_PARAM(out_cols_);
+      const helpers::TensorIndex4D tensor_idx =
+          helpers::unflatten4d<Index, use_fast_div>(
+              index, div_features_, SNN_PARAM(features_), div_out_rows_,
+              SNN_PARAM(out_rows_), div_out_cols_, SNN_PARAM(out_cols_));
+      const Index col_idx = tensor_idx.s3;
+      const Index row_idx = tensor_idx.s2;
+      const Index feature = tensor_idx.s1;
+      const Index batch = tensor_idx.s0;
+
       const Index cstart =
           col_idx * SNN_STATIC_PARAM(stride, cols_) - SNN_PARAM(pad_cols_);
-
-      const Index bd_idx = bdr_idx / div_out_rows_;
-      const Index row_idx = bdr_idx - bd_idx * SNN_PARAM(out_rows_);
       const Index rstart =
           row_idx * SNN_STATIC_PARAM(stride, rows_) - SNN_PARAM(pad_rows_);
-
-      const Index batch = bd_idx / div_features_;
-      const Index feature = bd_idx - batch * SNN_PARAM(features_);
 
       T out_val = static_cast<T>(0);
       const T* input_data_n = input_data +
@@ -125,12 +127,11 @@ struct Conv2DNCHW<T, ConvType::InputBackprop, use_fast_div, static_window,
   using read_accessor =
       cl::sycl::accessor<buffer_data, 1, read_mode, global_access>;
 
-  inline TF_ATTRIBUTE_ALWAYS_INLINE Conv2DNCHW(Index n_elems,
-                                               const SYCLConv2DParams& params,
-                                               const read_accessor input,
-                                               const read_accessor kernel,
-                                               write_accessor output)
-      : n_elems_{n_elems},
+  inline Conv2DNCHW(Index n_elems, const SYCLConv2DParams& params,
+                    const read_accessor input, const read_accessor kernel,
+                    write_accessor output)
+      : n_elems_{params.batch_ * params.features_ * params.in_rows_ *
+                 params.in_cols_},
         div_features_{params.features_},
         div_in_rows_{params.in_rows_},
         div_in_cols_{params.in_cols_},
@@ -139,16 +140,24 @@ struct Conv2DNCHW<T, ConvType::InputBackprop, use_fast_div, static_window,
         kernel_accessor_{kernel},
         output_accessor_{output} {}
 
-  inline TF_ATTRIBUTE_ALWAYS_INLINE void operator()(cl::sycl::item<1> item) {
-    const Index index = item.get_id(0);
-    if (index < n_elems_) {
+  inline SNN_ALWAYS_INLINE void operator()(cl::sycl::item<1> item) {
+    Index index = item.get_id(0);
+    const Index range = item.get_range().get(0);
+
+    for (; index < n_elems_; index += range) {
       const T* input_data = ConvertToActualTypeSycl(T, input_accessor_);
       const T* kernel_data = ConvertToActualTypeSycl(T, kernel_accessor_);
       T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
 
-      const Index bdrc_idx = index;
-      const Index bdr_idx = bdrc_idx / div_in_cols_;
-      const Index col_idx = bdrc_idx - bdr_idx * SNN_PARAM(in_cols_);
+      const helpers::TensorIndex4D tensor_idx =
+          helpers::unflatten4d<Index, use_fast_div>(
+              index, div_features_, SNN_PARAM(features_), div_in_rows_,
+              SNN_PARAM(in_rows_), div_in_cols_, SNN_PARAM(in_cols_));
+      const Index col_idx = tensor_idx.s3;
+      const Index row_idx = tensor_idx.s2;
+      const Index feature = tensor_idx.s1;
+      const Index batch = tensor_idx.s0;
+
       // c is the index in the padded output tensor (ie with lots of extra
       // zeros), but without the first padding. first_padded_c adds this extra
       // padding.
@@ -164,8 +173,6 @@ struct Conv2DNCHW<T, ConvType::InputBackprop, use_fast_div, static_window,
       const Index cstart = cl::sycl::max(first_used_c, static_cast<Index>(0));
       const Index cend = cl::sycl::min(last_used_c + 1, SNN_PARAM(out_cols_));
 
-      const Index bd_idx = bdr_idx / div_in_rows_;
-      const Index row_idx = bdr_idx - bd_idx * SNN_PARAM(in_rows_);
       const Index r = row_idx + SNN_PARAM(pad_rows_);
       const Index last_used_r = r / SNN_STATIC_PARAM(stride, rows_);
       const Index first_padded_r = r - SNN_STATIC_PARAM(window, rows_) + 1;
@@ -176,9 +183,6 @@ struct Conv2DNCHW<T, ConvType::InputBackprop, use_fast_div, static_window,
           first_used_r * SNN_STATIC_PARAM(stride, rows_) - first_padded_r;
       const Index rstart = cl::sycl::max(first_used_r, static_cast<Index>(0));
       const Index rend = cl::sycl::min(last_used_r + 1, SNN_PARAM(out_rows_));
-
-      const Index batch = bd_idx / div_features_;
-      const Index feature = bd_idx - batch * SNN_PARAM(features_);
 
       T out_val = static_cast<T>(0);
       const T* input_data_n = input_data +
@@ -243,12 +247,11 @@ struct Conv2DNCHW<T, ConvType::FilterBackprop, use_fast_div, static_out,
   using read_accessor =
       cl::sycl::accessor<buffer_data, 1, read_mode, global_access>;
 
-  inline TF_ATTRIBUTE_ALWAYS_INLINE Conv2DNCHW(Index n_elems,
-                                               const SYCLConv2DParams& params,
-                                               const read_accessor input,
-                                               const read_accessor kernel,
-                                               write_accessor output)
-      : n_elems_{n_elems},
+  inline Conv2DNCHW(Index n_elems, const SYCLConv2DParams& params,
+                    const read_accessor input, const read_accessor kernel,
+                    write_accessor output)
+      : n_elems_{params.out_rows_ * params.out_cols_ * params.channels_ *
+                 params.features_},
         div_features_{params.features_},
         div_channels_{params.channels_},
         div_out_cols_{params.out_cols_},
@@ -257,21 +260,24 @@ struct Conv2DNCHW<T, ConvType::FilterBackprop, use_fast_div, static_out,
         kernel_accessor_{kernel},
         output_accessor_{output} {}
 
-  inline TF_ATTRIBUTE_ALWAYS_INLINE void operator()(cl::sycl::item<1> item) {
-    const Index index = item.get_id(0);
-    if (index < n_elems_) {
+  inline SNN_ALWAYS_INLINE void operator()(cl::sycl::item<1> item) {
+    Index index = item.get_id(0);
+    const Index range = item.get_range().get(0);
+
+    for (; index < n_elems_; index += range) {
       const T* input_data = ConvertToActualTypeSycl(T, input_accessor_);
       const T* kernel_data = ConvertToActualTypeSycl(T, kernel_accessor_);
       T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
 
-      const Index hwcf_idx = index;
-      const Index hwc_idx = hwcf_idx / div_features_;
-      const Index feature = hwcf_idx - hwc_idx * SNN_PARAM(features_);
-      const Index hw_idx = hwc_idx / div_channels_;
-      const Index channel = hwc_idx - hw_idx * SNN_PARAM(channels_);
+      const helpers::TensorIndex4D tensor_idx =
+          helpers::unflatten4d<Index, use_fast_div>(
+              index, div_out_cols_, SNN_STATIC_PARAM(out, cols_), div_channels_,
+              SNN_PARAM(channels_), div_features_, SNN_PARAM(features_));
+      const Index feature = tensor_idx.s3;
+      const Index channel = tensor_idx.s2;
+      const Index col_idx = tensor_idx.s1;
+      const Index row_idx = tensor_idx.s0;
 
-      const Index row_idx = hw_idx / div_out_cols_;
-      const Index col_idx = hw_idx - row_idx * SNN_STATIC_PARAM(out, cols_);
       const Index cstart = col_idx - SNN_PARAM(pad_cols_);
       const Index cend =
           cl::sycl::min(cstart + SNN_PARAM(window_cols_), SNN_PARAM(in_cols_));

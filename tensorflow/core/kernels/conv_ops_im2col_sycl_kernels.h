@@ -15,15 +15,15 @@
 namespace tensorflow {
 namespace im2col {
 
-template <typename T, ConvType CType>
+template <typename T, int vector_width, ConvType CType>
 struct ExtractInputTiles;
 /**
  * Have one thread per input entry. That thread is then responsible for writing
  * its one entry to each point in the intermediate tensor as required for the
  * contraction.
  */
-template <typename T>
-struct ExtractInputTiles<T, ConvType::Forward> {
+template <typename T, int vector_width>
+struct ExtractInputTiles<T, vector_width, ConvType::Forward> {
   using Index = int;
   using buffer_data = uint8_t;
   static constexpr auto read_mode = cl::sycl::access::mode::read;
@@ -33,13 +33,14 @@ struct ExtractInputTiles<T, ConvType::Forward> {
       cl::sycl::accessor<buffer_data, 1, write_mode, global_access>;
   using read_accessor =
       cl::sycl::accessor<buffer_data, 1, read_mode, global_access>;
+  using VecType = cl::sycl::vec<T, vector_width>;
 
   inline TF_ATTRIBUTE_ALWAYS_INLINE ExtractInputTiles(
       Index const in_offset, Index const tile_size,
       SYCLConv2DParams const& params, read_accessor const input,
       write_accessor output)
       : n_items_{params.batch_ * params.in_rows_ * params.in_cols_ *
-                 params.channels_},
+                 params.channels_ / vector_width},
         in_offset_{in_offset},
         tile_size_{tile_size},
         SNN_CONSTRUCT_CONV_PARAMS(params),
@@ -52,13 +53,16 @@ struct ExtractInputTiles<T, ConvType::Forward> {
       const T* input_data =
           ConvertToActualTypeSycl(T, input_accessor_) + in_offset_;
       T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
+      const Index in_idx = index * vector_width;
+      VecType in_val = helpers::io::Load<VecType>()(input_data, in_idx);
 
       const helpers::TensorIndex4D tensor_idx =
           helpers::unflatten4d<Index, false>(
               index, SNN_PARAM(in_rows_), SNN_PARAM(in_rows_),
-              SNN_PARAM(in_cols_), SNN_PARAM(in_cols_), SNN_PARAM(channels_),
-              SNN_PARAM(channels_));
-      const Index channel = tensor_idx.s3;
+              SNN_PARAM(in_cols_), SNN_PARAM(in_cols_),
+              SNN_PARAM(channels_) / vector_width,
+              SNN_PARAM(channels_) / vector_width);
+      const Index channel = tensor_idx.s3 * vector_width;
       const Index col_idx = tensor_idx.s2;
       const Index row_idx = tensor_idx.s1;
       const Index batch = tensor_idx.s0;
@@ -83,7 +87,6 @@ struct ExtractInputTiles<T, ConvType::Forward> {
       const Index firstr = rstart * SNN_PARAM(stride_rows_) - first_padded_r;
       const Index rend = cl::sycl::min(last_used_r + 1, SNN_PARAM(out_rows_));
 
-      T in_val = input_data[index];
       for (Index r = rstart, in_r = SNN_PARAM(window_rows_) - 1 - firstr;
            r < rend; ++r, in_r -= SNN_PARAM(stride_rows_)) {
         if (r >= 0) {
@@ -98,7 +101,7 @@ struct ExtractInputTiles<T, ConvType::Forward> {
               Index tile_idx = (in_r * SNN_PARAM(window_cols_) + in_c) *
                                    SNN_PARAM(channels_) +
                                channel;
-              tile_start[tile_idx] = in_val;
+              helpers::io::Store<VecType>()(tile_start, tile_idx, in_val);
             }
           }
         }
@@ -114,8 +117,8 @@ struct ExtractInputTiles<T, ConvType::Forward> {
   const read_accessor input_accessor_;
   write_accessor output_accessor_;
 };
-template <typename T>
-struct ExtractInputTiles<T, ConvType::InputBackprop> {
+template <typename T, int vector_width>
+struct ExtractInputTiles<T, vector_width, ConvType::InputBackprop> {
   using Index = int;
   using buffer_data = uint8_t;
   static constexpr auto read_mode = cl::sycl::access::mode::read;
@@ -125,13 +128,14 @@ struct ExtractInputTiles<T, ConvType::InputBackprop> {
       cl::sycl::accessor<buffer_data, 1, write_mode, global_access>;
   using read_accessor =
       cl::sycl::accessor<buffer_data, 1, read_mode, global_access>;
+  using VecType = cl::sycl::vec<T, vector_width>;
 
   inline TF_ATTRIBUTE_ALWAYS_INLINE ExtractInputTiles(
       Index const in_offset, Index const tile_size,
       SYCLConv2DParams const& params, read_accessor const input,
       write_accessor output)
       : n_items_{params.batch_ * params.out_rows_ * params.out_cols_ *
-                 params.features_},
+                 params.features_ / vector_width},
         in_offset_{in_offset},
         tile_size_{tile_size},
         SNN_CONSTRUCT_CONV_PARAMS(params),
@@ -144,13 +148,16 @@ struct ExtractInputTiles<T, ConvType::InputBackprop> {
       T const* const input_data =
           ConvertToActualTypeSycl(T, input_accessor_) + in_offset_;
       T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
+      const Index in_idx = index * vector_width;
+      VecType in_val = helpers::io::Load<VecType>()(input_data, in_idx);
 
       const helpers::TensorIndex4D tensor_idx =
           helpers::unflatten4d<Index, false>(
               index, SNN_PARAM(out_rows_), SNN_PARAM(out_rows_),
-              SNN_PARAM(out_cols_), SNN_PARAM(out_cols_), SNN_PARAM(features_),
-              SNN_PARAM(features_));
-      const Index feature = tensor_idx.s3;
+              SNN_PARAM(out_cols_), SNN_PARAM(out_cols_),
+              SNN_PARAM(features_) / vector_width,
+              SNN_PARAM(features_) / vector_width);
+      const Index feature = tensor_idx.s3 * vector_width;
       const Index col_idx = tensor_idx.s2;
       const Index row_idx = tensor_idx.s1;
       const Index batch = tensor_idx.s0;
@@ -169,7 +176,6 @@ struct ExtractInputTiles<T, ConvType::InputBackprop> {
           SNN_PARAM(in_rows_));
       const Index firstr = rstart < 0 ? -rstart : 0;
 
-      T in_val = input_data[index];
       for (Index r = cl::sycl::max(rstart, 0),
                  in_r = SNN_PARAM(window_rows_) - 1 - firstr;
            r < rend; ++r, --in_r) {
@@ -183,7 +189,7 @@ struct ExtractInputTiles<T, ConvType::InputBackprop> {
           Index tile_idx =
               (in_r * SNN_PARAM(window_cols_) + in_c) * SNN_PARAM(features_) +
               feature;
-          tile_start[tile_idx] = in_val;
+          helpers::io::Store<VecType>()(tile_start, tile_idx, in_val);
         }
       }
     }
@@ -197,8 +203,8 @@ struct ExtractInputTiles<T, ConvType::InputBackprop> {
   const read_accessor input_accessor_;
   write_accessor output_accessor_;
 };
-template <typename T>
-struct ExtractInputTiles<T, ConvType::FilterBackprop> {
+template <typename T, int vector_width>
+struct ExtractInputTiles<T, vector_width, ConvType::FilterBackprop> {
   using Index = int;
   using buffer_data = uint8_t;
   static constexpr auto read_mode = cl::sycl::access::mode::read;
@@ -227,6 +233,7 @@ struct ExtractInputTiles<T, ConvType::FilterBackprop> {
       const T* input_data =
           ConvertToActualTypeSycl(T, input_accessor_) + in_offset_;
       T* output_data = ConvertToActualTypeSycl(T, output_accessor_);
+      T in_val = input_data[index];
 
       const helpers::TensorIndex4D tensor_idx =
           helpers::unflatten4d<Index, false>(
@@ -273,7 +280,6 @@ struct ExtractInputTiles<T, ConvType::FilterBackprop> {
         init_c += n_inc * SNN_PARAM(dilation_cols_);
       }
 
-      T in_val = input_data[index];
       for (Index r = init_r, in_r = init_r_idx; r < rend;
            r += SNN_PARAM(dilation_rows_), in_r -= SNN_PARAM(stride_rows_)) {
         for (Index c = init_c, in_c = init_c_idx; c < cend;
