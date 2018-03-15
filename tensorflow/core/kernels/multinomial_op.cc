@@ -140,14 +140,22 @@ struct MultinomialFunctor<SYCLDevice, T, OutputType> {
                   int num_classes, int num_samples,
                   const random::PhiloxRandom& gen,
                   typename TTypes<OutputType>::Matrix output) {
+    // Use double precision if possible as probabilities after the exp
+    // can be very low.
+#ifdef TENSORFLOW_SYCL_NO_DOUBLE
+    using InternalT = T;
+#else
+    using InternalT = double;
+#endif
+
     Tensor random_tensor;
     OP_REQUIRES_OK(ctx,
-                   ctx->allocate_temp(DataTypeToEnum<T>::value,
+                   ctx->allocate_temp(DataTypeToEnum<InternalT>::value,
                                       TensorShape({batch_size,
                                                    1,
                                                    num_samples}),
                                       &random_tensor));
-    auto eig_random = random_tensor.template tensor<T, 3>();
+    auto eig_random = random_tensor.template tensor<InternalT, 3>();
 
 #if !defined(EIGEN_HAS_INDEX_LIST)
     Eigen::DSizes<Eigen::Index, 1> max_dims(1);
@@ -210,16 +218,24 @@ struct MultinomialFunctor<SYCLDevice, T, OutputType> {
     batch_by_one_by_samples.set(2, num_samples);
 #endif
 
+    // Cast to double if possible.
+#ifdef TENSORFLOW_SYCL_NO_DOUBLE
+    auto internal_logits = logits;
+#else
+    auto internal_logits = logits.template cast<InternalT>();
+#endif
+
     // Compute bounds.
-    auto max_logits = logits.maximum(max_dims).reshape(batch_by_one);
-    auto exp_logits = (logits - max_logits.broadcast(one_by_classes)).exp();
+    auto max_logits = internal_logits.maximum(max_dims)
+                                     .reshape(batch_by_one)
+                                     .broadcast(one_by_classes);
+    auto exp_logits = (internal_logits - max_logits).exp();
     auto bounds = exp_logits.cumsum(1).reshape(batch_by_classes_by_one);
 
     // Set random.
-    using Distribution = random::UniformDistribution<random::PhiloxRandom, T>;
-    FillPhiloxRandom<SYCLDevice, Distribution> fill_random;
-    fill_random(ctx, d, gen, eig_random.data(), eig_random.size(),
-                Distribution());
+    using Dist = random::UniformDistribution<random::PhiloxRandom, InternalT>;
+    FillPhiloxRandom<SYCLDevice, Dist> fill_random;
+    fill_random(ctx, d, gen, eig_random.data(), eig_random.size(), Dist());
     auto max_bounds = bounds.template chip<1>(num_classes - 1);
     auto max_logits_3d = max_bounds.reshape(batch_by_one_by_one)
                                    .broadcast(one_by_one_by_samples);
