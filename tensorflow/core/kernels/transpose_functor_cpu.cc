@@ -175,6 +175,20 @@ void TransposeSYCL(const SYCLDevice& d, const Tensor& in,
   }
 }
 
+template <>
+void TransposeSYCL<std::complex<float>>(const SYCLDevice&, const Tensor&,
+                                        const gtl::ArraySlice<int32>, bool,
+                                        Tensor*) {
+  LOG(FATAL) << "Conjugate transpose of complex64 using SYCL is not supported";
+}
+
+template <>
+void TransposeSYCL<std::complex<double>>(const SYCLDevice&, const Tensor&,
+                                         const gtl::ArraySlice<int32>, bool,
+                                         Tensor*) {
+  LOG(FATAL) << "Conjugate transpose of complex128 using SYCL is not supported";
+}
+
 }  // namespace internal
 
 template <typename T, bool conjugate>
