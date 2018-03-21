@@ -53,6 +53,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 // Computes the vectorized product of 'input_buffer' and 'filter' and stores
 // result in 'output' at location specified by 'out_r' and 'out_c'.
@@ -414,6 +417,334 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
 
   TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeOp);
 };
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
+          int kKnownDepthMultiplier>
+class DepthwiseConv2dSYCLKernelNHWC {
+  using write_accessor =
+      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::write,
+                         cl::sycl::access::target::global_buffer>;
+  using read_accessor =
+      cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::read,
+                         cl::sycl::access::target::global_buffer>;
+public:
+  DepthwiseConv2dSYCLKernelNHWC(const DepthwiseArgs args,
+                                read_accessor input_data_accessor,
+                                read_accessor filter_data_accessor,
+                                write_accessor output_data_accessor)
+                                : args_(args),
+                                input_data_accessor_(input_data_accessor),
+                                filter_data_accessor_(filter_data_accessor),
+                                output_data_accessor_(output_data_accessor){}
+  void operator()(cl::sycl::item<1> item){
+    T* input_data = ConvertToActualTypeSycl(T, input_data_accessor_);
+    T* filter_data = ConvertToActualTypeSycl(T, filter_data_accessor_);
+    T* output_data = ConvertToActualTypeSycl(T, output_data_accessor_);
+
+    const int thread_id = item.get_linear_id();
+
+    const int filter_rows =
+        kKnownFilterHeight < 0 ? args_.filter_rows : kKnownFilterHeight;
+    const int filter_cols =
+        kKnownFilterWidth < 0 ? args_.filter_cols : kKnownFilterWidth;
+    const int depth_multiplier =
+        kKnownDepthMultiplier < 0 ? args_.depth_multiplier : kKnownDepthMultiplier;
+
+    // Compute the indexes of this thread in the output.
+    const int OD = thread_id % args_.out_depth;
+    const int OC = (thread_id / args_.out_depth) % args_.out_cols;
+    const int OR = (thread_id / args_.out_depth / args_.out_cols) % args_.out_rows;
+    const int OB = thread_id / args_.out_depth / args_.out_cols / args_.out_rows;
+    // Compute the input depth and the index of depth multiplier.
+    const int in_d = OD / depth_multiplier;
+    const int multiplier = OD % depth_multiplier;
+
+    // Decide if all input is valid, if yes, we can skip the boundary checks
+    // for each input.
+    const int input_row_start = OR * args_.stride - args_.pad_rows;
+    const int input_col_start = OC * args_.stride - args_.pad_cols;
+    const int input_row_end = input_row_start + filter_rows;
+    const int input_col_end = input_col_start + filter_cols;
+
+    T sum = T(0);
+
+    const int input_offset_temp = args_.in_rows * OB;
+    if (input_row_start >= 0 && input_col_start >= 0 &&
+        input_row_end < args_.in_rows && input_col_end < args_.in_cols) {
+      for (int f_r = 0; f_r < filter_rows; ++f_r) {
+        const int in_r = input_row_start + f_r;
+        const int filter_offset_temp = filter_cols * f_r;
+        for (int f_c = 0; f_c < filter_cols; ++f_c) {
+          const int in_c = input_col_start + f_c;
+
+          const int input_offset =
+              in_d + args_.in_depth * (in_c + args_.in_cols * (in_r + input_offset_temp));
+          const int filter_offset =
+              multiplier +
+              depth_multiplier * (in_d + args_.in_depth * (f_c + filter_offset_temp));
+          sum += input_data[input_offset] * filter_data[filter_offset];
+        }
+      }
+    } else {
+      for (int f_r = 0; f_r < filter_rows; ++f_r) {
+        const int in_r = input_row_start + f_r;
+        const int filter_offset_temp = filter_cols * f_r;
+        for (int f_c = 0; f_c < filter_cols; ++f_c) {
+          const int in_c = input_col_start + f_c;
+          if (in_r >= 0 && in_r < args_.in_rows && in_c >= 0 && in_c < args_.in_cols) {
+            const int in_c = input_col_start + f_c;
+
+            const int input_offset =
+                in_d + args_.in_depth * (in_c + args_.in_cols * (in_r + input_offset_temp));
+            const int filter_offset =
+                multiplier + depth_multiplier *
+                                 (in_d + args_.in_depth * (f_c + filter_offset_temp));
+            sum += input_data[input_offset] * filter_data[filter_offset];
+          }
+        }
+      }
+    }
+    output_data[thread_id] = sum;
+  }
+private:
+  const DepthwiseArgs args_;
+  const read_accessor input_data_accessor_;
+  const read_accessor filter_data_accessor_;
+  write_accessor output_data_accessor_;
+};
+
+template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
+          int kKnownDepthMultiplier>
+void LaunchDepthwiseConv2dSYCL(const SYCLDevice& d, const DepthwiseArgs args,
+                              const Tensor& input, const Tensor& filter, Tensor* output,
+                              TensorFormat data_format) {
+  const int num_threads = output->NumElements();
+
+  auto input_data_buffer = d.get_sycl_buffer(input.template flat<T>().data());
+  auto filter_data_buffer = d.get_sycl_buffer(filter.template flat<T>().data());
+  auto output_data_buffer = d.get_sycl_buffer(output->template flat<T>().data());
+
+  d.sycl_queue().submit([&](cl::sycl::handler& cgh) {
+    auto input_data_access =
+        input_data_buffer
+            .template get_access<cl::sycl::access::mode::read>(cgh);
+    auto filter_data_access =
+        filter_data_buffer
+            .template get_access<cl::sycl::access::mode::read>(cgh);
+    auto output_data_access =
+        output_data_buffer
+            .template get_access<cl::sycl::access::mode::write>(cgh);
+
+    if(data_format == FORMAT_NHWC){
+      DepthwiseConv2dSYCLKernelNHWC<T, kKnownFilterWidth, kKnownFilterHeight,
+                                    kKnownDepthMultiplier> functor(
+          args, input_data_access, filter_data_access, output_data_access);
+      cgh.parallel_for(cl::sycl::range<1>(num_threads), functor);
+    } else {
+      assert(false && "Incorrect data format");
+      return;
+    }
+  });
+}
+
+template <typename T, int kKnownFilterWidth, int kKnownFilterHeight>
+void LaunchDepthwiseConv2dSYCL(const SYCLDevice& d, const DepthwiseArgs args,
+                              const Tensor& input, const Tensor& filter,
+                              Tensor* output, TensorFormat data_format) {
+  if (args.depth_multiplier == 1) {
+    LaunchDepthwiseConv2dSYCL<T, kKnownFilterWidth, kKnownFilterHeight, 1>(
+        d, args, input, filter, output, data_format);
+  } else {
+    LaunchDepthwiseConv2dSYCL<T, kKnownFilterWidth, kKnownFilterHeight, -1>(
+        d, args, input, filter, output, data_format);
+  }
+}
+
+template <typename T>
+struct LaunchDepthwiseConvOp<SYCLDevice, T> {
+  static void launch(OpKernelContext* ctx, const DepthwiseArgs args,
+                     const Tensor& input, const Tensor& filter, Tensor* output,
+                     TensorFormat data_format) {
+    const SYCLDevice& d = ctx->eigen_device<SYCLDevice>();
+    if (args.filter_rows == 3 && args.filter_cols == 3) {
+      LaunchDepthwiseConv2dSYCL<T, 3, 3>(d, args, input, filter, output,
+                                        data_format);
+    } else {
+      LaunchDepthwiseConv2dSYCL<T, -1, -1>(d, args, input, filter, output,
+                                          data_format);
+    }
+  }
+};
+
+// Extern template instantiated in conv_ops.cc.
+extern template class LaunchConv2DOp<SYCLDevice, float>;
+
+template <typename T>
+class DepthwiseConv2dNativeOp<SYCLDevice, T> : public BinaryOp<T> {
+ public:
+   explicit DepthwiseConv2dNativeOp(OpKernelConstruction* context)
+       : BinaryOp<T>(context) {
+     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
+     string data_format;
+     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                 errors::InvalidArgument("Invalid data format"));
+
+     OP_REQUIRES(context, strides_.size() == 4,
+                 errors::InvalidArgument("Sliding window strides field must "
+                                         "specify 4 dimensions"));
+     stride_ = GetTensorDim(strides_, data_format_, 'H');
+     const int64 stride_w = GetTensorDim(strides_, data_format_, 'W');
+     const int64 stride_n = GetTensorDim(strides_, data_format_, 'N');
+     const int64 stride_c = GetTensorDim(strides_, data_format_, 'C');
+
+     OP_REQUIRES(context, stride_ == stride_w,
+                 errors::InvalidArgument(
+                     "Current implementation only supports equal length "
+                     "strides in the row and column dimensions."));
+     OP_REQUIRES(
+         context, (stride_n == 1 && stride_c == 1),
+         errors::InvalidArgument("Current implementation does not yet support "
+                                 "strides in the batch and depth dimensions."));
+     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+
+     // For special case when in_depth == 1.
+     use_cudnn_ = CanUseCudnn();
+     cudnn_use_autotune_ = CudnnUseAutotune();
+   }
+  void Compute(OpKernelContext* context) override {
+    // Input tensor is of the following dimensions:
+    // [ batch, in_rows, in_cols, in_depth ]
+    const Tensor& input = context->input(0);
+
+    // Input filter is of the following dimensions:
+    // [ filter_rows, filter_cols, in_depth, depth_multiplier]
+    const Tensor& filter = context->input(1);
+
+    // For 2D convolution, there should be 4 dimensions.
+    OP_REQUIRES(context, input.dims() == 4,
+                errors::InvalidArgument("input must be 4-dimensional",
+                                        input.shape().DebugString()));
+    OP_REQUIRES(context, filter.dims() == 4,
+                errors::InvalidArgument("filter must be 4-dimensional: ",
+                                        filter.shape().DebugString()));
+
+    // in_depth for input and filter must match.
+    const int64 in_depth = GetTensorDim(input, data_format_, 'C');
+    OP_REQUIRES(
+        context, in_depth == filter.dim_size(2),
+        errors::InvalidArgument("input and filter must have the same depth: ",
+                                in_depth, " vs ", filter.dim_size(2)));
+
+    // The last dimension for filter is depth multiplier.
+    const int32 depth_multiplier = filter.dim_size(3);
+
+    // The output depth is input depth x depth multipler
+    const int32 out_depth = in_depth * depth_multiplier;
+
+    const int64 input_rows_raw = GetTensorDim(input, data_format_, 'H');
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input_rows_raw, std::numeric_limits<int32>::max()),
+        errors::InvalidArgument("Input rows too large"));
+    const int32 input_rows = static_cast<int32>(input_rows_raw);
+    const int32 filter_rows = filter.dim_size(0);
+
+    const int64 input_cols_raw = GetTensorDim(input, data_format_, 'W');
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input_cols_raw, std::numeric_limits<int32>::max()),
+        errors::InvalidArgument("Input cols too large"));
+    const int32 input_cols = static_cast<int32>(input_cols_raw);
+    const int32 filter_cols = filter.dim_size(1);
+
+    // The first dimension for input is batch.
+    const int32 batch = input.dim_size(0);
+
+    int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSize(input_rows, filter_rows, stride_,
+                                         padding_, &out_rows, &pad_rows));
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSize(input_cols, filter_cols, stride_,
+                                         padding_, &out_cols, &pad_cols));
+    TensorShape out_shape =
+        ShapeFromFormat(data_format_, batch, out_rows, out_cols, out_depth);
+    OP_REQUIRES(
+        context, out_shape.num_elements() <= 2147483647,
+        errors::InvalidArgument("total number of outputs should be within the "
+                                "range of int which is used in the SYCL kernel",
+                                in_depth, " vs ", filter.dim_size(2)));
+
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
+
+    VLOG(2) << "DepthwiseConv2dNative: "
+            << " Input: [" << batch << ", " << input_rows << ", " << input_cols
+            << ", " << in_depth << "]; Filter: [" << filter_rows << ", "
+            << filter_cols << ", " << in_depth << ", " << depth_multiplier
+            << "]; stride = " << stride_ << ", pad_rows = " << pad_rows
+            << ", pad_cols = " << pad_cols << ", output: [" << batch << ", "
+            << out_rows << ", " << out_cols << ", " << out_depth << "]";
+
+    // If there is nothing to compute, return.
+    if (out_shape.num_elements() == 0) {
+      return;
+    }
+
+    // If in_depth==1, this operation is just a standard convolution, so
+    // invoke that op.
+    if (std::is_same<T, float>::value && in_depth == 1) {
+      launcher_.launch(context, use_cudnn_, cudnn_use_autotune_, input, filter,
+                       stride_, stride_, BrainPadding2EigenPadding(padding_),
+                       output, data_format_);
+      return;
+    }
+
+    DepthwiseArgs args;
+    args.batch = batch;
+    args.in_rows = input_rows;
+    args.in_cols = input_cols;
+    args.in_depth = in_depth;
+    args.filter_rows = filter_rows;
+    args.filter_cols = filter_cols;
+    args.depth_multiplier = depth_multiplier;
+    args.stride = stride_;
+    args.pad_rows = pad_rows;
+    args.pad_cols = pad_cols;
+    args.out_rows = out_rows;
+    args.out_cols = out_cols;
+    args.out_depth = out_depth;
+
+    LaunchDepthwiseConvOp<SYCLDevice, T>::launch(
+        context, args, input, filter, output, data_format_);
+  }
+
+ private:
+  std::vector<int32> strides_;
+  Padding padding_;
+  TensorFormat data_format_;
+
+  int64 stride_;  // in height/width dimension.
+
+  // For the case in_depth == 1.
+  LaunchConv2DOp<SYCLDevice, T> launcher_;
+  bool use_cudnn_;
+  bool cudnn_use_autotune_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeOp);
+};
+
+REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNative")
+                            .Device(DEVICE_SYCL).TypeConstraint<float>("T"),
+                        DepthwiseConv2dNativeOp<SYCLDevice, float>);
+
+REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNative")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<double>("T"),
+                        DepthwiseConv2dNativeOp<SYCLDevice, double>);
+#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_CPU_KERNEL(T)                                                 \
   REGISTER_KERNEL_BUILDER(                                                     \
