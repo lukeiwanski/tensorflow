@@ -27,28 +27,9 @@ namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
-
-namespace functor {
-
-template <typename T>
-struct BucketizeFunctor<CPUDevice, T> {
-  // PRECONDITION: boundaries_vector must be sorted.
-  static Status Compute(OpKernelContext* context,
-                        const typename TTypes<T, 1>::ConstTensor& input,
-                        const std::vector<float>& boundaries_vector,
-                        typename TTypes<int32, 1>::Tensor& output) {
-    const int N = input.size();
-    for (int i = 0; i < N; i++) {
-      auto first_bigger_it = std::upper_bound(
-          boundaries_vector.begin(), boundaries_vector.end(), input(i));
-      output(i) = first_bigger_it - boundaries_vector.begin();
-    }
-
-    return Status::OK();
-  }
-};
-
-}  // namespace functor
+#ifdef TENSORFLOW_USE_SYCL
+using SYCLDevice = Eigen::SyclDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class BucketizeOp : public OpKernel {
@@ -98,5 +79,17 @@ REGISTER_KERNEL(float);
 REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_KERNEL(T)                                          \
+  REGISTER_KERNEL_BUILDER(                                          \
+      Name("Bucketize").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+      BucketizeOp<SYCLDevice, T>);
+
+REGISTER_KERNEL(int32);
+REGISTER_KERNEL(int64);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
+#undef REGISTER_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

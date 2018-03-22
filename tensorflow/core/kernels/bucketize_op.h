@@ -32,7 +32,16 @@ struct BucketizeFunctor {
   static Status Compute(OpKernelContext* context,
                         const typename TTypes<T, 1>::ConstTensor& input,
                         const std::vector<float>& boundaries_vector,
-                        typename TTypes<int32, 1>::Tensor& output);
+                        typename TTypes<int32, 1>::Tensor& output) {
+    const int N = input.size();
+    for (int i = 0; i < N; i++) {
+      auto first_bigger_it = std::upper_bound(
+          boundaries_vector.begin(), boundaries_vector.end(), input(i));
+      output(i) = first_bigger_it - boundaries_vector.begin();
+    }
+
+    return Status::OK();
+	}
 };
 
 }  // namespace functor
