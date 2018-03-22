@@ -35,6 +35,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 static inline void ParseAttributeVec4(OpKernelConstruction* context,
                                       const string& attr_name,
@@ -161,5 +164,16 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER);
 #undef REGISTER
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER(T)                                                           \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("ExtractImagePatches").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+      ExtractImagePatchesOp<SYCLDevice, T>);
+
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER);
+
+#undef REGISTER
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

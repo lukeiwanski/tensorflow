@@ -29,6 +29,9 @@ typedef Eigen::GpuDevice GPUDevice;
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef FunctionLibraryRuntime::Handle FHandle;
 typedef std::vector<Tensor> TensorVec;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 
@@ -182,6 +185,10 @@ class FunctionalIf : public AsyncOpKernel {
 REGISTER_KERNEL_BUILDER(Name("_If").Device(DEVICE_CPU), FunctionalIf);
 REGISTER_KERNEL_BUILDER(Name("_If").Device(DEVICE_GPU).HostMemory("cond"),
                         FunctionalIf);
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("_If").Device(DEVICE_SYCL).HostMemory("cond"),
+                        FunctionalIf);
+#endif  // TENSORFLOW_USE_SYCL
 
 class FunctionalWhile : public AsyncOpKernel {
  public:
@@ -318,5 +325,8 @@ class FunctionalWhile : public AsyncOpKernel {
 };
 REGISTER_KERNEL_BUILDER(Name("_While").Device(DEVICE_CPU), FunctionalWhile);
 REGISTER_KERNEL_BUILDER(Name("_While").Device(DEVICE_GPU), FunctionalWhile);
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("_While").Device(DEVICE_SYCL), FunctionalWhile);
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

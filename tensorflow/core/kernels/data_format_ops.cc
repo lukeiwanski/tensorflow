@@ -27,6 +27,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class DataFormatDimMapOp : public OpKernel {
@@ -172,5 +175,23 @@ TF_CALL_int32(REGISTER_GPU_KERNEL);
 TF_CALL_int64(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(T)                                            \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("DataFormatDimMap").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+      DataFormatDimMapOp<SYCLDevice, T>);
+TF_CALL_int32(REGISTER_SYCL_KERNEL);
+TF_CALL_int64(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+
+#define REGISTER_SYCL_KERNEL(T)                                                \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("DataFormatVecPermute").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+      DataFormatVecPermuteOp<SYCLDevice, T>);
+TF_CALL_int32(REGISTER_SYCL_KERNEL);
+TF_CALL_int64(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

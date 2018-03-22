@@ -30,6 +30,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class SoftsignOp : public UnaryElementWiseOp<T, SoftsignOp<Device, T>> {
@@ -126,5 +129,18 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(type)                                       \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("Softsign").Device(DEVICE_SYCL).TypeConstraint<type>("T"),     \
+      SoftsignOp<SYCLDevice, type>);                                      \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("SoftsignGrad").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      SoftsignGradOp<SYCLDevice, type>);
+
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

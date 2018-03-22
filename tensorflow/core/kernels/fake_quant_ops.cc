@@ -31,6 +31,9 @@ using tensorflow::DEVICE_CPU;
 #if GOOGLE_CUDA
 using tensorflow::DEVICE_GPU;
 #endif
+#ifdef TENSORFLOW_USE_SYCL
+using tensorflow::DEVICE_SYCL;
+#endif  // TENSORFLOW_USE_SYCL
 using tensorflow::OpKernel;
 using tensorflow::OpKernelConstruction;
 using tensorflow::OpKernelContext;
@@ -43,6 +46,9 @@ using tensorflow::errors::InvalidArgument;
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 bool IsNumBitsValid(int num_bits) { return num_bits >= 2 && num_bits <= 16; }
@@ -166,6 +172,14 @@ REGISTER_KERNEL_BUILDER(
     Name("FakeQuantWithMinMaxArgsGradient").Device(DEVICE_GPU),
     FakeQuantWithMinMaxArgsGradientOp<GPUDevice>);
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxArgs").Device(DEVICE_SYCL),
+                        FakeQuantWithMinMaxArgsOp<SYCLDevice>);
+REGISTER_KERNEL_BUILDER(
+    Name("FakeQuantWithMinMaxArgsGradient").Device(DEVICE_SYCL),
+    FakeQuantWithMinMaxArgsGradientOp<SYCLDevice>);
+#endif  // TENSORFLOW_USE_SYCL
 
 // -----------------------------------------------------------------------------
 // Implementation of FakeQuantWithMinMaxVarsOp, see its documentation in
@@ -295,6 +309,14 @@ REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxVarsGradient")
                             .HostMemory("max"),
                         FakeQuantWithMinMaxVarsGradientOp<GPUDevice>);
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxVars").Device(DEVICE_SYCL),
+                        FakeQuantWithMinMaxVarsOp<SYCLDevice>);
+REGISTER_KERNEL_BUILDER(
+    Name("FakeQuantWithMinMaxVarsGradient").Device(DEVICE_SYCL),
+    FakeQuantWithMinMaxVarsGradientOp<SYCLDevice>);
+#endif  // TENSORFLOW_USE_SYCL
 
 // -----------------------------------------------------------------------------
 // Implementation of FakeQuantWithMinMaxVarsPerChannelOp, see its documentation
@@ -444,5 +466,14 @@ REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxVarsPerChannelGradient")
                             .HostMemory("max"),
                         FakeQuantWithMinMaxVarsPerChannelGradientOp<GPUDevice>);
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("FakeQuantWithMinMaxVarsPerChannel").Device(DEVICE_SYCL),
+    FakeQuantWithMinMaxVarsPerChannelOp<SYCLDevice>);
+REGISTER_KERNEL_BUILDER(
+    Name("FakeQuantWithMinMaxVarsPerChannelGradient").Device(DEVICE_SYCL),
+    FakeQuantWithMinMaxVarsPerChannelGradientOp<SYCLDevice>);
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

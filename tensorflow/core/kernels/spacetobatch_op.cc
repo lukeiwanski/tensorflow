@@ -38,6 +38,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 
@@ -282,5 +285,23 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER);
 #undef REGISTER
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER(T)                                         \
+  REGISTER_KERNEL_BUILDER(Name("SpaceToBatchND")            \
+                              .Device(DEVICE_SYCL)          \
+                              .TypeConstraint<T>("T")       \
+                              .HostMemory("block_shape")    \
+                              .HostMemory("paddings"),      \
+                          SpaceToBatchNDOp<SYCLDevice, T>); \
+  REGISTER_KERNEL_BUILDER(Name("SpaceToBatch")              \
+                              .Device(DEVICE_SYCL)          \
+                              .TypeConstraint<T>("T")       \
+                              .HostMemory("paddings"),      \
+                          SpaceToBatchOp<SYCLDevice, T>);
+
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER);
+#undef REGISTER
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow

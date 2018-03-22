@@ -33,6 +33,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class BetaincOp : public OpKernel {
@@ -165,5 +168,15 @@ REGISTER_GPU_KERNELS(double);
 #undef REGISTER_GPU_KERNELS
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(type)                                  \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("Betainc").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      BetaincOp<SYCLDevice, type>);
+
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

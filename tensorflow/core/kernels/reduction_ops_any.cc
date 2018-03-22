@@ -45,4 +45,19 @@ REGISTER_KERNEL_BUILDER(
     ReductionOp<GPUDevice, bool, int64, Eigen::internal::OrReducer>);
 #endif
 
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("Any")
+        .TypeConstraint<int32>("Tidx")
+        .Device(DEVICE_SYCL)
+        .HostMemory("reduction_indices"),
+    ReductionOp<SYCLDevice, bool, int32, Eigen::internal::OrReducer>);
+REGISTER_KERNEL_BUILDER(
+    Name("Any")
+        .TypeConstraint<int64>("Tidx")
+        .Device(DEVICE_SYCL)
+        .HostMemory("reduction_indices"),
+    ReductionOp<SYCLDevice, bool, int64, Eigen::internal::OrReducer>);
+#endif  // TENSORFLOW_USE_SYCL
+
 }  // namespace tensorflow

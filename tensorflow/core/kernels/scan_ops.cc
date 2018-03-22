@@ -34,6 +34,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, class T, typename Reducer, typename Tidx>
 class ScanOp : public OpKernel {
@@ -150,6 +153,26 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(type)                                       \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("Cumsum")                                                      \
+          .Device(DEVICE_SYCL)                                            \
+          .TypeConstraint<type>("T")                                      \
+          .TypeConstraint<int32>("Tidx")                                  \
+          .HostMemory("axis"),                                            \
+      ScanOp<SYCLDevice, type, Eigen::internal::SumReducer<type>, int32>) \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("Cumsum")                                                      \
+          .Device(DEVICE_SYCL)                                            \
+          .TypeConstraint<type>("T")                                      \
+          .TypeConstraint<int64>("Tidx")                                  \
+          .HostMemory("axis"),                                            \
+      ScanOp<SYCLDevice, type, Eigen::internal::SumReducer<type>, int64>)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS)
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
+
 // Register Cumprod kernels
 #define REGISTER_CPU_KERNELS(type)                                        \
   REGISTER_KERNEL_BUILDER(                                                \
@@ -186,5 +209,25 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(type)                                        \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("Cumprod")                                                      \
+          .Device(DEVICE_SYCL)                                             \
+          .TypeConstraint<type>("T")                                       \
+          .TypeConstraint<int32>("Tidx")                                   \
+          .HostMemory("axis"),                                             \
+      ScanOp<SYCLDevice, type, Eigen::internal::ProdReducer<type>, int32>) \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("Cumprod")                                                      \
+          .Device(DEVICE_SYCL)                                             \
+          .TypeConstraint<type>("T")                                       \
+          .TypeConstraint<int64>("Tidx")                                   \
+          .HostMemory("axis"),                                             \
+      ScanOp<SYCLDevice, type, Eigen::internal::ProdReducer<type>, int64>)
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_SYCL_KERNELS)
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
