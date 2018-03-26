@@ -200,6 +200,22 @@ struct Transpose<SYCLDevice, T, conjugate> {
 };
 
 template <bool conjugate>
+struct Transpose<SYCLDevice, std::complex<float>, conjugate> {
+  static void run(const SYCLDevice&, const Tensor&,
+                  const gtl::ArraySlice<int32>, Tensor*) {
+    LOG(FATAL) << "DT_COMPLEX64 not supported on SYCL device.";
+  }
+};
+
+template <bool conjugate>
+struct Transpose<SYCLDevice, std::complex<double>, conjugate> {
+  static void run(const SYCLDevice&, const Tensor&,
+                  const gtl::ArraySlice<int32>, Tensor*) {
+    LOG(FATAL) << "DT_COMPLEX128 not supported on SYCL device.";
+  }
+};
+
+template <bool conjugate>
 struct Transpose<SYCLDevice, string, conjugate> {
   static void run(const SYCLDevice& d, const Tensor& in,
                   const gtl::ArraySlice<int32> perm, Tensor* out) {
@@ -209,6 +225,10 @@ struct Transpose<SYCLDevice, string, conjugate> {
 
 // Explicit instantiation.
 template struct Transpose<SYCLDevice, string, false>;
+template struct Transpose<SYCLDevice, std::complex<float>, true>;
+template struct Transpose<SYCLDevice, std::complex<float>, false>;
+template struct Transpose<SYCLDevice, std::complex<double>, true>;
+template struct Transpose<SYCLDevice, std::complex<double>, false>;
 
 INSTANTIATE(SYCLDevice)
 #undef INSTANTIATE
