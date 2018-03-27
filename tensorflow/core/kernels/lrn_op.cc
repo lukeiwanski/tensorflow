@@ -64,6 +64,9 @@ void GetBandMatrix(int depth, int depth_radius,
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 struct LaunchLRN;
@@ -223,6 +226,78 @@ struct LaunchLRN<GPUDevice, T> {
 
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+
+namespace {
+
+// Generate a band matrix from a square matrix with 1s along a swath of size
+// (2 * band_size + 1) around the diagonal.
+template <class T>
+struct BandMatrixGenerator {
+  BandMatrixGenerator(int band_size) : band_size_(band_size) {}
+
+  inline T operator()(const Eigen::array<Eigen::DenseIndex, 2>& idx) const {
+    return T(idx[1] >= (idx[0] - band_size_) &&
+             idx[1] <  (idx[0] + band_size_ + 1));
+  }
+
+private:
+  int band_size_;
+};
+
+} //namespace
+
+template <typename T>
+struct LaunchLRN<SYCLDevice, T> {
+  LaunchLRN(int depth_radius, T bias, T alpha, T beta)
+      : depth_radius_(depth_radius), bias_(bias), alpha_(alpha), beta_(beta) {}
+
+  void launch(OpKernelContext* context, OpKernel* kernel, const Tensor& in,
+              Tensor* output) {
+    const int batch = static_cast<int>(in.dim_size(0));
+    const int rows = static_cast<int>(in.dim_size(1));
+    const int cols = static_cast<int>(in.dim_size(2));
+    const int depth = static_cast<int>(in.dim_size(3));
+
+    const int nodes = cols * rows;
+    auto in_shaped = in.shaped<T, 2>({nodes * batch, depth});
+
+    // Multiplying the input with the band matrix has the effect of reducing the
+    // correct patch along the depth.
+    // GetBandMatrix
+    Tensor depth_by_depth_tensor;
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DataTypeToEnum<T>::value,
+                                      TensorShape({depth, depth}),
+                                      &depth_by_depth_tensor));
+    auto eig_depth_by_depth = depth_by_depth_tensor.template matrix<T>();
+    BandMatrixGenerator<T> generator(depth_radius_);
+    auto multiplier = eig_depth_by_depth.generate(generator);
+
+    auto out_shaped = output->shaped<T, 2>({nodes * batch, depth});
+    Eigen::array<DimPair, 1> dims = {{DimPair(1, 0)}};
+    auto tmp = in_shaped.square().contract(multiplier, dims) * alpha_ + bias_;
+    auto d = context->eigen_sycl_device();
+    if (beta_ == T(1)) {
+      out_shaped.device(d) = in_shaped * tmp.inverse();
+    } else if (beta_ == T(0.5)) {
+      out_shaped.device(d) = in_shaped * tmp.rsqrt();
+    } else {
+      out_shaped.device(d) = in_shaped * (tmp.log() * -beta_).exp();
+    }
+  }
+
+ private:
+  typedef typename Eigen::Tensor<T, 1, Eigen::RowMajor>::DimensionPair DimPair;
+
+  int depth_radius_;
+  T bias_;
+  T alpha_;
+  T beta_;
+};
+
+#endif  // TENSORFLOW_USE_SYCL
+
 template <typename Device, typename T>
 class LRNOp : public OpKernel {
  public:
@@ -299,6 +374,18 @@ TF_CALL_float(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+
+#define REGISTER_SYCL(T)                                      \
+  REGISTER_KERNEL_BUILDER(                                    \
+      Name("LRN").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+      LRNOp<SYCLDevice, T>);
+TF_CALL_float(REGISTER_SYCL);
+
+#undef REGISTER_SYCL
+
+#endif  // TENSORFLOW_USE_SYCL
 
 #if !defined(IS_MOBILE_PLATFORM)
 
