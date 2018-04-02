@@ -265,12 +265,7 @@ struct LaunchLRN<SYCLDevice, T> {
     // Multiplying the input with the band matrix has the effect of reducing the
     // correct patch along the depth.
     // GetBandMatrix
-    Tensor depth_by_depth_tensor;
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(DataTypeToEnum<T>::value,
-                                      TensorShape({depth, depth}),
-                                      &depth_by_depth_tensor));
-    auto eig_depth_by_depth = depth_by_depth_tensor.template matrix<T>();
+    typename TTypes<T>::Matrix eig_depth_by_depth(nullptr, depth, depth);
     BandMatrixGenerator<T> generator(depth_radius_);
     auto multiplier = eig_depth_by_depth.generate(generator);
 
