@@ -261,7 +261,10 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//third_party/eigen3",
-    ],
+
+    ] + if_sycl([
+        "@local_config_sycl//sycl:syclrt",
+    ]),
 )
 
 cc_library(
@@ -3191,6 +3194,8 @@ tf_kernel_library(
     }) + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
+    ]) + if_sycl([
+        "@local_config_sycl//sycl:syclrt",
     ]),
 )
 

@@ -19,6 +19,8 @@ load("//tensorflow:tensorflow.bzl", "if_mkl")
 
 load("//tensorflow:tensorflow.bzl", "if_acl")
 
+load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
+
 cc_library(
     name = "eigen3",
     hdrs = glob(["unsupported/Eigen/CXX11/src/FixedPoint/*.h"]) + [
@@ -38,8 +40,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@eigen_archive//:eigen",
-        "@local_config_sycl//sycl",
-    ],
+    ] + if_sycl([
+        "@local_config_sycl//sycl:sycl_headers",
+    ]),
 )
 
 filegroup(

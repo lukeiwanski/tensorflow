@@ -6,7 +6,7 @@
   * HOST_C_COMPILER:    The host C compiler
   * COMPUTECPP_TOOLKIT_PATH: The path to the ComputeCpp toolkit.
   * TRISYCL_INCLUDE_DIR: The path to the include directory of triSYCL.
-                         (if using triSYCL instead of ComputeCPP)
+                         (if using triSYCL instead of ComputeCpp)
   * PYTHON_LIB_PATH: The path to the python lib
   * TF_USE_DOUBLE_SYCL: boolean value representing double support
   * TF_USE_HALF_SYCL: boolean value representing half support
@@ -39,12 +39,14 @@ def _enable_half(repository_ctx):
     return repository_ctx.os.environ[_HALF_SUPPORT]
   return "0"
 
+def _crosscompile(repository_ctx):
+  return "CROSS_TOOLCHAIN" in repository_ctx.os.environ
+
 def auto_configure_fail(msg):
   """Output failure message when auto configuration fails."""
   red = "\033[0;31m"
   no_color = "\033[0m"
   fail("\n%sAuto-Configuration Error:%s %s\n" % (red, no_color, msg))
-# END cc_configure common functions (see TODO above).
 
 def find_c(repository_ctx):
   """Find host C compiler."""
@@ -92,7 +94,6 @@ def find_python_lib(repository_ctx):
   if _PYTHON_LIB_PATH in repository_ctx.os.environ:
     return repository_ctx.os.environ[_PYTHON_LIB_PATH].strip()
   fail("Environment variable PYTHON_LIB_PATH was not specified re-run ./configure")
-
 
 def _check_lib(repository_ctx, toolkit_path, lib):
   """Checks if lib exists under sycl_toolkit_path or fail if it doesn't.
@@ -188,8 +189,23 @@ def _create_dummy_repository(repository_ctx):
   repository_ctx.file("crosstool/BUILD", _DUMMY_CROSSTOOL_BUILD_FILE)
 
 
-def _sycl_autoconf_imp(repository_ctx):
+def _sycl_autoconf_impl(repository_ctx):
   """Implementation of the sycl_autoconf rule."""
+  # ARM toolchain bits
+  if "CROSSTOOL_PYTHON_INCLUDE_PATH" in repository_ctx.os.environ:
+    python_include_path = repository_ctx.os.environ["CROSSTOOL_PYTHON_INCLUDE_PATH"]
+  else:
+    python_include_path = "/usr/include/python2.7"
+
+  if _crosscompile(repository_ctx):
+    gcc_toolchain_path = repository_ctx.os.environ["CROSS_TOOLCHAIN"]
+    gcc_toolchain_name = repository_ctx.os.environ["CROSS_TOOLCHAIN_NAME"]
+  else:
+    gcc_toolchain_path = ""
+    gcc_toolchain_name = ""
+  spir_type = repository_ctx.os.environ["TF_SYCL_BITCODE_TARGET"]
+
+  # SYCL toolchain bits
   if not _enable_sycl(repository_ctx):
     _create_dummy_repository(repository_ctx)
   else:
@@ -203,23 +219,15 @@ def _sycl_autoconf_imp(repository_ctx):
     if _enable_compute_cpp(repository_ctx):
       computecpp_root = find_computecpp_root(repository_ctx);
 
-      _tpl(repository_ctx, "crosstool:computecpp",
-      {
-        "%{host_cxx_compiler}" : find_cc(repository_ctx),
-        "%{host_c_compiler}" : find_c(repository_ctx),
-        "%{computecpp_root}"  : computecpp_root,
-        "%{double_support}" : _enable_double(repository_ctx),
-        "%{half_support}" : _enable_half(repository_ctx),
-      })
-
       _check_dir(repository_ctx, computecpp_root)
 
       _tpl(repository_ctx, "crosstool:CROSSTOOL",
       {
-        "%{sycl_include_dir}" : computecpp_root,
-        "%{sycl_impl}" : "computecpp",
-        "%{c++_std}" : "-std=c++11",
-        "%{python_lib_path}" : find_python_lib(repository_ctx),
+        "%{CROSS_COMPILER_PATH}%" : gcc_toolchain_path,
+        "%{CROSS_TARGET}%" : gcc_toolchain_name,
+        "%{PYTHON_INCLUDE_PATH}%" : python_include_path,
+        "%{COMPUTECPP_ROOT_DIR}%"  : computecpp_root,
+        "%{BITCODE_FORMAT}%" : spir_type
       })
 
       # symlink libraries
@@ -252,7 +260,7 @@ def _sycl_autoconf_imp(repository_ctx):
 
 
 sycl_configure = repository_rule(
-  implementation = _sycl_autoconf_imp,
+  implementation = _sycl_autoconf_impl,
   local = True,
 )
 """Detects and configures the SYCL toolchain.

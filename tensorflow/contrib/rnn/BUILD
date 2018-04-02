@@ -24,6 +24,8 @@ load(
     "tf_kernel_tests_linkstatic",
 )
 
+load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
+
 cc_library(
     name = "all_ops",
     deps = [
@@ -229,7 +231,11 @@ tf_custom_op_library(
         "kernels/lstm_ops_gpu.cu.cc",
         "kernels/lstm_ops.h",
     ],
-    deps = ["//tensorflow/core/kernels:eigen_helpers"],
+    deps = [
+        "//tensorflow/core/kernels:eigen_helpers",
+    ] + if_sycl([
+        "@local_config_sycl//sycl:syclrt",
+    ]),
 )
 
 tf_gen_op_wrapper_py(
@@ -251,7 +257,11 @@ tf_custom_op_library(
         "kernels/gru_ops_gpu.cu.cc",
         "kernels/gru_ops.h",
     ],
-    deps = ["//tensorflow/core/kernels:eigen_helpers"],
+    deps = [
+        "//tensorflow/core/kernels:eigen_helpers",
+    ] + if_sycl([
+        "@local_config_sycl//sycl:syclrt",
+    ]),
 )
 
 tf_gen_op_wrapper_py(

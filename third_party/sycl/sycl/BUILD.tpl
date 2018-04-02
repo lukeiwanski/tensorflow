@@ -1,7 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
-load(":platform.bzl", "sycl_library_path")
+load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
 
 load(":platform.bzl", "readlink_command")
 
@@ -31,8 +31,9 @@ cc_library(
     hdrs = glob([
         "**/*.h",
         "**/*.hpp",
-    ]),
+    ]) + ["@opencl_headers//:OpenCL-Headers"],
     includes = [".", "include"],
+    deps = ["@opencl_headers//:OpenCL-Headers"],
 )
 
 cc_library(
@@ -45,6 +46,9 @@ cc_library(
     ],
     includes = ["include/"],
     linkstatic = 0,
+    deps = [
+        "@opencl//:OpenCL",
+    ],
 )
 
 cc_library(

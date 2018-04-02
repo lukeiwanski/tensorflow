@@ -350,6 +350,24 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       build_file = str(Label("//third_party:codegen.BUILD")),
   )
 
+  native.new_http_archive(
+      name = "opencl_headers",
+      urls = [
+          "https://github.com/KhronosGroup/OpenCL-Headers/archive/f039db6764d52388658ef15c30b2237bbda49803.tar.gz",
+      ],
+      strip_prefix = "OpenCL-Headers-f039db6764d52388658ef15c30b2237bbda49803",
+      build_file = str(Label("//third_party:opencl-headers.BUILD")),
+  )
+
+  native.new_http_archive(
+      name = "opencl",
+      urls = [
+          "https://github.com/codeplaysoftware/OpenCL-ICD-Loader/archive/4126d36b14afe045e36959963a1b3593d98343e1.tar.gz"
+      ],
+      strip_prefix = "OpenCL-ICD-Loader-4126d36b14afe045e36959963a1b3593d98343e1",
+      build_file = str(Label("//third_party:opencl.BUILD")),
+  )
+
   filegroup_external(
       name = "org_python_license",
       licenses = ["notice"],  # Python 2.0

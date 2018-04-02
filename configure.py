@@ -1203,40 +1203,6 @@ def set_other_cuda_vars(environ_cp):
       write_to_bazelrc('test --config=cuda')
 
 
-def set_host_cxx_compiler(environ_cp):
-  """Set HOST_CXX_COMPILER."""
-  default_cxx_host_compiler = which('g++') or ''
-
-  host_cxx_compiler = prompt_loop_or_load_from_env(
-      environ_cp,
-      var_name='HOST_CXX_COMPILER',
-      var_default=default_cxx_host_compiler,
-      ask_for_var=('Please specify which C++ compiler should be used as the '
-                   'host C++ compiler.'),
-      check_success=os.path.exists,
-      error_msg='Invalid C++ compiler path. %s cannot be found.',
-  )
-
-  write_action_env_to_bazelrc('HOST_CXX_COMPILER', host_cxx_compiler)
-
-
-def set_host_c_compiler(environ_cp):
-  """Set HOST_C_COMPILER."""
-  default_c_host_compiler = which('gcc') or ''
-
-  host_c_compiler = prompt_loop_or_load_from_env(
-      environ_cp,
-      var_name='HOST_C_COMPILER',
-      var_default=default_c_host_compiler,
-      ask_for_var=('Please specify which C compiler should be used as the host'
-                   'C compiler.'),
-      check_success=os.path.exists,
-      error_msg='Invalid C compiler path. %s cannot be found.',
-  )
-
-  write_action_env_to_bazelrc('HOST_C_COMPILER', host_c_compiler)
-
-
 def set_computecpp_toolkit_path(environ_cp):
   """Set COMPUTECPP_TOOLKIT_PATH."""
 
@@ -1270,6 +1236,21 @@ def set_computecpp_toolkit_path(environ_cp):
                               computecpp_toolkit_path)
 
 
+def set_computecpp_bitcode_target(environ_cp):
+  """Set the SYCL target bitcode to compile IR for."""
+  default_target = 'spir64'
+  ask_sycl_target = ('Please specify which bitcode to target when compiling '
+                     'SYCL code. [Default is %s]: ') % (default_target)
+
+  # TODO(jwlawson): Add check to ensure that the specified target is valid
+  sycl_target = get_from_env_or_user_or_default(
+      environ_cp, 'TF_SYCL_BITCODE_TARGET', ask_sycl_target,
+      default_target)
+
+  environ_cp['TF_SYCL_BITCODE_TARGET'] = sycl_target
+  write_action_env_to_bazelrc('TF_SYCL_BITCODE_TARGET', sycl_target)
+
+
 def set_trisycl_include_dir(environ_cp):
   """Set TRISYCL_INCLUDE_DIR."""
 
@@ -1294,6 +1275,19 @@ def set_trisycl_include_dir(environ_cp):
   write_action_env_to_bazelrc('TRISYCL_INCLUDE_DIR',
                               trisycl_include_dir)
 
+def set_sycl_data_types(environ_cp):
+  """Set which data types are enabled for the SYCL configuration."""
+  use_half = int(
+      get_var(environ_cp, 'TF_USE_HALF_SYCL', 'half types in SYCL', False))
+  if use_half == 0:
+    write_to_bazelrc('build:sycl --cxxopt=-DTENSORFLOW_SYCL_NO_HALF=1')
+  environ_cp['TF_USE_HALF_SYCL'] = use_half
+
+  use_double = int(
+      get_var(environ_cp, 'TF_USE_DOUBLE_SYCL', 'double types in SYCL', True))
+  if use_double == 0:
+    write_to_bazelrc('build:sycl --cxxopt=-DTENSORFLOW_SYCL_NO_DOUBLE=1')
+  environ_cp['TF_USE_DOUBLE_SYCL'] = use_double
 
 def set_mpi_home(environ_cp):
   """Set MPI_HOME."""
@@ -1354,16 +1348,6 @@ def set_other_mpi_vars(environ_cp):
 
 def set_grpc_build_flags():
   write_to_bazelrc('build --define grpc_no_ares=true')
-
-def set_acl():
-  # Set up for ARM Compute Library
-  write_to_bazelrc('build:acl --define using_acl=true')
-  write_to_bazelrc('build:acl -c opt')
-  write_to_bazelrc('build:acl --copt="-DARM_COMPUTE_CL"')
-  write_to_bazelrc('build:acl --copt="-DARM_COMPUTE_NO_EXCEPTIONS"')
-  print('Add "--config=acl" to your bazel command to build with ARM '
-        'Compute Library support.\nPlease set the environment variable '
-        '\"TF_ACL_ROOT\" every time before build.')
 
 def set_windows_build_flags():
   if is_windows():
@@ -1426,15 +1410,13 @@ def main():
 
   set_action_env_var(environ_cp, 'TF_NEED_OPENCL_SYCL', 'OpenCL SYCL', False)
   if environ_cp.get('TF_NEED_OPENCL_SYCL') == '1':
-    set_host_cxx_compiler(environ_cp)
-    set_host_c_compiler(environ_cp)
     set_action_env_var(environ_cp, 'TF_NEED_COMPUTECPP', 'ComputeCPP', True)
+    set_sycl_data_types(environ_cp)
     if environ_cp.get('TF_NEED_COMPUTECPP') == '1':
       set_computecpp_toolkit_path(environ_cp)
+      set_computecpp_bitcode_target(environ_cp)
     else:
       set_trisycl_include_dir(environ_cp)
-    set_action_env_var(environ_cp, 'TF_USE_DOUBLE_SYCL', 'double types in SYCL', True)
-    set_action_env_var(environ_cp, 'TF_USE_HALF_SYCL', 'half types in SYCL', False)
 
   set_action_env_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)
   if (environ_cp.get('TF_NEED_CUDA') == '1' and
