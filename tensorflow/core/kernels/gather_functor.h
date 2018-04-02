@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
+#include <vector>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/type_traits.h"
@@ -195,13 +196,9 @@ struct HandleCopiesDetails {
       indices_size(i.dimension(0)),
       limit(p.dimension(1)),
       slice_size(0),
-      host_indices(nullptr) {}
+      host_indices() {}
 
   virtual ~HandleCopiesDetails() = default;
-
-  inline void set_host_indices(IndicesDataT* h) {
-    host_indices = h;
-  }
 
   virtual void full_copy(TensorIndexT from) = 0;
   virtual void adjacent_copy(TensorIndexT from, TensorIndexT to) = 0;
@@ -215,7 +212,7 @@ struct HandleCopiesDetails {
   TensorIndexT indices_size;
   TensorIndexT limit;
   TensorIndexT slice_size;
-  IndicesDataT* host_indices;
+  std::vector<IndicesDataT> host_indices;
 };
 
 template <typename T, typename Index>
@@ -336,16 +333,15 @@ HandleCopiesSYCL(OpKernelContext* ctx,
   // code checked it and then grabbed it from memory a second time, which
   // was a security risk since it could have changed in between.
   // Now copy the indices on the host.
-  IndicesDataT* host_indices = new IndicesDataT[impl_details.indices_size];
+  auto& host_indices = impl_details.host_indices;
+  host_indices.reserve(impl_details.indices_size);
   for (TensorIndexT i = 0; i < impl_details.indices_size; i++) {
     const IndicesDataT index = internal::SubtleMustCopy(indices(i));
     if (!FastBoundsCheck(index, impl_details.limit)) {
-      delete[] host_indices;
       return i;
     }
-    host_indices[i] = index;
+    host_indices.push_back(index);
   }
-  impl_details.set_host_indices(host_indices);
 
   TensorIndexT copy_from = 0;  // bound included
   TensorIndexT copy_to = 1;    // bound excluded
@@ -375,7 +371,6 @@ HandleCopiesSYCL(OpKernelContext* ctx,
     }
     copy_from = copy_to++;
   } while (copy_to <= impl_details.indices_size);
-  delete[] host_indices;
   return -1;
 }
 
