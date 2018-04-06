@@ -28,6 +28,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace functor {
 
@@ -68,6 +71,79 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
     return Status::OK();
   }
 };
+
+#ifdef TENSORFLOW_USE_SYCL
+
+namespace {
+
+// Generate a matrix wich values are the index of the column.
+template <typename T>
+struct ColIndicesGenerator {
+  inline T operator()(const Eigen::array<Eigen::DenseIndex, 2>& idx) const {
+    return idx[1];
+  }
+};
+
+} //namespace
+
+template <typename T, typename Tout>
+struct HistogramFixedWidthFunctor<SYCLDevice, T, Tout> {
+  static Status Compute(OpKernelContext* context,
+                        const typename TTypes<T, 1>::ConstTensor& values,
+                        const typename TTypes<T, 1>::ConstTensor& value_range,
+                        int32 nbins, typename TTypes<Tout, 1>::Tensor& out) {
+    const SYCLDevice& d = context->eigen_device<SYCLDevice>();
+
+#ifdef TENSORFLOW_SYCL_NO_DOUBLE
+    using InternalT = T;
+#else
+    using InternalT = double;
+#endif  // TENSORFLOW_SYCL_NO_DOUBLE
+
+    auto values_size = values.size();
+    if (values_size == 0) {
+      out.device(d) = out.constant(0);
+      return Status::OK();
+    }
+
+#if !defined(EIGEN_HAS_INDEX_LIST)
+    Eigen::DSizes<Eigen::Index, 1> sum_dim(0);
+    Eigen::DSizes<Eigen::Index, 2> values_size_by_one({values_size, 1});
+    Eigen::DSizes<Eigen::Index, 2> one_by_nbins({1, nbins});
+#else
+    Eigen::IndexList<Eigen::type2index<0>> sum_dim;
+    Eigen::IndexList<Eigen::Index, Eigen::type2index<1>> values_size_by_one;
+    values_size_by_one.set(0, values_size);
+    Eigen::IndexList<Eigen::type2index<1>, Eigen::Index> one_by_nbins;
+    one_by_nbins.set(1, nbins);
+#endif
+
+    const InternalT step =
+      static_cast<InternalT>(value_range(1) - value_range(0)) /
+      static_cast<InternalT>(nbins);
+
+    // The calculation is done by finding the slot of each value in `values`.
+    // With [a, b]:
+    //   step = (b - a) / nbins
+    //   (x - a) / step
+    // , then the entries are mapped to output.
+    auto index_to_bin =
+        ((values.cwiseMax(value_range(0)) - values.constant(value_range(0)))
+            .template cast<InternalT>() / step)
+          .template cast<int32>()
+          .cwiseMin(nbins - 1);
+    auto index_to_bin_2d = index_to_bin.reshape(values_size_by_one)
+                                       .broadcast(one_by_nbins);
+    auto col_indices = TTypes<int32, 2>::Tensor(nullptr, values_size, nbins)
+                         .generate(ColIndicesGenerator<int32>());
+
+    out.device(d) = (index_to_bin_2d == col_indices)
+                      .template cast<Tout>().sum(sum_dim);
+    return Status::OK();
+  }
+};
+
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 
@@ -143,5 +219,19 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_KERNELS(type)                                 \
+  REGISTER_KERNEL_BUILDER(Name("HistogramFixedWidth")          \
+                              .Device(DEVICE_SYCL)             \
+                              .HostMemory("value_range")       \
+                              .HostMemory("nbins")             \
+                              .TypeConstraint<type>("T")       \
+                              .TypeConstraint<int32>("dtype"), \
+                          HistogramFixedWidthOp<SYCLDevice, type, int32>)
+
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow
