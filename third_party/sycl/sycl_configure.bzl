@@ -191,9 +191,6 @@ def _create_dummy_repository(repository_ctx):
 
 def _sycl_autoconf_impl(repository_ctx):
   """Implementation of the sycl_autoconf rule."""
-  python_include_path = repository_ctx.os.environ["TF_SYCL_PYTHON_INCLUDE_PATH"]
-  _check_dir(repository_ctx, python_include_path)
-
   # ARM toolchain bits
   if _crosscompile(repository_ctx):
     gcc_toolchain_path = repository_ctx.os.environ["TF_SYCL_CROSS_TOOLCHAIN"]
@@ -224,7 +221,6 @@ def _sycl_autoconf_impl(repository_ctx):
       {
         "%{CROSS_COMPILER_PATH}%" : gcc_toolchain_path,
         "%{CROSS_TARGET}%" : gcc_toolchain_name,
-        "%{PYTHON_INCLUDE_PATH}%" : python_include_path,
         "%{COMPUTECPP_ROOT_DIR}%"  : computecpp_root,
         "%{BITCODE_FORMAT}%" : spir_type
       })

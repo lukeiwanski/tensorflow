@@ -55,11 +55,8 @@ toolchain {
   cxx_builtin_include_directory: "/usr/local/include"
   cxx_builtin_include_directory: "/usr/include"
   cxx_builtin_include_directory: "%{COMPUTECPP_ROOT_DIR}%"
-  cxx_builtin_include_directory: "%{PYTHON_INCLUDE_PATH}%"
 
   cxx_flag: "-std=c++11"
-  cxx_flag: "-isystem"
-  cxx_flag: "%{PYTHON_INCLUDE_PATH}%"
   cxx_flag: "-fsycl-ih-last"
   cxx_flag: "-sycl-driver"
   cxx_flag: "-Xclang"
@@ -154,7 +151,6 @@ toolchain {
 
   cxx_builtin_include_directory: "%{CROSS_COMPILER_PATH}%"
   cxx_builtin_include_directory: "%{COMPUTECPP_ROOT_DIR}%"
-  cxx_builtin_include_directory: "%{PYTHON_INCLUDE_PATH}%"
 
   compiler_flag: "-target"
   compiler_flag: "%{CROSS_TARGET}%"
@@ -162,8 +158,6 @@ toolchain {
   compiler_flag: "--sysroot=%{CROSS_COMPILER_PATH}%/%{CROSS_TARGET}%/libc"
 
   cxx_flag: "-std=c++11"
-  cxx_flag: "-isystem"
-  cxx_flag: "%{PYTHON_INCLUDE_PATH}%"
   cxx_flag: "-isystem"
   cxx_flag: "%{COMPUTECPP_ROOT_DIR}%/include"
   cxx_flag: "-fsycl-ih-last"
