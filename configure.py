@@ -1242,7 +1242,6 @@ def set_computecpp_bitcode_target(environ_cp):
   ask_sycl_target = ('Please specify which bitcode to target when compiling '
                      'SYCL code. [Default is %s]: ') % (default_target)
 
-  # TODO(jwlawson): Add check to ensure that the specified target is valid
   sycl_target = get_from_env_or_user_or_default(
       environ_cp, 'TF_SYCL_BITCODE_TARGET', ask_sycl_target,
       default_target)
@@ -1288,6 +1287,21 @@ def set_sycl_data_types(environ_cp):
   if use_double == 0:
     write_to_bazelrc('build:sycl --cxxopt=-DTENSORFLOW_SYCL_NO_DOUBLE=1')
   environ_cp['TF_USE_DOUBLE_SYCL'] = use_double
+
+
+def set_sycl_python_include_path(environ_cp):
+  """Set the Python include path used when cross-compiling."""
+  default_path = '/usr/include/python2.7'
+  ask_python_include_path = ('Please specify the include python path '
+                              '[Default is %s]: ') % (default_path)
+
+  python_include_path = get_from_env_or_user_or_default(
+      environ_cp, 'TF_SYCL_PYTHON_INCLUDE_PATH', ask_python_include_path,
+      default_path)
+
+  environ_cp['TF_SYCL_PYTHON_INCLUDE_PATH'] = python_include_path
+  write_action_env_to_bazelrc('TF_SYCL_PYTHON_INCLUDE_PATH', python_include_path)
+
 
 def set_mpi_home(environ_cp):
   """Set MPI_HOME."""
@@ -1412,6 +1426,7 @@ def main():
   if environ_cp.get('TF_NEED_OPENCL_SYCL') == '1':
     set_action_env_var(environ_cp, 'TF_NEED_COMPUTECPP', 'ComputeCPP', True)
     set_sycl_data_types(environ_cp)
+    set_sycl_python_include_path(environ_cp)
     if environ_cp.get('TF_NEED_COMPUTECPP') == '1':
       set_computecpp_toolkit_path(environ_cp)
       set_computecpp_bitcode_target(environ_cp)

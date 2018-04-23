@@ -191,15 +191,14 @@ def _create_dummy_repository(repository_ctx):
 
 def _sycl_autoconf_impl(repository_ctx):
   """Implementation of the sycl_autoconf rule."""
-  # ARM toolchain bits
-  if "CROSSTOOL_PYTHON_INCLUDE_PATH" in repository_ctx.os.environ:
-    python_include_path = repository_ctx.os.environ["CROSSTOOL_PYTHON_INCLUDE_PATH"]
-  else:
-    python_include_path = "/usr/include/python2.7"
+  python_include_path = repository_ctx.os.environ["TF_SYCL_PYTHON_INCLUDE_PATH"]
+  _check_dir(repository_ctx, python_include_path)
 
+  # ARM toolchain bits
   if _crosscompile(repository_ctx):
-    gcc_toolchain_path = repository_ctx.os.environ["CROSS_TOOLCHAIN"]
-    gcc_toolchain_name = repository_ctx.os.environ["CROSS_TOOLCHAIN_NAME"]
+    gcc_toolchain_path = repository_ctx.os.environ["TF_SYCL_CROSS_TOOLCHAIN"]
+    gcc_toolchain_name = repository_ctx.os.environ["TF_SYCL_CROSS_TOOLCHAIN_NAME"]
+    _check_dir(repository_ctx, gcc_toolchain_path)
   else:
     gcc_toolchain_path = ""
     gcc_toolchain_name = ""

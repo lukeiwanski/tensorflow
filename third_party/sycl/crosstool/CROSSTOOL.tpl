@@ -55,6 +55,7 @@ toolchain {
   cxx_builtin_include_directory: "/usr/local/include"
   cxx_builtin_include_directory: "/usr/include"
   cxx_builtin_include_directory: "%{COMPUTECPP_ROOT_DIR}%"
+  cxx_builtin_include_directory: "%{PYTHON_INCLUDE_PATH}%"
 
   cxx_flag: "-std=c++11"
   cxx_flag: "-isystem"
@@ -82,8 +83,6 @@ toolchain {
   unfiltered_cxx_flag: "-D__TIME__=\"redacted\""
   unfiltered_cxx_flag: "-no-canonical-prefixes"
 
-  compiler_flag: "-no-serial-memop"
-  compiler_flag: "-DDISABLE_SKINNY=1"
   compiler_flag: "-ffunction-sections"
   compiler_flag: "-fdata-sections"
   compiler_flag: "-fPIE"
@@ -190,9 +189,8 @@ toolchain {
   unfiltered_cxx_flag: "-D__TIME__=\"redacted\""
   unfiltered_cxx_flag: "-no-canonical-prefixes"
 
-  compiler_flag: "-U_FORTIFY_SOURCE"
-  compiler_flag: "-D_FORTIFY_SOURCE=1"
-  compiler_flag: "-fstack-protector"
+  compiler_flag: "-ffunction-sections"
+  compiler_flag: "-fdata-sections"
   compiler_flag: "-fPIE"
   compiler_flag: "-fno-omit-frame-pointer"
   compiler_flag: "-Wall"
