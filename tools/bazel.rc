@@ -48,13 +48,6 @@ build:sycl --define=using_sycl=true --define=using_trisycl=false
 build:sycl --cxxopt -no-serial-memop
 build:sycl --copt -DDISABLE_SKINNY=1
 
-build:sycl_nodouble --crosstool_top=@local_config_sycl//crosstool:toolchain
-build:sycl_nodouble --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
-build:sycl_nodouble --define=using_sycl=true --define=using_trisycl=false
-build:sycl_nodouble --cxxopt -DTENSORFLOW_SYCL_NO_DOUBLE
-build:sycl_nodouble --cxxopt -no-serial-memop
-build:sycl_nodouble --copt -DDISABLE_SKINNY=1
-
 build:sycl_asan --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl_asan --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 build:sycl_asan --define=using_sycl=true --define=using_trisycl=false
