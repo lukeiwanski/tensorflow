@@ -4,43 +4,37 @@
 
   * HOST_CXX_COMPILER:  The host C++ compiler
   * HOST_C_COMPILER:    The host C compiler
+  * TF_NEED_OPENCL_SYCL: boolean value representing whether to use SYCL.
   * COMPUTECPP_TOOLKIT_PATH: The path to the ComputeCpp toolkit.
   * TRISYCL_INCLUDE_DIR: The path to the include directory of triSYCL.
                          (if using triSYCL instead of ComputeCpp)
   * PYTHON_LIB_PATH: The path to the python lib
-  * TF_USE_DOUBLE_SYCL: boolean value representing double support
-  * TF_USE_HALF_SYCL: boolean value representing half support
+  * TF_SYCL_BITCODE_TARGET: The SYCL bitcode target
+  * TF_SYCL_CROSS_TOOLCHAIN: The path to the toolchain (only if cross-compiling)
+  * TF_SYCL_CROSS_TOOLCHAIN_NAME: The name of the toolchain (only if cross-compiling)
 """
 
 _HOST_CXX_COMPILER = "HOST_CXX_COMPILER"
 _HOST_C_COMPILER= "HOST_C_COMPILER"
+_TF_NEED_OPENCL_SYCL= "TF_NEED_OPENCL_SYCL"
 _COMPUTECPP_TOOLKIT_PATH = "COMPUTECPP_TOOLKIT_PATH"
 _TRISYCL_INCLUDE_DIR = "TRISYCL_INCLUDE_DIR"
 _PYTHON_LIB_PATH = "PYTHON_LIB_PATH"
-_DOUBLE_SUPPORT = "TF_USE_DOUBLE_SYCL"
-_HALF_SUPPORT = "TF_USE_HALF_SYCL"
+_TF_SYCL_BITCODE_TARGET = "TF_SYCL_BITCODE_TARGET"
+_TF_SYCL_CROSS_TOOLCHAIN = "TF_SYCL_CROSS_TOOLCHAIN"
+_TF_SYCL_CROSS_TOOLCHAIN_NAME = "TF_SYCL_CROSS_TOOLCHAIN_NAME"
 
 def _enable_sycl(repository_ctx):
-  if "TF_NEED_OPENCL_SYCL" in repository_ctx.os.environ:
-    enable_sycl = repository_ctx.os.environ["TF_NEED_OPENCL_SYCL"].strip()
+  if _TF_NEED_OPENCL_SYCL in repository_ctx.os.environ:
+    enable_sycl = repository_ctx.os.environ[_TF_NEED_OPENCL_SYCL].strip()
     return enable_sycl == "1"
   return False
 
 def _enable_compute_cpp(repository_ctx):
   return _COMPUTECPP_TOOLKIT_PATH in repository_ctx.os.environ
 
-def _enable_double(repository_ctx):
-  if _DOUBLE_SUPPORT in repository_ctx.os.environ:
-    return repository_ctx.os.environ[_DOUBLE_SUPPORT]
-  return "0"
-
-def _enable_half(repository_ctx):
-  if _HALF_SUPPORT in repository_ctx.os.environ:
-    return repository_ctx.os.environ[_HALF_SUPPORT]
-  return "0"
-
 def _crosscompile(repository_ctx):
-  return "CROSS_TOOLCHAIN" in repository_ctx.os.environ
+  return _TF_SYCL_CROSS_TOOLCHAIN in repository_ctx.os.environ
 
 def auto_configure_fail(msg):
   """Output failure message when auto configuration fails."""
@@ -193,13 +187,12 @@ def _sycl_autoconf_impl(repository_ctx):
   """Implementation of the sycl_autoconf rule."""
   # ARM toolchain bits
   if _crosscompile(repository_ctx):
-    gcc_toolchain_path = repository_ctx.os.environ["TF_SYCL_CROSS_TOOLCHAIN"]
-    gcc_toolchain_name = repository_ctx.os.environ["TF_SYCL_CROSS_TOOLCHAIN_NAME"]
+    gcc_toolchain_path = repository_ctx.os.environ[_TF_SYCL_CROSS_TOOLCHAIN]
+    gcc_toolchain_name = repository_ctx.os.environ[_TF_SYCL_CROSS_TOOLCHAIN_NAME]
     _check_dir(repository_ctx, gcc_toolchain_path)
   else:
     gcc_toolchain_path = ""
     gcc_toolchain_name = ""
-  spir_type = repository_ctx.os.environ["TF_SYCL_BITCODE_TARGET"]
 
   # SYCL toolchain bits
   if not _enable_sycl(repository_ctx):
@@ -213,10 +206,10 @@ def _sycl_autoconf_impl(repository_ctx):
     _file(repository_ctx, "sycl:LICENSE.text")
 
     if _enable_compute_cpp(repository_ctx):
-      computecpp_root = find_computecpp_root(repository_ctx);
-
+      computecpp_root = find_computecpp_root(repository_ctx)
       _check_dir(repository_ctx, computecpp_root)
 
+      spir_type = repository_ctx.os.environ[_TF_SYCL_BITCODE_TARGET]
       _tpl(repository_ctx, "crosstool:CROSSTOOL",
       {
         "%{CROSS_COMPILER_PATH}%" : gcc_toolchain_path,
@@ -232,7 +225,7 @@ def _sycl_autoconf_impl(repository_ctx):
       _symlink_dir(repository_ctx, computecpp_root + "/bin", "sycl/bin")
     else:
 
-      trisycl_include_dir = find_trisycl_include_dir(repository_ctx);
+      trisycl_include_dir = find_trisycl_include_dir(repository_ctx)
       _check_dir(repository_ctx, trisycl_include_dir)
 
       _tpl(repository_ctx, "crosstool:trisycl",
