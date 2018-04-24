@@ -93,6 +93,7 @@ toolchain {
   linker_flag: "-Wl,-z,relro,-z,now"
   linker_flag: "-Wl,--build-id=md5"
   linker_flag: "-Wl,--hash-style=gnu"
+  linker_flag: "-Wl,--allow-shlib-undefined"
 
   compilation_mode_flags {
     mode: FASTBUILD
@@ -198,6 +199,7 @@ toolchain {
   linker_flag: "-Wl,-z,relro,-z,now"
   linker_flag: "-Wl,--build-id=md5"
   linker_flag: "-Wl,--hash-style=gnu"
+  linker_flag: "-Wl,--allow-shlib-undefined"
 
   compilation_mode_flags {
     mode: FASTBUILD

@@ -45,10 +45,6 @@ cc_library(
         sycl_library_path("ComputeCpp")
     ],
     includes = ["include/"],
-    linkstatic = 0,
-    deps = [
-        "@opencl//:OpenCL",
-    ],
 )
 
 cc_library(
