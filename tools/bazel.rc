@@ -45,7 +45,6 @@ build:acl --copt=-DARM_COMPUTE_NO_EXCEPTIONS
 build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 build:sycl --define=using_sycl=true --define=using_trisycl=false
-build:sycl --cxxopt -no-serial-memop
 build:sycl --copt -DDISABLE_SKINNY=1
 
 build:sycl_asan --crosstool_top=@local_config_sycl//crosstool:toolchain
@@ -54,7 +53,6 @@ build:sycl_asan --define=using_sycl=true --define=using_trisycl=false
 build:sycl_asan --copt -fno-omit-frame-pointer --copt -fsanitize-coverage=3
 build:sycl_asan --copt -DGPR_NO_DIRECT_SYSCALLS --linkopt -fPIC
 build:sycl_asan --linkopt -fsanitize=address
-build:sycl_asan --cxxopt -no-serial-memop
 build:sycl_asan --copt -DDISABLE_SKINNY=1
 
 build:sycl_arm --crosstool_top=@local_config_sycl//crosstool:toolchain
@@ -65,7 +63,6 @@ build:sycl_arm --incompatible_load_argument_is_label=false
 build:sycl_arm --copt=-DARM_NON_MOBILE
 build:sycl_arm --copt=-DNO_LOCAL_MEM
 build:sycl_arm --copt -DDISABLE_SKINNY=1
-# Do not use -no-serial-memop on ARM
 
 build:sycl_trisycl --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl_trisycl --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
