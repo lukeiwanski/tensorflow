@@ -1276,17 +1276,18 @@ def set_trisycl_include_dir(environ_cp):
 
 def set_sycl_data_types(environ_cp):
   """Set which data types are enabled for the SYCL configuration."""
+  configs = ['sycl', 'sycl_asan', 'sycl_arm']
   use_half = int(
       get_var(environ_cp, 'TF_USE_HALF_SYCL', 'half types in SYCL', False))
   if use_half == 0:
-    write_to_bazelrc('build:sycl --cxxopt=-DTENSORFLOW_SYCL_NO_HALF=1')
-  environ_cp['TF_USE_HALF_SYCL'] = use_half
+    for config in configs:
+      write_to_bazelrc('build:' + config + ' --cxxopt=-DTENSORFLOW_SYCL_NO_HALF=1')
 
   use_double = int(
       get_var(environ_cp, 'TF_USE_DOUBLE_SYCL', 'double types in SYCL', True))
   if use_double == 0:
-    write_to_bazelrc('build:sycl --cxxopt=-DTENSORFLOW_SYCL_NO_DOUBLE=1')
-  environ_cp['TF_USE_DOUBLE_SYCL'] = use_double
+    for config in configs:
+      write_to_bazelrc('build:' + config + ' --cxxopt=-DTENSORFLOW_SYCL_NO_DOUBLE=1')
 
 def set_mpi_home(environ_cp):
   """Set MPI_HOME."""
