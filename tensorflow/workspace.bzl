@@ -328,8 +328,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       build_file = clean_dep("//third_party:backports_weakref.BUILD"),
   )
   
-  )
-
   native.new_http_archive(
       name = "opencl_headers",
       urls = [
@@ -337,6 +335,8 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       strip_prefix = "OpenCL-Headers-f039db6764d52388658ef15c30b2237bbda49803",
       build_file = str(Label("//third_party:opencl-headers.BUILD")),
+  )
+
   filegroup_external(
       name = "org_python_license",
       licenses = ["notice"],  # Python 2.0
