@@ -159,8 +159,6 @@ toolchain {
   compiler_flag: "--sysroot=%{CROSS_COMPILER_PATH}%/%{CROSS_TARGET}%/libc"
 
   cxx_flag: "-std=c++11"
-  cxx_flag: "-isystem"
-  cxx_flag: "%{COMPUTECPP_ROOT_DIR}%/include"
   cxx_flag: "-fsycl-ih-last"
   cxx_flag: "-sycl-driver"
   cxx_flag: "-Xclang"
