@@ -880,7 +880,12 @@ size_t Tensor::AllocatedBytes() const {
 }
 
 bool Tensor::CanUseDMA() const {
+  // NOTE: SYCL fakes DMA
+#ifdef TENSORFLOW_USE_SYCL
+  return true;
+#else
   CASES(dtype(), return is_simple_type<T>::value);
+#endif  // TENSORFLOW_USE_SYCL
   return false;  // Makes compiler happy.
 }
 
