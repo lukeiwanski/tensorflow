@@ -16,11 +16,16 @@ limitations under the License.
 #if TENSORFLOW_USE_SYCL
 
 #include "tensorflow/core/common_runtime/sycl/sycl_device.h"
+
+#include <list>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #include "tensorflow/core/framework/tensor.pb_text.h"
 #include "tensorflow/core/platform/tracing.h"
 
+#include "tensorflow/core/framework/variant_op_registry.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
 namespace tensorflow {
 
 SYCLDevice::~SYCLDevice() {
@@ -46,6 +51,51 @@ Allocator* SYCLDevice::GetAllocator(AllocatorAttributes attr) {
     return sycl_allocator_;
 }
 
+
+Status SYCLDevice::MaybeCopyTensorToGPU(
+    const AllocatorAttributes& alloc_attrs, const Tensor& from, Tensor* to,
+    StatusCallback done) {
+  if (alloc_attrs.on_host()) {
+    *to = from;
+    done(Status::OK());
+    return Status::OK();
+  } else {
+    if (!DMAHelper::CanUseDMA(&from)) {
+      Status err = errors::Internal("SYCL copy from non-DMA ",
+                                    DataTypeString(from.dtype()), " tensor");
+      done(err);
+      return err;
+    }
+    auto* copy =
+        new Tensor(GetAllocator(alloc_attrs), from.dtype(), from.shape());
+
+    // If the tensor is not initialized, we likely ran out of memory.
+    if (!copy->IsInitialized()) {
+      delete copy;
+      Status err = errors::ResourceExhausted(
+          "OOM when allocating tensor of shape ", from.shape().DebugString(),
+          " and type ", DataTypeString(from.dtype()));
+      done(err);
+      return err;
+    }
+
+    StatusCallback wrapped_done = std::bind(
+        [to, copy](StatusCallback done_,
+                   // Begin unbound arguments.
+                   const Status& s) {
+          *to = std::move(*copy);
+          delete copy;
+          done_(s);
+        },
+        std::move(done), std::placeholders::_1);
+
+    port::Tracing::ScopedAnnotation annotation("MakeTensorFromProto");
+    device_context_->CopyCPUTensorToDevice(&from, this, copy,
+                                               std::move(wrapped_done));
+    return Status::OK();
+  }
+}
+
 Status SYCLDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                                        const AllocatorAttributes alloc_attrs,
                                        Tensor* tensor) {
@@ -58,24 +108,63 @@ Status SYCLDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
     return errors::InvalidArgument("Cannot parse tensor from proto: ",
                                    tensor_proto.DebugString());
   }
-  Status status;
-  if (alloc_attrs.on_host()) {
-    *tensor = parsed;
-  } else {
-    Tensor copy(GetAllocator(alloc_attrs), parsed.dtype(), parsed.shape());
+  if (parsed.dtype() == DT_VARIANT) {
+    const Variant* from = parsed.flat<Variant>().data();
+    Tensor copy(cpu_allocator(), DT_VARIANT, parsed.shape());
+    Variant* copy_variant = copy.flat<Variant>().data();
 
-    // If the tensor is not initialized, we likely ran out of memory.
-    if (!copy.IsInitialized()) {
-      return errors::ResourceExhausted(
-          "OOM when allocating tensor of shape ", parsed.shape().DebugString(),
-          " and type ", DataTypeString(parsed.dtype()));
+    std::list<Notification> notifications;
+    Status copy_status;
+    auto copier = [this, &alloc_attrs, &notifications, &copy_status](
+                      const Tensor& from, Tensor* to) {
+      // Copier isn't run in a multithreaded environment, so we don't
+      // have to worry about the notifications list being modified in parallel.
+      notifications.emplace_back();
+      Notification& n = *notifications.rbegin();
+      return MaybeCopyTensorToGPU(alloc_attrs, from, to,
+                                  [&n, &copy_status](const Status& s) {
+                                    if (copy_status.ok()) {
+                                      copy_status.Update(s);
+                                    }
+                                    n.Notify();
+                                  });
+    };
+    Status s;
+    for (int64 ix = 0; ix < parsed.NumElements(); ++ix) {
+      s = VariantDeviceCopy(VariantDeviceCopyDirection::HOST_TO_DEVICE,
+                            from[ix], &copy_variant[ix], copier);
+      if (!s.ok()) {
+        break;
+      }
     }
+    for (auto& n : notifications) {
+      n.WaitForNotification();
+    }
+    if (!s.ok()) {
+      return s;
+    }
+    *tensor = std::move(copy);
+    return copy_status;
+  } else {
+    Status status;
+    if (alloc_attrs.on_host()) {
+      *tensor = parsed;
+    } else {
+      Tensor copy(GetAllocator(alloc_attrs), parsed.dtype(), parsed.shape());
 
-    device_context_->CopyCPUTensorToDevice(
-        &parsed, this, &copy, [&status](const Status& s) { status = s; });
-    *tensor = copy;
+      // If the tensor is not initialized, we likely ran out of memory.
+      if (!copy.IsInitialized()) {
+        return errors::ResourceExhausted(
+            "OOM when allocating tensor of shape ", parsed.shape().DebugString(),
+            " and type ", DataTypeString(parsed.dtype()));
+      }
+
+      device_context_->CopyCPUTensorToDevice(
+          &parsed, this, &copy, [&status](const Status& s) { status = s; });
+      *tensor = copy;
+    }
+    return status;
   }
-  return status;
 }
 
 Status SYCLDevice::FillContextMap(const Graph* graph,

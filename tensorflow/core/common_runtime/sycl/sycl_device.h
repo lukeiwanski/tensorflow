@@ -228,6 +228,15 @@ class SYCLDevice : public LocalDevice {
 
   Status Sync() override;
 
+  // This method returns an initialization status, in addition to
+  // calling the "done" StatusCallback, if there is a failure to
+  // allocate memory or if the tensor "from" is not DMA-copyable.
+  // If there is no error prior to enqueueing the copy, an OK status
+  // is returned.
+  Status MaybeCopyTensorToGPU(const AllocatorAttributes& alloc_attrs,
+    const Tensor& from, Tensor* to,
+    StatusCallback done);
+
  private:
   Allocator* cpu_allocator_;           // not owned
   SYCLAllocator* sycl_allocator_;      // not owned
