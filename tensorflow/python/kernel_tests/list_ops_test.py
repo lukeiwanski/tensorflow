@@ -57,7 +57,8 @@ class ListOpsTest(test_util.TensorFlowTestCase):
   def testPushPopGPU(self):
     if not context.num_gpus():
       return
-    with context.device("gpu:0"):
+    gpu_name = test_util.gpu_device_name()
+    with context.device(gpu_name):
       self.testPushPop()
 
   @test_util.run_in_graph_and_eager_modes()
@@ -73,7 +74,8 @@ class ListOpsTest(test_util.TensorFlowTestCase):
   def testStackGPU(self):
     if not context.num_gpus():
       return
-    with context.device("gpu:0"):
+    gpu_name = test_util.gpu_device_name()
+    with context.device(gpu_name):
       self.testStack()
 
   @test_util.run_in_graph_and_eager_modes()
@@ -90,7 +92,8 @@ class ListOpsTest(test_util.TensorFlowTestCase):
   def testFromTensorGPU(self):
     if not context.num_gpus():
       return
-    with context.device("gpu:0"):
+    gpu_name = test_util.gpu_device_name()
+    with context.device(gpu_name):
       self.testTensorListFromTensor()
 
   @test_util.run_in_graph_and_eager_modes()
@@ -107,7 +110,8 @@ class ListOpsTest(test_util.TensorFlowTestCase):
   def testGetSetGPU(self):
     if not context.num_gpus():
       return
-    with context.device("gpu:0"):
+    gpu_name = test_util.gpu_device_name()
+    with context.device(gpu_name):
       self.testGetSetItem()
 
   @test_util.run_in_graph_and_eager_modes()
@@ -127,7 +131,8 @@ class ListOpsTest(test_util.TensorFlowTestCase):
       return
     t = constant_op.constant([1.0, 2.0])
     l = list_ops.tensor_list_from_tensor(t, element_shape=scalar_shape())
-    with context.device("gpu:0"):
+    gpu_name = test_util.gpu_device_name()
+    with context.device(gpu_name):
       l_gpu = array_ops.identity(l)
       self.assertAllEqual(
           self.evaluate(

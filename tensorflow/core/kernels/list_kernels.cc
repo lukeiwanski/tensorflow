@@ -620,6 +620,11 @@ REGISTER_KERNEL_BUILDER(Name("TensorListConcatLists").Device(DEVICE_GPU),
 
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("TensorListConcatLists").Device(DEVICE_SYCL),
+                        TensorListConcatLists);
+#endif  // TENSORFLOW_USE_SYCL
+
 #define REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(T)               \
   REGISTER_KERNEL_BUILDER(Name("TensorListPushBackBatch")         \
                               .TypeConstraint<T>("element_dtype") \
@@ -635,6 +640,19 @@ REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(qint32);
 REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(bfloat16);
 
 #undef REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_SYCL(T)              \
+  REGISTER_KERNEL_BUILDER(Name("TensorListPushBackBatch")         \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_SYCL),               \
+                          TensorListPushBackBatch<SYCLDevice, T>)
+
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_SYCL);
+TF_CALL_int64(REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_SYCL);
+TF_CALL_bool(REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_SYCL);
+#undef REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_TENSOR_LIST_STACK_CPU(T)                         \
   REGISTER_KERNEL_BUILDER(Name("TensorListStack")                 \
@@ -652,6 +670,19 @@ REGISTER_TENSOR_LIST_STACK_CPU(bfloat16);
 
 #undef REGISTER_TENSOR_LIST_STACK_CPU
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_TENSOR_LIST_STACK_SYCL(T)                        \
+  REGISTER_KERNEL_BUILDER(Name("TensorListStack")                 \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_SYCL),               \
+                          TensorListStack<SYCLDevice, T>)
+
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_TENSOR_LIST_STACK_SYCL);
+TF_CALL_int64(REGISTER_TENSOR_LIST_STACK_SYCL);
+TF_CALL_bool(REGISTER_TENSOR_LIST_STACK_SYCL);
+#undef REGISTER_TENSOR_LIST_STACK_SYCL
+#endif  // TENSORFLOW_USE_SYCL
+
 #define REGISTER_TENSOR_LIST_FROM_TENSOR_CPU(T)                   \
   REGISTER_KERNEL_BUILDER(Name("TensorListFromTensor")            \
                               .TypeConstraint<T>("element_dtype") \
@@ -668,6 +699,20 @@ REGISTER_TENSOR_LIST_FROM_TENSOR_CPU(bfloat16);
 
 #undef REGISTER_TENSOR_LIST_FROM_TENSOR_CPU
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_TENSOR_LIST_FROM_TENSOR_SYCL(T)                  \
+  REGISTER_KERNEL_BUILDER(Name("TensorListFromTensor")            \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_SYCL)                \
+                              .HostMemory("element_shape"),       \
+                          TensorListFromTensor<SYCLDevice, T>)
+
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_TENSOR_LIST_FROM_TENSOR_SYCL);
+TF_CALL_int64(REGISTER_TENSOR_LIST_FROM_TENSOR_SYCL);
+TF_CALL_bool(REGISTER_TENSOR_LIST_FROM_TENSOR_SYCL);
+#undef REGISTER_TENSOR_LIST_FROM_TENSOR_SYCL
+#endif  // TENSORFLOW_USE_SYCL
+
 REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_CPU,
                                           TensorList, TensorList::kTypeName,
                                           TensorListBinaryAdd<CPUDevice>);
@@ -677,4 +722,13 @@ REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
                                          TensorList::kTypeName,
                                          TensorListZerosLike<CPUDevice>);
 
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_SYCL,
+                                          TensorList, TensorList::kTypeName,
+                                          TensorListBinaryAdd<SYCLDevice>);
+REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
+                                         DEVICE_SYCL, TensorList,
+                                         TensorList::kTypeName,
+                                         TensorListZerosLike<SYCLDevice>);
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
