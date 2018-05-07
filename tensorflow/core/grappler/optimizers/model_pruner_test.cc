@@ -377,9 +377,9 @@ TEST_F(ModelPrunerTest, PruningPerservesCrossDeviceIdentity) {
 
   // Node i2 should be pruned since it resides on the sender's device.
   Output i2 = ops::Identity(s.WithOpName("i2").WithDevice("/cpu:0"), c);
+#ifdef TENSORFLOW_USE_SYCL
   Output a3 = ops::Sqrt(s.WithOpName("a3").WithDevice("/device:SYCL:0"), {i2});
   Output a4 = ops::Sqrt(s.WithOpName("a4").WithDevice("/device:SYCL:0"), {i2});
-#ifdef TENSORFLOW_USE_SYCL
 #else
   Output a3 = ops::Sqrt(s.WithOpName("a3").WithDevice("/device:GPU:0"), {i2});
   Output a4 = ops::Sqrt(s.WithOpName("a4").WithDevice("/device:GPU:0"), {i2});
