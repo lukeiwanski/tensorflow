@@ -230,19 +230,85 @@ struct LaunchLRN<GPUDevice, T> {
 
 namespace {
 
-// Generate a band matrix from a square matrix with 1s along a swath of size
-// (2 * band_size + 1) around the diagonal.
-template <class T>
-struct BandMatrixGenerator {
-  BandMatrixGenerator(int band_size) : band_size_(band_size) {}
+template <typename T>
+struct LRNInvSYCL {
+  LRNInvSYCL(T) {}
 
-  inline T operator()(const Eigen::array<Eigen::DenseIndex, 2>& idx) const {
-    return T(idx[1] >= (idx[0] - band_size_) &&
-             idx[1] <  (idx[0] + band_size_ + 1));
+  inline T operator()(T in1, T in2) const {
+    return in1 / in2;
+  }
+};
+
+template <typename T>
+struct LRNRsqrtSYCL {
+  LRNRsqrtSYCL(T) {}
+
+  inline T operator()(T in1, T in2) const {
+    return in1 * cl::sycl::rsqrt(in2);
+  }
+};
+
+template <typename T>
+struct LRNGenSYCL {
+  LRNGenSYCL(T beta) : beta_(beta) {}
+
+  inline T operator()(T in1, T in2) const {
+    return in1 * cl::sycl::exp(cl::sycl::log(in2) * -beta_);
   }
 
-private:
-  int band_size_;
+ private:
+  T beta_;
+};
+
+template <typename T, typename BinaryOp>
+struct LRNKernelSYCL {
+  using r_acc =
+    cl::sycl::accessor<Eigen::buffer_scalar_t, 1,
+                       cl::sycl::access::mode::read,
+                       cl::sycl::access::target::global_buffer>;
+  using dw_acc =
+    cl::sycl::accessor<Eigen::buffer_scalar_t, 1,
+                       cl::sycl::access::mode::discard_write,
+                       cl::sycl::access::target::global_buffer>;
+
+  LRNKernelSYCL(int depth, int depth_radius, T bias, T alpha, T beta,
+                r_acc in_acc, dw_acc out_acc)
+    : depth_(depth), depth_radius_(depth_radius), bias_(bias), alpha_(alpha),
+      binary_op_(BinaryOp(beta)), in_acc_(in_acc), out_acc_(out_acc) {}
+
+  inline void operator()(cl::sycl::item<2> item) {
+    T* in_data = ConvertToActualTypeSycl(T, in_acc_);
+    T* out_data = ConvertToActualTypeSycl(T, out_acc_);
+
+    const auto id = item.get_linear_id();
+    const int row = item.get_id(0);
+    const int col = item.get_id(1);
+    const int base_id = row * depth_;
+    int start_col = col - depth_radius_;
+    int band_width = 2 * depth_radius_ + 1;
+    if (col < depth_radius_) {
+      start_col = 0;
+      band_width -= depth_radius_ - col;
+    } else if (start_col + band_width - 1 >= depth_) {
+      band_width = depth_ - start_col;
+    }
+    T sum = T(0);
+    T act_val;
+    for (int i = 0; i < band_width; ++i) {
+      act_val = in_data[base_id + start_col + i];
+      sum += act_val * act_val;
+    }
+    out_data[id] = binary_op_(in_data[id], sum * alpha_ + bias_);
+  }
+
+ private:
+  int depth_;
+  int depth_radius_;
+  T bias_;
+  T alpha_;
+  BinaryOp binary_op_;
+  r_acc in_acc_;
+  dw_acc out_acc_;
 };
 
 } //namespace
@@ -258,33 +324,36 @@ struct LaunchLRN<SYCLDevice, T> {
     const int rows = static_cast<int>(in.dim_size(1));
     const int cols = static_cast<int>(in.dim_size(2));
     const int depth = static_cast<int>(in.dim_size(3));
+    const int reshaped_rows = batch * rows * cols;
+    cl::sycl::range<2> rng(reshaped_rows, depth);
 
-    const int nodes = cols * rows;
-    auto in_shaped = in.shaped<T, 2>({nodes * batch, depth});
+    auto device = context->eigen_sycl_device();
+    auto in_buffer = device.get_sycl_buffer(in.template flat<T>().data());
+    auto out_buffer = device.get_sycl_buffer(output->template flat<T>().data());
 
-    // Multiplying the input with the band matrix has the effect of reducing the
-    // correct patch along the depth.
-    // GetBandMatrix
-    typename TTypes<T>::Matrix eig_depth_by_depth(nullptr, depth, depth);
-    BandMatrixGenerator<T> generator(depth_radius_);
-    auto multiplier = eig_depth_by_depth.generate(generator);
-
-    auto out_shaped = output->shaped<T, 2>({nodes * batch, depth});
-    Eigen::array<DimPair, 1> dims = {{DimPair(1, 0)}};
-    auto tmp = in_shaped.square().contract(multiplier, dims) * alpha_ + bias_;
-    auto d = context->eigen_sycl_device();
-    if (beta_ == T(1)) {
-      out_shaped.device(d) = in_shaped * tmp.inverse();
-    } else if (beta_ == T(0.5)) {
-      out_shaped.device(d) = in_shaped * tmp.rsqrt();
-    } else {
-      out_shaped.device(d) = in_shaped * (tmp.log() * -beta_).exp();
-    }
+    auto sycl_queue = device.sycl_queue();
+    sycl_queue.submit([&](cl::sycl::handler& cgh) {
+      auto in_acc = in_buffer.template get_access<
+                      cl::sycl::access::mode::read>(cgh);
+      auto out_acc = out_buffer.template get_access<
+                       cl::sycl::access::mode::discard_write>(cgh);
+      if (beta_ == T(1)) {
+        LRNKernelSYCL<T, LRNInvSYCL<T>>
+          kernel(depth, depth_radius_, bias_, alpha_, beta_, in_acc, out_acc);
+        cgh.parallel_for(rng, kernel);
+      } else if (beta_ == T(0.5)) {
+        LRNKernelSYCL<T, LRNRsqrtSYCL<T>>
+          kernel(depth, depth_radius_, bias_, alpha_, beta_, in_acc, out_acc);
+        cgh.parallel_for(rng, kernel);
+      } else {
+        LRNKernelSYCL<T, LRNGenSYCL<T>>
+          kernel(depth, depth_radius_, bias_, alpha_, beta_, in_acc, out_acc);
+        cgh.parallel_for(rng, kernel);
+      }
+    });
   }
 
  private:
-  typedef typename Eigen::Tensor<T, 1, Eigen::RowMajor>::DimensionPair DimPair;
-
   int depth_radius_;
   T bias_;
   T alpha_;
