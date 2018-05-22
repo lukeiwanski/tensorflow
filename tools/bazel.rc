@@ -61,7 +61,6 @@ build:sycl_arm --define=using_sycl=true --define=using_trisycl=false
 build:sycl_arm --cpu=armeabi
 build:sycl_arm --incompatible_load_argument_is_label=false
 build:sycl_arm --copt=-DARM_NON_MOBILE
-build:sycl_arm --copt=-DNO_LOCAL_MEM
 build:sycl_arm --copt -DDISABLE_SKINNY=1
 
 build:sycl_trisycl --crosstool_top=@local_config_sycl//crosstool:toolchain
