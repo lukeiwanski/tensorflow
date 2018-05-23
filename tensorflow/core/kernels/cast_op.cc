@@ -223,11 +223,17 @@ class SyclCastOp : public CastOpBase {
       work_ = GetSyclCastFromInt64(dst_dtype_);
     } else if (src_dtype_ == DT_FLOAT) {
       work_ = GetSyclCastFromFloat(dst_dtype_);
-    } else if (src_dtype_ == DT_DOUBLE) {
+    }
+#ifndef TENSORFLOW_SYCL_NO_DOUBLE
+    else if (src_dtype_ == DT_DOUBLE) {
       work_ = GetSyclCastFromDouble(dst_dtype_);
-    } else if (src_dtype_ == DT_HALF) {
+    }
+#endif  // TENSORFLOW_SYCL_NO_DOUBLE
+#ifndef TENSORFLOW_SYCL_NO_HALF
+    else if (src_dtype_ == DT_HALF) {
       work_ = GetSyclCastFromHalf(dst_dtype_);
     }
+#endif  // TENSORFLOW_SYCL_NO_HALF
 
     return work_ == nullptr ? Unimplemented() : Status::OK();
   }

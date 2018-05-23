@@ -34,11 +34,52 @@ struct CastFunctor<Eigen::ThreadPoolDevice, O, I> {
 };
 
 #ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct SyclSupportType {
+  static constexpr bool value = true;
+};
+#define SYCL_DISABLE_TYPE(TYPE)        \
+template <>                            \
+struct SyclSupportType<TYPE> {         \
+  static constexpr bool value = false; \
+}
+#ifdef TENSORFLOW_SYCL_NO_HALF
+SYCL_DISABLE_TYPE(Eigen::half);
+#endif // TENSORFLOW_SYCL_NO_HALF
+#ifdef TENSORFLOW_SYCL_NO_DOUBLE
+SYCL_DISABLE_TYPE(double);
+#endif // TENSORFLOW_SYCL_NO_DOUBLE
+SYCL_DISABLE_TYPE(std::complex<float>);
+SYCL_DISABLE_TYPE(std::complex<double>);
+SYCL_DISABLE_TYPE(bfloat16);
+
+template <typename T>
+constexpr bool SyclSupportType<T>::value;
+#undef SYCL_DISABLE_TYPE
+
+// SYCL needs this extra boolean template parameter to provide
+// a default empty implementation for unsupported types
+template <bool, typename O, typename I>
+struct SyclCastFunctor {
+  inline void operator()(const Eigen::SyclDevice&, typename TTypes<O>::Flat,
+                         typename TTypes<I>::ConstFlat) {}
+};
+
+template <typename O, typename I>
+struct SyclCastFunctor<true, O, I> {
+  inline void operator()(const Eigen::SyclDevice& d,
+                         typename TTypes<O>::Flat o,
+                         typename TTypes<I>::ConstFlat i) {
+    o.device(d) = i.template cast<O>();
+  }
+};
+
 template <typename O, typename I>
 struct CastFunctor<Eigen::SyclDevice, O, I> {
   void operator()(const Eigen::SyclDevice& d, typename TTypes<O>::Flat o,
                   typename TTypes<I>::ConstFlat i) {
-    o.device(d) = i.template cast<O>();
+    SyclCastFunctor<SyclSupportType<O>::value &&
+                    SyclSupportType<I>::value, O, I>()(d, o, i);
   }
 };
 #endif  // TENSORFLOW_USE_SYCL
