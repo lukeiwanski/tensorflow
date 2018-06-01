@@ -15,6 +15,9 @@ limitations under the License.
 
 #if TENSORFLOW_USE_SYCL
 
+#include <cstdlib>
+#include <algorithm>
+
 #include "tensorflow/core/common_runtime/sycl/sycl_device.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
@@ -97,6 +100,64 @@ Status SYCLDevice::Sync() {
     return Status::OK();
   } else {
     return errors::Internal("Unknown error detected on device ", name());
+  }
+}
+
+void GSYCLInterface::select_specific_platform_vendor_id(GSYCLInterface::device_list_t& device_list, bool& found_device) {
+  auto platform_vendor_cstr = std::getenv("TENSORFLOW_SYCL_USE_PLATFORM_NAME_VENDOR_ID");
+  if (!platform_vendor_cstr)
+    return;
+
+  std::string platform_vendor_str(platform_vendor_cstr);
+  auto sep = platform_vendor_str.rfind(':');
+  if (sep == std::string::npos || sep == 0 || sep == platform_vendor_str.size() - 1) {
+    LOG(WARNING) << "TENSORFLOW_SYCL_USE_PLATFORM_NAME_VENDOR_ID ignored, "
+                    "expected format <platform_name>:<vendor_id>";
+    return;
+  }
+
+  std::string platform_name(platform_vendor_str, 0, sep);
+  auto vendor_id = strtol(std::string(platform_vendor_str, sep + 1).c_str(), NULL, 0);
+
+  // Select the device and remove it from device_list to not select it anymore
+  select_first_device(device_list, found_device, [&](const cl::sycl::device& d) {
+    if (d.get_info<cl::sycl::info::device::vendor_id>() != vendor_id)
+      return false;
+
+    auto device_platform_name = d.get_platform().get_info<cl::sycl::info::platform::name>();
+    if (device_platform_name.back() == '\0') // Do not compare the last null character
+      device_platform_name.erase(device_platform_name.size() - 1);
+    return device_platform_name == platform_name;
+  });
+  if (!found_device) {
+    LOG(WARNING) << "TENSORFLOW_SYCL_USE_PLATFORM_NAME_VENDOR_ID ignored, "
+                    "could not find a supported device with platform name \""
+                 << platform_name << "\" and vendor id " << vendor_id;
+  }
+}
+
+void GSYCLInterface::select_specific_device_type(GSYCLInterface::device_list_t& device_list, bool& found_device) {
+  auto device_type = std::getenv("TENSORFLOW_SYCL_USE_DEVICE_TYPE");
+  if (!device_type)
+    return;
+
+  std::string device_type_str(device_type);
+  std::transform(device_type_str.begin(), device_type_str.end(), device_type_str.begin(), ::tolower);
+
+  if (device_type_str == "gpu")
+    select_first_device(device_list, found_device, [](const cl::sycl::device& d) { return d.is_gpu(); });
+  else if (device_type_str == "cpu")
+    select_first_device(device_list, found_device, [](const cl::sycl::device& d) { return d.is_cpu(); });
+  else if (device_type_str == "acc")
+    select_first_device(device_list, found_device, [](const cl::sycl::device& d) { return d.is_accelerator(); });
+  else {
+    LOG(WARNING) << "TENSORFLOW_SYCL_USE_DEVICE_TYPE ignored, expected value \"gpu\", \"cpu\" or \"acc\"";
+    return;
+  }
+
+  if (!found_device) {
+    LOG(WARNING) << "TENSORFLOW_SYCL_USE_DEVICE_TYPE ignored, "
+                    "could not find a supported device of type " << device_type_str;
   }
 }
 

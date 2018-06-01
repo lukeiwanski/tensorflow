@@ -28,14 +28,49 @@ limitations under the License.
 namespace tensorflow {
 
 class GSYCLInterface {
+  using device_list_t = std::vector<cl::sycl::device>;
   std::vector<Eigen::QueueInterface*> m_queue_interface_;  // owned
   std::vector<Allocator*> m_cpu_allocator_;                // not owned
   std::vector<SYCLAllocator*> m_sycl_allocator_;           // owned
   std::vector<SYCLDeviceContext*> m_sycl_context_;         // ref counted
+
+  void select_specific_platform_vendor_id(device_list_t& device_list, bool& found_device);
+  void select_specific_device_type(device_list_t& device_list, bool& found_device);
+
+  template <class Condition, class OnDeviceSelected>
+  void select_device_if(device_list_t& device_list, Condition cond,
+                        OnDeviceSelected on_device_selected) {
+    for (auto device_it = device_list.begin(); device_it != device_list.end(); ++device_it) {
+      if (cond(*device_it)) {
+        if (on_device_selected(device_it))
+          return;
+      }
+    }
+  }
+
+  template <class Condition>
+  void select_all_devices(device_list_t& device_list, bool& found_device, Condition cond) {
+    select_device_if(device_list, cond, [&](device_list_t::iterator d) {
+      AddDevice(*d);
+      found_device = true;
+      return false;
+    });
+  }
+
+  template <class Condition>
+  void select_first_device(device_list_t& device_list, bool& found_device, Condition cond) {
+    select_device_if(device_list, cond, [&](device_list_t::iterator d) {
+      AddDevice(*d);
+      found_device = true;
+      device_list.erase(d); // erase is safe as the loop will be broken
+      return true;
+    });
+  }
+
   GSYCLInterface() {
     bool found_device = false;
-    auto device_list = Eigen::get_sycl_supported_devices();
     // Obtain list of supported devices from Eigen
+    auto device_list = Eigen::get_sycl_supported_devices();
 
     AddDevicesIf(device_list, found_device, [](const cl::sycl::device& d) { return d.is_accelerator(); });
     AddDevicesIf(device_list, found_device, [](const cl::sycl::device& d) { return d.is_gpu(); });
@@ -68,7 +103,7 @@ class GSYCLInterface {
                  << " is supported by ComputeCPP/triSYCL";
     } else {
       LOG(INFO) << "Found following OpenCL devices:";
-      for (int i = 0; i < device_list.size(); i++) {
+      for (int i = 0; i < m_queue_interface_.size(); i++) {
         LOG(INFO) << GetShortDeviceDescription(i);
       }
     }
