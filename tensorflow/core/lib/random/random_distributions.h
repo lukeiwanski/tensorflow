@@ -192,16 +192,6 @@ class UniformDistribution<Generator, int32> {
     return result;
   }
 
-#ifdef TENSORFLOW_USE_SYCL
-  inline int32 get_lo() {
-    return lo_;
-  }
-
-  inline uint32 get_range() {
-    return range_;
-  }
-#endif  // TENSORFLOW_USE_SYCL
-
  private:
   // Note that lo_ is intentionally signed while range_ is intentionally
   // unsigned.  This is because hi - lo can overflow signed integers if
@@ -237,16 +227,6 @@ class UniformDistribution<Generator, int64> {
     }
     return result;
   }
-
-#ifdef TENSORFLOW_USE_SYCL
-  inline int64 get_lo() {
-    return lo_;
-  }
-
-  inline uint64 get_range() {
-    return range_;
-  }
-#endif  // TENSORFLOW_USE_SYCL
 
  private:
   // Note that lo_ is intentionally signed while range_ is intentionally

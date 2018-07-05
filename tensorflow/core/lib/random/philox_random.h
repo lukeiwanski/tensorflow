@@ -183,16 +183,6 @@ class PhiloxRandom {
     return counter;
   }
 
-#ifdef TENSORFLOW_USE_SYCL
-  inline uint64 get_seed_lo() {
-    return *reinterpret_cast<uint64*>(&key_);
-  }
-
-  inline uint64 get_seed_hi() {
-    return *reinterpret_cast<uint64*>(&counter_[2]);
-  }
-#endif  // TENSORFLOW_USE_SYCL
-
  private:
   // We use the same constants as recommended by the original paper.
   static const uint32 kPhiloxW32A = 0x9E3779B9;

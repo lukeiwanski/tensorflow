@@ -22,7 +22,6 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <memory>
-#include <type_traits>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -557,133 +556,125 @@ TF_CALL_int64(REGISTER_INT);
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
+
 namespace functor {
-namespace {
+
+template <class Distribution, bool VariableSamplesPerOutput>
+struct FillPhiloxRandomKernel;
+
+template <class Distribution>
+struct FillPhiloxRandomKernel<Distribution, false> {
+  typedef typename Distribution::ResultElementType T;
+  using write_accessor =
+    cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::write,
+                       cl::sycl::access::target::global_buffer>;
+
+  FillPhiloxRandomKernel(write_accessor& data, random::PhiloxRandom& gen,
+                         Distribution& dist)
+      : data_(data), gen_(gen), dist_(dist) {}
+
+  void operator()(cl::sycl::nd_item<1> item) {
+    constexpr size_t kGroupSize = Distribution::kResultElementCount;
+
+    const size_t item_id = item.get_global(0);
+    const size_t offset = item_id * kGroupSize;
+    gen_.Skip(item_id);
+
+    const size_t size = data_.get_size() / sizeof(T);
+    T* data = ConvertToActualTypeSycl(T, data_);
+
+    const typename Distribution::ResultType samples = dist_(&gen_);
+    for (size_t i = 0; i < kGroupSize; ++i) {
+      if (offset + i >= size) {
+        return;
+      }
+      data[offset + i] = samples[i];
+    }
+  }
+
+ private:
+  write_accessor data_;
+  random::PhiloxRandom gen_;
+  Distribution dist_;
+};
+
+template <class Distribution>
+struct FillPhiloxRandomKernel<Distribution, true> {
+  typedef typename Distribution::ResultElementType T;
+  using write_accessor =
+    cl::sycl::accessor<uint8_t, 1, cl::sycl::access::mode::write,
+                       cl::sycl::access::target::global_buffer>;
+
+  FillPhiloxRandomKernel(write_accessor& data, random::PhiloxRandom& gen,
+                         Distribution& dist)
+      : data_(data), gen_(gen), dist_(dist) {}
+
+  void operator()(cl::sycl::nd_item<1> item) {
+    using random::PhiloxRandom;
+    using random::SingleSampleAdapter;
+
+    constexpr size_t kReservedSamplesPerOutput = 256;
+    constexpr size_t kGroupSize = Distribution::kResultElementCount;
+    constexpr size_t kGeneratorSkipPerOutputGroup = kGroupSize *
+      kReservedSamplesPerOutput / PhiloxRandom::kResultElementCount;
+
+    const size_t item_id = item.get_global(0);
+    const size_t offset = item_id * kGroupSize;
+
+    gen_.Skip(item_id * kGeneratorSkipPerOutputGroup);
+    SingleSampleAdapter<PhiloxRandom> single_samples(&gen_);
+
+    const size_t size = data_.get_size() / sizeof(T);
+    T* data = ConvertToActualTypeSycl(T, data_);
+
+    const typename Distribution::ResultType samples = dist_(&single_samples);
+    for (size_t i = 0; i < kGroupSize; ++i) {
+      if (offset + i >= size) {
+        return;
+      }
+      data[offset + i] = samples[i];
+    }
+  }
+
+ private:
+  write_accessor data_;
+  random::PhiloxRandom gen_;
+  Distribution dist_;
+};
+
 template <typename T>
-class TruncatedNormalRandomGenerator {
- public:
-  static const bool PacketAccess = false;
+class FillRandomKernel;
+// Partial specialization for SYCL to fill the entire region with randoms
+// It splits the work into several tasks and run them in parallel
+template <class Distribution>
+void FillPhiloxRandom<SYCLDevice, Distribution>::operator()(
+    OpKernelContext* context, const SYCLDevice& device,
+    random::PhiloxRandom gen, typename Distribution::ResultElementType* data,
+    int64 size, Distribution dist) {
+  const size_t nb_items = (size + Distribution::kResultElementCount - 1) /
+                           Distribution::kResultElementCount;
+  const size_t group_size = device.getNearestPowerOfTwoWorkGroupSize();
+  const size_t group_count = (nb_items + group_size - 1) / group_size;
 
-  TruncatedNormalRandomGenerator(uint64 seed, T truncated_value)
-    : state_(seed),
-      min_radius_(std::exp(-(truncated_value*truncated_value) / T(2))) {}
+  if (group_count > 0) {
+    auto buffer = device.get_sycl_buffer(data);
 
- template<typename Index>
-  inline T operator()(Index i) const {
-    uint64_t local_state = state_ + i;
-    return random_to_truncated_normal(&local_state);
+    device.sycl_queue().submit([&](cl::sycl::handler& cgh) {
+      auto access =
+        buffer.template get_access<cl::sycl::access::mode::write>(cgh);
+      cl::sycl::nd_range<1> rng(cl::sycl::range<1>(group_count * group_size),
+                                cl::sycl::range<1>(group_size));
+
+      FillPhiloxRandomKernel<Distribution,
+                             Distribution::kVariableSamplesPerOutput>
+        task(access, gen, dist);
+      cgh.parallel_for<class FillRandomKernel<Distribution>>(rng, task);
+    });
   }
-
- private:
-  uint64_t state_;
-  T min_radius_;
-  const T two_pi_ = 2 * std::atan(1) * 4;
-
-  // BoxMuller transform for truncated normal distribution
-  inline T random_to_truncated_normal(uint64_t* state) const {
-    T theta = Eigen::internal::RandomToTypeUniform<T>(state) * two_pi_;
-    T rsq = min_radius_ + (T(1) - min_radius_) *
-            Eigen::internal::RandomToTypeUniform<T>(state);
-    rsq = -T(2) * Eigen::numext::log(rsq);
-    return Eigen::numext::sqrt(rsq) * Eigen::numext::sin(theta);
-  }
-};
-
-template <class IntType>
-struct BoundRandomUniform {
- public:
-  using UIntType = typename std::make_unsigned<IntType>::type;
-  BoundRandomUniform(IntType lo, UIntType range)
-    : lo_(lo), range_(range) {}
-
-  IntType operator()(IntType x) const {
-    return random::SignedAdd(lo_, x % range_);
-  }
-
- private:
-  IntType lo_;
-  UIntType range_;
-};
-
-inline uint64 get_gen_seed(random::PhiloxRandom gen) {
-  return gen.get_seed_lo() | gen.get_seed_hi();
 }
-
-template <class T, class BaseDist, class EigenDist>
-void launch_fill_kernel(
-    const SYCLDevice& d,
-    typename TTypes<typename std::enable_if<std::is_integral<T>::value,
-                                            T>::type>::Vec data_vec,
-    BaseDist base_dist, EigenDist eigen_dist) {
-  functor::BoundRandomUniform<T> expr(base_dist.get_lo(),
-                                      base_dist.get_range());
-  data_vec.device(d) = data_vec.random(eigen_dist).unaryExpr(expr);
-}
-
-template <class T, class BaseDist, class EigenDist>
-void launch_fill_kernel(
-    const SYCLDevice& d,
-    typename TTypes<typename std::enable_if<!std::is_integral<T>::value,
-                                            T>::type>::Vec data_vec,
-    BaseDist, EigenDist eigen_dist) {
-  data_vec.device(d) = data_vec.random(eigen_dist);
-}
-} // namespace
-
-// Template specialization mapping TensorFlow distributions to Eigen ones
-template <class Generator, class T>
-struct FillPhiloxRandom<SYCLDevice,
-                        random::UniformDistribution<Generator, T> > {
-  using BaseDist = typename random::UniformDistribution<Generator, T>;
-
-  void operator()(OpKernelContext*, const SYCLDevice& d,
-                  random::PhiloxRandom gen, T* data, int64 size,
-                  BaseDist base_dist) {
-    Eigen::DSizes<Eigen::DenseIndex, 1> shape((size));
-    typename TTypes<T>::Vec data_vec(data, shape);
-
-    Eigen::internal::UniformRandomGenerator<T> eigen_dist(get_gen_seed(gen));
-    launch_fill_kernel<T>(d, data_vec, base_dist, eigen_dist);
-  }
-};
-
-template <class Generator, class T>
-struct FillPhiloxRandom<SYCLDevice,
-                        random::NormalDistribution<Generator, T> > {
-  using BaseDist = typename random::NormalDistribution<Generator, T>;
-
-  void operator()(OpKernelContext*, const SYCLDevice& d,
-                  random::PhiloxRandom gen, T* data, int64 size,
-                  BaseDist base_dist) {
-    Eigen::DSizes<Eigen::DenseIndex, 1> shape((size));
-    typename TTypes<T>::Vec data_vec(data, shape);
-
-    Eigen::internal::NormalRandomGenerator<T> eigen_dist(get_gen_seed(gen));
-    launch_fill_kernel<T>(d, data_vec, base_dist, eigen_dist);
-  }
-};
-
-template <class Generator, class T>
-struct FillPhiloxRandom<SYCLDevice,
-                        random::TruncatedNormalDistribution<Generator, T> > {
-  using BaseDist = typename random::TruncatedNormalDistribution<Generator, T>;
-  const float kTruncatedValue = T(2);
-
-  void operator()(OpKernelContext*, const SYCLDevice& d,
-                  random::PhiloxRandom gen, T* data, int64 size,
-                  BaseDist base_dist) {
-    Eigen::DSizes<Eigen::DenseIndex, 1> shape((size));
-    typename TTypes<T>::Vec data_vec(data, shape);
-
-    TruncatedNormalRandomGenerator<T> eigen_dist(get_gen_seed(gen),
-                                                 kTruncatedValue);
-    launch_fill_kernel<T>(d, data_vec, base_dist, eigen_dist);
-  }
-};
 
 }  // namespace functor
 
-// It is as if SingleSamplerAdapter were always used for SYCL
 #define REGISTER(TYPE)                                                         \
   template struct functor::FillPhiloxRandom<                                   \
       SYCLDevice, random::UniformDistribution<random::PhiloxRandom, TYPE>>;    \
